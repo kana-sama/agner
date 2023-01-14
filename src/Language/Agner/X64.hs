@@ -17,6 +17,7 @@ import Language.Agner.SM qualified as SM
 data Op
   = MOVQ
   | SUBQ
+  | ADDQ
   | PUSHQ
   | POPQ
   | RETQ
@@ -58,7 +59,7 @@ data CompileState = MkCompileState
   deriving stock (Generic)
 
 pool, poolRegs :: [Operand]
-poolRegs = [Reg r | r <- [RBX]]
+poolRegs = [Reg r | r <- [RBX, RCX, RDX, RSI, RDI]]
 pool = poolRegs ++ [MemReg (-WORD_SIZE * i) RSP | i <- [1 ..]]
 
 _alloc :: M Operand
@@ -72,9 +73,10 @@ _pop = do
   currentReg <- #currentReg <-= 1
   pure (pool !! currentReg)
 
-movq, subq :: Operand -> Operand -> M ()
+movq, subq, addq :: Operand -> Operand -> M ()
 movq a b = tell [Op MOVQ [a, b]]
 subq a b = tell [Op SUBQ [a, b]]
+addq a b = tell [Op ADDQ [a, b]]
 
 pushq, popq :: Operand -> M ()
 pushq a = tell [Op PUSHQ [a]]
@@ -90,11 +92,23 @@ execM = execWriter . flip runStateT emptyState
   where
     emptyState = MkCompileState{maxAllocated = 0, currentReg = 0}
 
+compileBinOp :: Syntax.BinOp -> M ()
+compileBinOp = \case
+  (Syntax.:+) -> do
+    b <- _pop
+    a <- _pop
+    movq a rax
+    addq b rax
+    r <- _alloc
+    movq rax r
+
 compileInstr :: SM.Instr -> M ()
 compileInstr = \case
   SM.PUSHI x -> do
     d <- _alloc
     movq (Imm x) d
+  SM.BINOP op -> do
+    compileBinOp op
 
 compileProg :: SM.Prog -> M ()
 compileProg prog = do

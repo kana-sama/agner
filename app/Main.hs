@@ -13,6 +13,8 @@ import Language.Agner.Parser qualified as Parser
 
 main = do
   source <- Parser.parse <$> readFile "example.agn"
+  putStrLn "ast:"
+  print source
 
   putStrLn "eval:"
   putStrLn (Value.encode (Interpreter.eval source))
@@ -20,7 +22,6 @@ main = do
   let sm = SM.compile source
   putStrLn "stack machine:"
   putStrLn (Value.encode (SM.run sm))
-
 
   withSystemTempDirectory "test" \path -> do
     let gas = (X64.prettyProg . X64.compile) sm
@@ -34,6 +35,8 @@ main = do
     code <- runProcess (shell outputPath)
     putStrLn "x64:"
     putStrLn (Value.encode (exitCodeToValue code))
+
+    putStrLn ("\n" ++ gas)
 
 exitCodeToValue :: ExitCode -> Value
 exitCodeToValue = \case

@@ -16,9 +16,13 @@ library:
   source-dirs: src
   dependencies:
     - containers
+    
     - mtl
     - lens
     - generic-lens
+
+    - megaparsec
+    - parser-combinators
 
 executables:
   agner:
