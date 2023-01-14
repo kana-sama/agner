@@ -1,0 +1,31 @@
+name: agner
+
+default-extensions:
+  - LambdaCase
+  - CPP
+  - OverloadedLabels
+  - DerivingStrategies
+  - DeriveGeneric
+  - BlockArguments
+  - ImportQualifiedPost
+
+dependencies:
+  - base
+
+library:
+  source-dirs: src
+  dependencies:
+    - containers
+    - mtl
+    - lens
+    - generic-lens
+
+executables:
+  agner:
+    main: Main.hs
+    source-dirs: app
+    dependencies:
+      - agner
+      - typed-process
+      - temporary
+      - filepath
