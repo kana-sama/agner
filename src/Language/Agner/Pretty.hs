@@ -24,10 +24,18 @@ binOp :: BinOp -> String
 binOp = \case
   (:+) -> "+"
 
+pat :: Pat -> String
+pat = \case
+  PatVar var -> var
+  PatInteger i -> show i
+  PatWildcard -> "_"
+
 expr :: Expr -> String
 expr = \case
   Integer i -> show i
   BinOp a op b -> parens (expr a <+> binOp op <+> expr b)
+  Var v -> v
+  Match p e -> parens (pat p <+> "=" <+> expr e)
 
 exprs :: Exprs -> String
 exprs = expr `sepBy1` ", "

@@ -15,6 +15,8 @@ default-extensions:
   - ScopedTypeVariables
   - NamedFieldPuns
   - BangPatterns
+  - TypeApplications
+  - BinaryLiterals
 
 ghc-options:
   - -Wincomplete-patterns
