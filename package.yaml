@@ -10,6 +10,11 @@ default-extensions:
   - EmptyDataDeriving
   - BlockArguments
   - ImportQualifiedPost
+  - OverloadedRecordDot
+  - StrictData
+  - ScopedTypeVariables
+  - NamedFieldPuns
+  - BangPatterns
 
 ghc-options:
   - -Wincomplete-patterns

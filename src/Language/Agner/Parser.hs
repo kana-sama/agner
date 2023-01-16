@@ -1,4 +1,4 @@
-module Language.Agner.Parser (Ex(..), Parser, parse, expr) where
+module Language.Agner.Parser (Ex(..), Parser, parse, expr, exprs, module_) where
 
 import Data.Char qualified as Char
 import Data.Void (Void)
@@ -10,6 +10,7 @@ import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<
 import Text.Megaparsec.Char (char, digitChar, space1)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
+import Control.Applicative.Combinators.NonEmpty (sepBy1)
 import Control.Monad.Combinators.Expr (makeExprParser, Operator(..))
 
 import Language.Agner.Syntax
@@ -64,6 +65,12 @@ expr = makeExprParser term operatorTable
 
     binary :: String -> (Expr -> Expr -> Expr) -> Operator Parser Expr
     binary name f = InfixL (f <$ symbol name)
+
+exprs :: Parser Exprs
+exprs = expr `sepBy1` symbol ","
+
+module_ :: Parser Module
+module_ = exprs
 
 parse :: Parser a -> String -> a
 parse p s =

@@ -6,22 +6,22 @@ import System.FilePath ((</>), (<.>))
 import Language.Agner.Value (Value)
 import Language.Agner.Value qualified as Value
 import Language.Agner.Syntax qualified as Syntax
-import Language.Agner.Interpreter qualified as Interpreter
+import Language.Agner.Denote qualified as Denote
 import Language.Agner.SM qualified as SM
 import Language.Agner.X64 qualified as X64
 import Language.Agner.Parser qualified as Parser
 import Language.Agner.Pretty qualified as Pretty
 
 main = do
-  source <- Parser.parse Parser.expr <$> readFile "example.agn"
+  !source <- Parser.parse Parser.module_ <$> readFile "example.agn"
   putStrLn "source:"
-  print (Pretty.expr source)
+  print (Pretty.module_ source)
 
-  putStrLn "eval:"
-  putStrLn (Value.encode (Interpreter.eval source))
+  putStrLn "denote:"
+  putStrLn (Value.encode (Denote.module_ source))
 
-  let sm = SM.compile source
   putStrLn "stack machine:"
+  let !sm = SM.compileModule source
   putStrLn (Value.encode (SM.run sm))
 
   withSystemTempDirectory "test" \path -> do

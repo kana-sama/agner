@@ -17,6 +17,8 @@ import Language.Agner.SM qualified as SM
 data Ex
   deriving stock (Show)
 
+type Label = String
+
 data Op
   = MOVQ
   | SUBQ
@@ -47,7 +49,7 @@ data Operand
 
 data Instr
   = Op Op [Operand]
-  | Label String
+  | Label Label
   | Set String Int
   | Meta String
 
@@ -105,6 +107,12 @@ compileBinOp = \case
     r <- _alloc
     movq rax r
 
+mkSizeOfLocalsLabel :: String -> Label
+mkSizeOfLocalsLabel name = name ++ ".locals"
+
+mkEnterLabel :: String -> Label
+mkEnterLabel name = "_" ++ name
+
 compileInstr :: SM.Instr -> M ()
 compileInstr = \case
   SM.PUSH_I x -> do
@@ -112,29 +120,31 @@ compileInstr = \case
     movq (Imm x) d
   SM.BINOP op -> do
     compileBinOp op
+  SM.DROP -> do
+    void _pop
+  SM.ENTER name -> do
+    tell [Label (mkEnterLabel name)]
+
+    pushq rbp
+    movq rsp rbp
+
+    #maxAllocated .= 0
+    #currentReg .= 0
+    subq (ImmL (mkSizeOfLocalsLabel name)) rsp
+  SM.LEAVE name -> do
+    s <- _pop
+    movq s rax
+
+    movq rbp rsp
+    popq rbp
+
+    locals <- uses #maxAllocated (subtract (length poolRegs))
+    tell [Set (mkSizeOfLocalsLabel name) (locals * WORD_SIZE)]
+  SM.RET -> do
+    retq
 
 compileProg :: SM.Prog -> M ()
-compileProg prog = do
-  #maxAllocated .= 0
-  #currentReg .= 0
-
-  pushq rbp
-  movq rsp rbp
-  subq (ImmL localsVar) rsp
-
-  traverse_ compileInstr prog
-  s <- _pop
-  movq s rax
-
-  locals <- uses #maxAllocated (subtract (length poolRegs))
-  tell [Set localsVar (locals * WORD_SIZE)]
-
-  movq rbp rsp
-  popq rbp
-
-  retq
-  where
-    localsVar = "_locals"
+compileProg = traverse_ compileInstr
 
 prettyOperand :: Operand -> String
 prettyOperand = \case
@@ -158,5 +168,4 @@ compile prog = execM do
   tell [Meta ".text"]
   tell [Meta ".globl _main"]
 
-  tell [Label "_main"]
   compileProg prog
