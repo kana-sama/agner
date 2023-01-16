@@ -1,13 +1,21 @@
+# define WORD_SIZE 8
+
 module Language.Agner.X64 (Ex(..), Prog, prettyProg, compile) where
+
+import Data.X64
+
+import Data.Zipper (Zipper)
+import Data.Zipper qualified as Zipper
+import Data.Foldable (traverse_, for_)
+import Data.Traversable (for)
+import Data.List qualified as List
 
 import Control.Monad.State.Strict
 import Control.Monad.Writer
-import Data.Foldable (traverse_, for_)
-import Data.Traversable (for)
+
 import Control.Lens
 import Data.Generics.Labels
 import GHC.Generics (Generic)
-import Data.List qualified as List
 
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
@@ -17,85 +25,47 @@ import Language.Agner.SM qualified as SM
 data Ex
   deriving stock (Show)
 
-type Label = String
 
-data Op
-  = MOVQ
-  | SUBQ
-  | ADDQ
-  | PUSHQ
-  | POPQ
-  | RETQ
-  deriving stock (Show)
-
-data Reg
-  = RAX
-  | RBX
-  | RCX
-  | RDX
-  | RSI
-  | RDI
-  | RSP
-  | RBP
-  deriving stock (Show, Enum, Bounded)
-
-[rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp] = [Reg r | r <- [RAX ..]]
-
-data Operand
-  = Reg Reg -- RAX
-  | MemReg Int Reg -- -8(%RSP)
-  | Imm Integer -- $8
-  | ImmL String
-
-data Instr
-  = Op Op [Operand]
-  | Label Label
-  | Set String Int
-  | Meta String
-
-type Prog = [Instr]
-
-#define WORD_SIZE 8
-
-data CompileState = MkCompileState
-  { maxAllocated :: Int
-  , currentReg :: Int
-  }
-  deriving stock (Generic)
-
-pool, poolRegs :: [Operand]
-poolRegs = [Reg r | r <- [RBX, RCX, RDX, RSI, RDI]]
-pool = poolRegs ++ [MemReg (-WORD_SIZE * i) RSP | i <- [1 ..]]
-
-_alloc :: M Operand
-_alloc = do
-  currentReg <- #currentReg <<+= 1
-  #maxAllocated %= max (currentReg + 1)
-  pure (pool !! currentReg)
-
-_pop :: M Operand
-_pop = do
-  currentReg <- #currentReg <-= 1
-  pure (pool !! currentReg)
-
-movq, subq, addq :: Operand -> Operand -> M ()
-movq a b = tell [Op MOVQ [a, b]]
-subq a b = tell [Op SUBQ [a, b]]
-addq a b = tell [Op ADDQ [a, b]]
-
-pushq, popq :: Operand -> M ()
-pushq a = tell [Op PUSHQ [a]]
-popq a = tell [Op POPQ [a]]
-
-retq :: M ()
-retq = tell [Op RETQ []]
+-- DSL
 
 type M = StateT CompileState (Writer Prog)
+data CompileState = MkCompileState
+  { requiredStackSize :: Int
+  , stack :: Zipper Operand
+  } deriving stock (Generic)
 
 execM :: M a -> Prog
 execM = execWriter . flip runStateT emptyState
+  where emptyState = MkCompileState{requiredStackSize = 0, stack = Zipper.empty}
+
+_enter :: M ()
+_enter = do
+  #requiredStackSize .= 0
+  #stack .= Zipper.fromList (regs ++ onStack)
   where
-    emptyState = MkCompileState{maxAllocated = 0, currentReg = 0}
+    regs = [Reg r | r <- [RBX, RCX, RDX, RSI, RDI]]
+    onStack = [MemReg (-WORD_SIZE * i) RBP | i <- [1 ..]]
+
+_alloc :: M Operand
+_alloc = do
+  dest <- #stack %%= Zipper.next
+  #requiredStackSize %= max (getAllocated dest)
+  pure dest
+  where
+    getAllocated (MemReg n RBP) = -n
+    getAllocated _ = 0
+
+_pop :: M Operand
+_pop = #stack %%= Zipper.prev
+
+
+-- Names
+
+stackSizeName :: Label
+stackSizeName = ".stack_size"
+
+
+-- Generators
 
 compileBinOp :: Syntax.BinOp -> M ()
 compileBinOp = \case
@@ -107,30 +77,28 @@ compileBinOp = \case
     r <- _alloc
     movq rax r
 
-mkSizeOfLocalsLabel :: String -> Label
-mkSizeOfLocalsLabel name = name ++ ".locals"
-
-mkEnterLabel :: String -> Label
-mkEnterLabel name = "_" ++ name
-
 compileInstr :: SM.Instr -> M ()
 compileInstr = \case
+
   SM.PUSH_I x -> do
     d <- _alloc
     movq (Imm x) d
+
   SM.BINOP op -> do
     compileBinOp op
+
   SM.DROP -> do
     void _pop
+
   SM.ENTER name -> do
-    tell [Label (mkEnterLabel name)]
+    tell [Label ("_" ++ name)]
 
     pushq rbp
     movq rsp rbp
 
-    #maxAllocated .= 0
-    #currentReg .= 0
-    subq (ImmL (mkSizeOfLocalsLabel name)) rsp
+    _enter
+    subq (ImmL stackSizeName) rsp
+
   SM.LEAVE name -> do
     s <- _pop
     movq s rax
@@ -138,30 +106,15 @@ compileInstr = \case
     movq rbp rsp
     popq rbp
 
-    locals <- uses #maxAllocated (subtract (length poolRegs))
-    tell [Set (mkSizeOfLocalsLabel name) (locals * WORD_SIZE)]
+    requiredStackSize <- use #requiredStackSize
+    tell [Set stackSizeName requiredStackSize]
+
   SM.RET -> do
     retq
 
 compileProg :: SM.Prog -> M ()
-compileProg = traverse_ compileInstr
-
-prettyOperand :: Operand -> String
-prettyOperand = \case
-  Reg reg -> "%" ++ show reg
-  MemReg offset reg -> show offset ++ "(%" ++ show reg ++ ")"
-  Imm i -> "$" ++ show i
-  ImmL l -> "$" ++ l
-
-prettyInstr :: Instr -> String
-prettyInstr = \case
-  Op op ops -> "    " ++ show op ++ " " ++ List.intercalate ", " [prettyOperand o | o <- ops]
-  Label l -> l ++ ":"
-  Set l i -> ".set " ++ l ++ ", " ++ show i
-  Meta m -> m
-
-prettyProg :: Prog -> String
-prettyProg = unlines . map prettyInstr
+compileProg prog =
+  traverse_ compileInstr prog
 
 compile :: SM.Prog -> Prog
 compile prog = execM do

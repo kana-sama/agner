@@ -15,6 +15,7 @@ default-extensions:
   - ScopedTypeVariables
   - NamedFieldPuns
   - BangPatterns
+  - FlexibleContexts
 
 ghc-options:
   - -Wincomplete-patterns

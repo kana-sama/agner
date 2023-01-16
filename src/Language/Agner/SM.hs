@@ -54,8 +54,7 @@ data Cfg = MkCfg
   , prog :: Prog
   , stack :: Stack
   , halted :: Bool
-  }
-  deriving stock (Generic)
+  } deriving stock (Generic)
 
 type M = State Cfg
 
