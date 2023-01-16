@@ -86,8 +86,7 @@ mkStack vars = Zipper.fromList (regs ++ onStack)
 
 _alloc :: M Operand
 _alloc = do
-  result <- uses #stack Zipper.cursor
-  #stack %= Zipper.right
+  result <- #stack %%= Zipper.next
   #maxAllocated %= max (getAllocated result)
   pure result
   where
@@ -95,9 +94,7 @@ _alloc = do
     getAllocated _ = 0
 
 _pop :: M Operand
-_pop = do
-  #stack %= Zipper.left
-  uses #stack Zipper.cursor
+_pop = #stack %%= Zipper.prev
 
 _uuid :: M Int
 _uuid = #uuid <<+= 1
