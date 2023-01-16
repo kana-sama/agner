@@ -1,4 +1,4 @@
-module Language.Agner.X64 where
+module Language.Agner.X64 (Ex(..), Prog, prettyProg, compile) where
 
 import Control.Monad.State.Strict
 import Control.Monad.Writer
@@ -13,6 +13,9 @@ import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
 import Language.Agner.Value qualified as Value
 import Language.Agner.SM qualified as SM
+
+data Ex
+  deriving stock (Show)
 
 data Op
   = MOVQ
@@ -104,7 +107,7 @@ compileBinOp = \case
 
 compileInstr :: SM.Instr -> M ()
 compileInstr = \case
-  SM.PUSHI x -> do
+  SM.PUSH_I x -> do
     d <- _alloc
     movq (Imm x) d
   SM.BINOP op -> do

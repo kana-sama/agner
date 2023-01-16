@@ -5,9 +5,14 @@ default-extensions:
   - CPP
   - OverloadedLabels
   - DerivingStrategies
+  - DeriveAnyClass
   - DeriveGeneric
+  - EmptyDataDeriving
   - BlockArguments
   - ImportQualifiedPost
+
+ghc-options:
+  - -Wincomplete-patterns
 
 dependencies:
   - base

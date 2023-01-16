@@ -1,18 +1,25 @@
-module Language.Agner.Parser where
+module Language.Agner.Parser (Ex(..), Parser, parse, expr) where
 
-import Control.Applicative ((<|>), empty, many)
-import Text.Megaparsec (Parsec, between, choice, runParser, eof)
+import Data.Char qualified as Char
+import Data.Void (Void)
+
+import Control.Monad (void)
+import Control.Exception (Exception, throw)
+
+import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>))
 import Text.Megaparsec.Char (char, digitChar, space1)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
+import Control.Monad.Combinators.Expr (makeExprParser, Operator(..))
 
 import Language.Agner.Syntax
-import Data.Void (Void)
-import Control.Monad.Combinators.Expr (makeExprParser, Operator(..))
-import Control.Monad (void)
-import Data.Char qualified as Char
 
 type Parser = Parsec Void String
+
+data Ex
+  = ParsingException String
+  deriving stock (Show)
+  deriving anyclass (Exception)
 
 sc :: Parser ()
 sc = L.space space1 (L.skipLineComment "%") empty
@@ -58,8 +65,8 @@ expr = makeExprParser term operatorTable
     binary :: String -> (Expr -> Expr -> Expr) -> Operator Parser Expr
     binary name f = InfixL (f <$ symbol name)
 
-parse :: String -> Expr
-parse s =
-  case runParser (expr <* eof) "" s of
+parse :: Parser a -> String -> a
+parse p s =
+  case runParser (p <* eof) "" s of
     Right x -> x
-    Left err -> error (errorBundlePretty err)
+    Left err -> throw (ParsingException (errorBundlePretty err))

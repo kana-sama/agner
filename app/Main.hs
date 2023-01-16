@@ -10,11 +10,12 @@ import Language.Agner.Interpreter qualified as Interpreter
 import Language.Agner.SM qualified as SM
 import Language.Agner.X64 qualified as X64
 import Language.Agner.Parser qualified as Parser
+import Language.Agner.Pretty qualified as Pretty
 
 main = do
-  source <- Parser.parse <$> readFile "example.agn"
-  putStrLn "ast:"
-  print source
+  source <- Parser.parse Parser.expr <$> readFile "example.agn"
+  putStrLn "source:"
+  print (Pretty.expr source)
 
   putStrLn "eval:"
   putStrLn (Value.encode (Interpreter.eval source))
