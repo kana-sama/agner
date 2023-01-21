@@ -6,8 +6,8 @@ import Data.Void (Void)
 import Control.Monad (void)
 import Control.Exception (Exception, throw)
 
-import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>))
-import Text.Megaparsec.Char (char, digitChar, space1)
+import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>), try)
+import Text.Megaparsec.Char (char, digitChar, space1, upperChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
 import Control.Applicative.Combinators.NonEmpty (sepBy1)
@@ -31,8 +31,8 @@ lexeme = L.lexeme sc
 symbol :: String -> Parser String
 symbol = L.symbol sc
 
-underscore :: Parser ()
-underscore = void do char '_'
+underscore :: Parser Char
+underscore = char '_'
 
 digit :: Parser Int
 digit = (\c -> Char.ord c - Char.ord '0') <$> digitChar
@@ -49,9 +49,31 @@ integer = lexeme do
 parens :: Parser a -> Parser a
 parens = between (symbol "(") (symbol ")")
 
+variable :: Parser Var
+variable = lexeme do
+  x <- upperChar
+  xs <- many (underscore <|> alphaNumChar)
+  pure (x:xs)
+
+pat :: Parser Pat
+pat = choice
+  [ PatVar <$> variable
+  , PatInteger <$> integer
+  , PatWildcard <$ symbol "_"
+  ]
+
+match :: Parser (Pat, Expr)
+match = do
+  p <- pat
+  symbol "="
+  e <- expr
+  pure (p, e)
+
 term :: Parser Expr
 term = choice
   [ parens expr
+  , uncurry Match <$> try match
+  , Var <$> variable
   , Integer <$> integer
   ]
 

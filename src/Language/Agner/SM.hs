@@ -1,5 +1,9 @@
 module Language.Agner.SM (Ex(..), Prog, Instr(..), compileModule, run) where
 
+import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.List qualified as List
 import Data.List.NonEmpty qualified as NonEmpty
 
@@ -22,6 +26,8 @@ data Ex
   | EmptyStack
   | AlreadyHalted
   | PositionIsOutOfProg
+  | NoMatch Syntax.Pat Value
+  | UnboundVariable Syntax.Var
   deriving stock (Show)
   deriving anyclass (Exception)
 
@@ -29,9 +35,13 @@ data Instr
   = PUSH_I Integer
   | BINOP Syntax.BinOp
   | DROP
+  | DUP
   | RET
-  | ENTER String
+  | ENTER String [Syntax.Var]
   | LEAVE String
+  | LOAD Syntax.Var
+  | MATCH_I Integer
+  | MATCH_VAR Syntax.Var
 
 type Prog = [Instr]
 type Stack = [Value]
@@ -42,17 +52,33 @@ compileExpr = \case
     [PUSH_I i]
   Syntax.BinOp a op b ->
     compileExpr a ++ compileExpr b ++ [BINOP op]
+  Syntax.Var v ->
+    [LOAD v]
+  Syntax.Match p e ->
+    compileExpr e ++ [DUP] ++ compilePat p
+
+compilePat :: Syntax.Pat -> Prog
+compilePat = \case
+  Syntax.PatVar var -> [MATCH_VAR var]
+  Syntax.PatInteger i -> [MATCH_I i]
+  Syntax.PatWildcard -> [DROP]
 
 compileExprs :: Syntax.Exprs -> Prog
 compileExprs exprs = List.intercalate [DROP] [compileExpr e | e <- NonEmpty.toList exprs]
 
 compileModule :: Syntax.Module -> Prog
-compileModule mod = [ENTER "main"] ++ compileExprs mod ++ [LEAVE "main", RET]
+compileModule mod =
+  concat
+    [ [ENTER "main" (Set.toList (Syntax.moduleVars mod))]
+    , compileExprs mod
+    , [LEAVE "main", RET]
+    ]
 
 data Cfg = MkCfg
   { pos :: Int
   , prog :: Prog
   , stack :: Stack
+  , mem :: Map Syntax.Var Value
   , halted :: Bool
   } deriving stock (Generic)
 
@@ -85,12 +111,39 @@ instr (BINOP op) = execState do
 instr DROP = execState do
   void pop
   continue
+instr DUP = execState do
+  a <- pop
+  push a
+  push a
+  continue
 instr RET = execState do
   halt
-instr (ENTER name) = execState do
+instr (ENTER name var) = execState do
   continue
 instr (LEAVE name) = execState do
   continue
+instr (LOAD var) = execState do
+  mem <- use #mem
+  case mem Map.!? var of
+    Nothing -> throw (UnboundVariable var)
+    Just val -> do
+      push val
+      continue
+instr (MATCH_I i) = execState do
+  Value.Integer j <- pop
+  if i == j
+    then continue
+    else throw (NoMatch (Syntax.PatInteger i) (Value.Integer j))
+instr (MATCH_VAR var) = execState do
+  val <- pop
+  mem <- use #mem
+  case mem Map.!? var of
+    Nothing -> do
+      #mem %= Map.insert var val
+      continue
+    Just val'
+      | Value.same val val' -> continue
+      | otherwise -> throw (NoMatch (Syntax.PatVar var) val)
 
 step :: Cfg -> Cfg
 step cfg
@@ -107,6 +160,7 @@ buildCfg prog pos =
     { prog
     , pos
     , stack = []
+    , mem = Map.empty
     , halted = False
     }
 

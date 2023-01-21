@@ -16,6 +16,10 @@ default-extensions:
   - NamedFieldPuns
   - BangPatterns
   - FlexibleContexts
+  - TypeApplications
+  - AllowAmbiguousTypes
+  - BinaryLiterals
+  - RecursiveDo
 
 ghc-options:
   - -Wincomplete-patterns
