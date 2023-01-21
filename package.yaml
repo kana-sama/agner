@@ -20,6 +20,8 @@ default-extensions:
   - AllowAmbiguousTypes
   - BinaryLiterals
   - RecursiveDo
+  - ImplicitParams
+  - ConstraintKinds
 
 ghc-options:
   - -Wincomplete-patterns
@@ -31,7 +33,7 @@ library:
   source-dirs: src
   dependencies:
     - containers
-    
+
     - mtl
     - lens
     - generic-lens
