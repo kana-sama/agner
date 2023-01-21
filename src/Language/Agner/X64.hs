@@ -4,7 +4,7 @@
 # define NUMBER_TAG 0b000
 # define UNBOUND_TAG 0b001
 
-module Language.Agner.X64 (Ex(..), Prog, prettyProg, compile) where
+module Language.Agner.X64 (Ex(..), Prog, Target(..), prettyProg, compile) where
 
 import Data.X64
 
@@ -42,6 +42,10 @@ data CompileState = MkCompileState
   , uuid :: Int
   , strings :: Map Label String
   } deriving stock (Generic)
+
+data Target = Linux | MacOS
+
+type WithTarget = ?target :: Target
 
 execM :: M a -> Prog
 execM = execWriter . flip runStateT emptyState
@@ -103,6 +107,22 @@ mkVarName var = "." ++ var
 mkVarOp :: Syntax.Var -> Operand
 mkVarOp var = MemRegL (mkVarName var) RBP
 
+mkFunName :: WithTarget => String -> Label
+mkFunName funName = case ?target of
+  Linux -> funName
+  MacOS -> "_" <> funName
+
+data Syscall = Write | Exit
+
+mkSyscall :: WithTarget => Syscall -> Operand
+mkSyscall = \case
+  Write -> case ?target of
+    Linux -> 1
+    MacOS -> 0x2000004
+  Exit -> case ?target of
+    Linux -> 60
+    MacOS -> 0x2000001
+
 -- Generators
 
 compileBinOp :: Syntax.BinOp -> M ()
@@ -118,7 +138,7 @@ compileBinOp = \case
 encodeInteger :: Integer -> Operand
 encodeInteger i = Imm (i `shiftL` TAG_SIZE .|. NUMBER_TAG)
 
-compileInstr :: SM.Instr -> M ()
+compileInstr :: WithTarget => SM.Instr -> M ()
 compileInstr = \case
 
   SM.PUSH_I x -> do
@@ -138,7 +158,7 @@ compileInstr = \case
     movq rax =<< _alloc
 
   SM.ENTER name vars -> do
-    tell [Label ("_" ++ name)]
+    tell [Label (mkFunName name)]
 
     pushq rbp
     movq rsp rbp
@@ -197,7 +217,7 @@ compileInstr = \case
     movq val rax
     movq rax (mkVarOp var)
     jmp done
-    
+
     when_bound <- _label "match_var.when_bound"
     mdo
       movq (mkVarOp var) rax
@@ -206,7 +226,7 @@ compileInstr = \case
 
       when_not_equal <- _label "match_var.when_not_equal"
       _throw ("No match " ++ show var)
-    
+
     done <- _label "match_var.done"
     pure ()
 
@@ -218,23 +238,24 @@ _throw msg = do
   movq (Imm (fromIntegral (length msg'))) rdx
   jmp "__throw"
 
-compileProg :: SM.Prog -> M ()
+compileProg :: WithTarget => SM.Prog -> M ()
 compileProg prog = do
   traverse_ compileInstr prog
-  
+
   tell [Label "__throw"]
-  movq 0x2000004 rax
+  movq (mkSyscall Write) rax
   movq 1 rdi
   syscall
 
-  movq 0x2000001 rax
-  movq 1 rbx
+  movq (mkSyscall Exit) rax
+  movq 1 rdi
   syscall
 
-compile :: SM.Prog -> Prog
-compile prog = execM do
+compile :: Target -> SM.Prog -> Prog
+compile target prog = execM do
+  let ?target = target
   tell [Meta ".text"]
-  tell [Meta ".globl _main"]
+  tell [Meta (".globl " <> mkFunName "main")]
 
   compileProg prog
 
