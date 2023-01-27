@@ -5,7 +5,7 @@ import Control.Monad.Writer (MonadWriter, tell)
 
 type Label = String
 
-data Op = MOVQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | JMP | JZ | JE | JNZ | SYSCALL | CMPQ
+data Op = MOVQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | JMP | JZ | JE | JNZ | SYSCALL | CMPQ | CALL
   deriving stock (Show)
 
 data Reg = RAX | RBX | RCX | RDX | RSI | RDI | RSP | RBP | RIP
@@ -45,10 +45,11 @@ pushq, popq :: MonadWriter Prog m => Operand -> m ()
 pushq a = tell [Op PUSHQ [a]]
 popq a = tell [Op POPQ [a]]
 
-jmp, jz, je :: MonadWriter Prog m => Label -> m ()
+jmp, jz, je, call :: MonadWriter Prog m => Label -> m ()
 jmp l = tell [Op JMP [Lbl l]]
 jz l = tell [Op JZ [Lbl l]]
 je l = tell [Op JE [Lbl l]]
+call l = tell [Op CALL [Lbl l]]
 
 retq, syscall :: MonadWriter Prog m => m ()
 retq = tell [Op RETQ []]

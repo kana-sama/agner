@@ -29,10 +29,12 @@ pat = \case
   PatVar v -> v
   PatInteger i -> show i
   PatWildcard -> "_"
+  PatAtom a -> a
 
 expr :: Expr -> String
 expr = \case
   Integer i -> show i
+  Atom a -> a
   BinOp a op b -> parens (expr a <+> binOp op <+> expr b)
   Var v -> v
   Match p e -> parens (pat p <+> "=" <+> expr e)

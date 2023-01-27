@@ -25,16 +25,19 @@ run value = do
     Left e -> putStrLn (displayException e)
     Right v -> putStrLn (Value.encode v)
 
+parseArgs :: IO X64.Target
+parseArgs = do
+  args <- getArgs
+  pure case args of
+    ["--target", "linux"] -> X64.Linux
+    ["--target", "macos"] -> X64.MacOS
+    [] | "linux"  <-os-> X64.Linux
+       | "darwin" <-os-> X64.MacOS
+    _ -> error "Иди отсюда, пёс"
+
 main :: IO ()
 main = do
-  args <- getArgs
-  let
-    !target = case args of
-      ["--target", "linux"] -> X64.Linux
-      ["--target", "macos"] -> X64.MacOS
-      [] | "linux"  <-os-> X64.Linux
-         | "darwin" <-os-> X64.MacOS
-      _ -> error "Иди отсюда, пёс"
+  !target <- parseArgs
 
   !source <- Parser.parse Parser.module_ <$> readFile "example.agn"
   putStrLn "source:"
@@ -44,32 +47,27 @@ main = do
   run @Denote.Ex (Denote.module_ source)
 
   putStrLn "stack machine:"
-  let !sm = SM.compileModule source
+  let sm = SM.compileModule source
   run @SM.Ex (SM.run sm)
 
   withSystemTempDirectory "test" \path -> do
     let gas = (X64.prettyProg . X64.compile target) sm
 
+    let runtimePath = "." </> "runtime" </> "runtime.c"
     let sourcePath = path </> "temp" <.> "s"
     let outputPath = path </> "temp"
 
     writeFile sourcePath gas
-    gcc target sourcePath outputPath
+    gcc target sourcePath runtimePath outputPath
 
     putStrLn "x64:"
-    code <- runProcess (shell outputPath)
-    putStrLn (Value.encode (exitCodeToValue code))
+    runProcess (shell outputPath) >>= \case
+      ExitFailure i -> putStrLn ("ExitCode = " ++ show i)
+      ExitSuccess -> pure ()
 
     writeFile "output.s" gas
 
-gcc :: X64.Target -> FilePath -> FilePath -> IO ExitCode
-gcc target sourcePath outputPath = case target of
-  X64.MacOS -> runProcess (proc "gcc-12" [sourcePath, "-o", outputPath])
-  X64.Linux -> runProcess (proc "gcc" ["-z", "noexecstack", sourcePath, "-o", outputPath])
-
-exitCodeToValue :: ExitCode -> Value
-exitCodeToValue = \case
-  ExitSuccess -> Value.Integer 0
-  ExitFailure i
-    | i .&. 0b111 == 0 -> Value.Integer (fromIntegral i `shiftR` 3)
-    | otherwise        -> Value.Integer (fromIntegral i)
+gcc :: X64.Target -> FilePath -> FilePath -> FilePath -> IO ExitCode
+gcc target sourcePath runtimePath outputPath = case target of
+  X64.MacOS -> runProcess (proc "gcc" [runtimePath, sourcePath, "-o", outputPath])
+  X64.Linux -> runProcess (proc "gcc" ["-z", "noexecstack", runtimePath, sourcePath, "-o", outputPath])

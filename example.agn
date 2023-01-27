@@ -1,3 +1,6 @@
 A = 1,
 B = 2,
-3 = A + B
+3 = A + B,
+C = hello,
+hello = C,
+C + A

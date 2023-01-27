@@ -7,7 +7,7 @@ import Data.Map.Strict qualified as Map
 import Data.List qualified as List
 import Data.List.NonEmpty qualified as NonEmpty
 
-import Control.Exception (Exception, throw)
+import Control.Exception (Exception (..), throw)
 
 import Control.Monad.State.Strict
 
@@ -28,11 +28,17 @@ data Ex
   | PositionIsOutOfProg
   | NoMatch Syntax.Pat Value
   | UnboundVariable Syntax.Var
+  | DenoteEx Denote.Ex
   deriving stock (Show)
-  deriving anyclass (Exception)
+
+instance Exception Ex where
+  fromException e
+    | Just de <- fromException @Denote.Ex e = Just (DenoteEx de)
+    | otherwise = Nothing
 
 data Instr
   = PUSH_I Integer
+  | PUSH_ATOM Syntax.Atom
   | BINOP Syntax.BinOp
   | DROP
   | DUP
@@ -42,6 +48,7 @@ data Instr
   | LOAD Syntax.Var
   | MATCH_I Integer
   | MATCH_VAR Syntax.Var
+  | MATCH_ATOM Syntax.Atom
 
 type Prog = [Instr]
 type Stack = [Value]
@@ -50,6 +57,8 @@ compileExpr :: Syntax.Expr -> Prog
 compileExpr = \case
   Syntax.Integer i ->
     [PUSH_I i]
+  Syntax.Atom a ->
+    [PUSH_ATOM a]
   Syntax.BinOp a op b ->
     compileExpr a ++ compileExpr b ++ [BINOP op]
   Syntax.Var v ->
@@ -62,6 +71,7 @@ compilePat = \case
   Syntax.PatVar var -> [MATCH_VAR var]
   Syntax.PatInteger i -> [MATCH_I i]
   Syntax.PatWildcard -> [DROP]
+  Syntax.PatAtom a -> [MATCH_ATOM a]
 
 compileExprs :: Syntax.Exprs -> Prog
 compileExprs exprs = List.intercalate [DROP] [compileExpr e | e <- NonEmpty.toList exprs]
@@ -69,9 +79,9 @@ compileExprs exprs = List.intercalate [DROP] [compileExpr e | e <- NonEmpty.toLi
 compileModule :: Syntax.Module -> Prog
 compileModule mod =
   concat
-    [ [ENTER "main" (Set.toList (Syntax.moduleVars mod))]
+    [ [ENTER "prog" (Set.toList (Syntax.moduleVars mod))]
     , compileExprs mod
-    , [LEAVE "main", RET]
+    , [LEAVE "prog", RET]
     ]
 
 data Cfg = MkCfg
@@ -103,6 +113,9 @@ instr :: Instr -> (Cfg -> Cfg)
 instr (PUSH_I i) = execState do
   push (Value.Integer i)
   continue
+instr (PUSH_ATOM a) = execState do
+  push (Value.Atom a)
+  continue
 instr (BINOP op) = execState do
   b <- pop
   a <- pop
@@ -130,10 +143,10 @@ instr (LOAD var) = execState do
       push val
       continue
 instr (MATCH_I i) = execState do
-  Value.Integer j <- pop
-  if i == j
+  value <- pop
+  if Value.same (Value.Integer i) value
     then continue
-    else throw (NoMatch (Syntax.PatInteger i) (Value.Integer j))
+    else throw (NoMatch (Syntax.PatInteger i) value)
 instr (MATCH_VAR var) = execState do
   val <- pop
   mem <- use #mem
@@ -144,6 +157,11 @@ instr (MATCH_VAR var) = execState do
     Just val'
       | Value.same val val' -> continue
       | otherwise -> throw (NoMatch (Syntax.PatVar var) val)
+instr (MATCH_ATOM a) = execState do
+  value <- pop
+  if Value.same (Value.Atom a) value
+    then continue
+    else throw (NoMatch (Syntax.PatAtom a) value)
 
 step :: Cfg -> Cfg
 step cfg

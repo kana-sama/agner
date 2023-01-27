@@ -3,6 +3,7 @@
 # define TAG_MASK 0b111
 # define NUMBER_TAG 0b000
 # define UNBOUND_TAG 0b001
+# define ATOM_TAG 0b010
 
 module Language.Agner.X64 (Ex(..), Prog, Target(..), prettyProg, compile) where
 
@@ -41,6 +42,7 @@ data CompileState = MkCompileState
   , stack :: Zipper Operand
   , uuid :: Int
   , strings :: Map Label String
+  , atoms :: Map Label Syntax.Atom
   } deriving stock (Generic)
 
 data Target = Linux | MacOS
@@ -56,17 +58,27 @@ execM = execWriter . flip runStateT emptyState
         , stack = Zipper.empty
         , uuid = 0
         , strings = Map.empty
+        , atoms = Map.empty
         }
 
 _uuid :: M Int
 _uuid = #uuid <<+= 1
+
+mkStaticOperand :: Label -> Operand
+mkStaticOperand lbl = MemRegL (lbl ++ "@GOTPCREL") RIP
 
 _string :: String -> M Operand
 _string s = do
   i <- _uuid
   let lbl = "__string." ++ show i
   #strings %= Map.insert lbl s
-  pure (MemRegL (lbl ++ "@GOTPCREL") RIP)
+  pure (mkStaticOperand lbl)
+
+_atom :: Syntax.Atom -> M Operand
+_atom a = do
+  let lbl = "__atom." ++ a
+  #atoms %= Map.insert lbl a
+  pure (mkStaticOperand lbl)
 
 _label :: String -> M Label
 _label base = do
@@ -112,6 +124,9 @@ mkFunName funName = case ?target of
   Linux -> funName
   MacOS -> "_" <> funName
 
+entryPointName :: WithTarget => Label
+entryPointName = mkFunName "main"
+
 data Syscall = Write | Exit
 
 mkSyscall :: WithTarget => Syscall -> Operand
@@ -123,13 +138,31 @@ mkSyscall = \case
     Linux -> 60
     MacOS -> 0x2000001
 
+
 -- Generators
+
+_assertInteger :: String -> Operand -> M ()
+_assertInteger errorMsg op = mdo
+  movq op rax
+  andq TAG_MASK rax
+  cmpq NUMBER_TAG rax
+  je done
+
+  _throw errorMsg
+
+  done <- _label "assert_integer.done"
+  pure ()
+
 
 compileBinOp :: Syntax.BinOp -> M ()
 compileBinOp = \case
   (Syntax.:+) -> do
     b <- _pop
     a <- _pop
+
+    _assertInteger "bad args for +, integer was expected" a
+    _assertInteger "bad args for +, integer was expected" b
+
     movq a rax
     addq b rax
     r <- _alloc
@@ -142,8 +175,11 @@ compileInstr :: WithTarget => SM.Instr -> M ()
 compileInstr = \case
 
   SM.PUSH_I x -> do
-    d <- _alloc
-    movq (encodeInteger x) d
+    movq (encodeInteger x) =<< _alloc
+
+  SM.PUSH_ATOM a -> do
+    a <- _atom a
+    movq a =<< _alloc
 
   SM.BINOP op -> do
     compileBinOp op
@@ -195,13 +231,26 @@ compileInstr = \case
     movq rax =<< _alloc
 
   SM.MATCH_I i -> mdo
-    a <- _pop
-    movq a rax
+    value <- _pop
+    movq value rax
     cmpq (encodeInteger i) rax
     je when_equal
 
     when_not_equal <- _label "match_i.when_not_equal"
     _throw ("No match " ++ show i)
+
+    when_equal <- _label "match_i.when_equal"
+    pure ()
+
+  SM.MATCH_ATOM atom -> mdo
+    value <- _pop
+    movq value rax
+    atom' <- _atom atom
+    cmpq atom' rax
+    je when_equal
+
+    when_not_equal <- _label "match_i.when_not_equal"
+    _throw ("No match " ++ atom)
 
     when_equal <- _label "match_i.when_equal"
     pure ()
@@ -241,25 +290,47 @@ _throw msg = do
 compileProg :: WithTarget => SM.Prog -> M ()
 compileProg prog = do
   traverse_ compileInstr prog
+  genEntryPoint
+  genThrow
+  where
+    genEntryPoint = do
+      tell [Label entryPointName]
+      subq WORD_SIZE rsp
 
-  tell [Label "__throw"]
-  movq (mkSyscall Write) rax
-  movq 1 rdi
-  syscall
+      call (mkFunName "prog")
+      movq rax rdi
+      call (mkFunName "_print_value")
 
-  movq (mkSyscall Exit) rax
-  movq 1 rdi
-  syscall
+      addq WORD_SIZE rsp
+      movq 0 rax
+      retq
+
+    genThrow = do
+      tell [Label "__throw"]
+      movq (mkSyscall Write) rax
+      movq 1 rdi
+      syscall
+
+      movq (mkSyscall Exit) rax
+      movq 1 rdi
+      syscall
 
 compile :: Target -> SM.Prog -> Prog
 compile target prog = execM do
   let ?target = target
   tell [Meta ".text"]
-  tell [Meta (".globl " <> mkFunName "main")]
+  tell [Meta (".globl " <> entryPointName)]
 
   compileProg prog
 
   tell [Meta ".data"]
+
   strings <- use #strings
   for_ (Map.toList strings) \(lbl, str) -> do
     tell [Meta (lbl ++ ": .ascii " ++ show str)]
+
+  atoms <- use #atoms
+  for_ (Map.toList atoms) \(lbl, str) -> do
+    tell [Meta (".align " ++ show WORD_SIZE)]
+    tell [Meta (".skip " ++ show ATOM_TAG)]
+    tell [Meta (lbl ++ ": .asciz " ++ show str)]

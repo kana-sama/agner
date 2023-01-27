@@ -6,3 +6,5 @@ q
 q.s
 result
 .direnv
+runtime/*.o
+runtime/*.s
