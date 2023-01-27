@@ -1,9 +1,5 @@
-# define WORD_SIZE 8
-# define TAG_SIZE 3
-# define TAG_MASK 0b111
-# define NUMBER_TAG 0b000
-# define UNBOUND_TAG 0b001
-# define ATOM_TAG 0b010
+{-# LANGUAGE PartialTypeSignatures #-}
+# include "./X64.h"
 
 module Language.Agner.X64 (Ex(..), Prog, Target(..), prettyProg, compile) where
 
@@ -288,41 +284,44 @@ _throw msg = do
   jmp "__throw"
 
 compileProg :: WithTarget => SM.Prog -> M ()
-compileProg prog = do
-  traverse_ compileInstr prog
-  genEntryPoint
-  genThrow
-  where
-    genEntryPoint = do
-      tell [Label entryPointName]
-      subq WORD_SIZE rsp
-
-      call (mkFunName "prog")
-      movq rax rdi
-      call (mkFunName "_print_value")
-
-      addq WORD_SIZE rsp
-      movq 0 rax
-      retq
-
-    genThrow = do
-      tell [Label "__throw"]
-      movq (mkSyscall Write) rax
-      movq 1 rdi
-      syscall
-
-      movq (mkSyscall Exit) rax
-      movq 1 rdi
-      syscall
-
+compileProg = traverse_ compileInstr
+      
 compile :: Target -> SM.Prog -> Prog
-compile target prog = execM do
-  let ?target = target
+compile target prog = let ?target = target in execM do
+  -- header
   tell [Meta ".text"]
   tell [Meta (".globl " <> entryPointName)]
 
+
+  -- prog
   compileProg prog
 
+
+  -- entry point
+  tell [Label entryPointName]
+  subq WORD_SIZE rsp
+
+  call (mkFunName "prog")
+  movq rax rdi
+  call (mkFunName "_print_value")
+
+  addq WORD_SIZE rsp
+  movq 0 rax
+  retq
+
+  
+  -- throw
+  tell [Label "__throw"]
+  movq (mkSyscall Write) rax
+  movq 1 rdi
+  syscall
+
+  movq (mkSyscall Exit) rax
+  movq 1 rdi
+  syscall
+  
+
+  -- data
   tell [Meta ".data"]
 
   strings <- use #strings
