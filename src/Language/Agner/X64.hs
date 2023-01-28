@@ -1,4 +1,3 @@
-{-# LANGUAGE PartialTypeSignatures #-}
 # include "./X64.h"
 
 module Language.Agner.X64 (Ex(..), Prog, Target(..), prettyProg, compile) where
