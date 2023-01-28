@@ -5,6 +5,7 @@ import Data.Set qualified as Set
 import Data.List.NonEmpty (NonEmpty)
 
 type Var = String
+type Atom = String
 
 data BinOp
   = (:+)
@@ -12,6 +13,7 @@ data BinOp
 
 data Expr
   = Integer Integer
+  | Atom Atom
   | BinOp Expr BinOp Expr
   | Var Var
   | Match Pat Expr
@@ -21,6 +23,7 @@ data Pat
   = PatVar Var
   | PatWildcard
   | PatInteger Integer
+  | PatAtom Atom
   deriving (Show)
 
 type Exprs = NonEmpty Expr
@@ -32,10 +35,12 @@ patVars = \case
   PatVar var -> Set.singleton var
   PatWildcard -> Set.empty
   PatInteger _ -> Set.empty
+  PatAtom _ -> Set.empty
 
 exprVars :: Expr -> Set Var
 exprVars = \case
   Integer _ -> Set.empty
+  Atom _ -> Set.empty
   BinOp a _ b -> exprVars a `Set.union` exprVars b
   Var v -> Set.singleton v
   Match p e -> patVars p `Set.union` exprVars e

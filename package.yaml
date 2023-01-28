@@ -22,12 +22,18 @@ default-extensions:
   - RecursiveDo
   - ImplicitParams
   - ConstraintKinds
+  - TypeOperators
+  - DataKinds
+  - OverloadedLabels
 
 ghc-options:
   - -Wincomplete-patterns
 
 dependencies:
   - base
+
+extra-source-files:
+  - src/Language/Agner/X64.h
 
 library:
   source-dirs: src
@@ -50,3 +56,4 @@ executables:
       - typed-process
       - temporary
       - filepath
+      - named

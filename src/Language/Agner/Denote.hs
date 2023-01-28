@@ -16,6 +16,7 @@ import Language.Agner.Value qualified as Value
 data Ex
   = UnboundVariable Syntax.Var Env
   | NoMatch Syntax.Pat Value Env
+  | BinOp_BadArgs Syntax.BinOp
   deriving stock (Show)
   deriving anyclass (Exception)
 
@@ -24,6 +25,7 @@ binOp = \case
   (Syntax.:+) -> \a b ->
     case (a, b) of
       (Value.Integer a, Value.Integer b) -> Value.Integer (a + b)
+      _ -> throw (BinOp_BadArgs (Syntax.:+))
 
 type Env = Map Syntax.Var Value
 
@@ -31,6 +33,8 @@ expr :: Syntax.Expr -> (Env -> (Value, Env))
 expr = \case
   Syntax.Integer i -> runState do
     pure (Value.Integer i)
+  Syntax.Atom a -> runState do
+    pure (Value.Atom a)
   Syntax.BinOp a op b -> runState do
     a <- state (expr a)
     b <- state (expr b)
@@ -50,8 +54,11 @@ expr = \case
 match :: Syntax.Pat -> Value -> (Env -> Maybe Env)
 match Syntax.PatWildcard _ =
   \env -> Just env
-match (Syntax.PatInteger i) (Value.Integer j)
-  | i == j = \env -> Just env
+match (Syntax.PatInteger i) value
+  | Value.same (Value.Integer i) value = \env -> Just env
+  | otherwise = \env -> Nothing
+match (Syntax.PatAtom a) value
+  | Value.same (Value.Atom a) value = \env -> Just env
   | otherwise = \env -> Nothing
 match (Syntax.PatVar var) val =
   \env ->

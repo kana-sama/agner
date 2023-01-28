@@ -7,7 +7,7 @@ import Control.Monad (void)
 import Control.Exception (Exception, throw)
 
 import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>), try)
-import Text.Megaparsec.Char (char, digitChar, space1, upperChar, alphaNumChar)
+import Text.Megaparsec.Char (char, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
 import Control.Applicative.Combinators.NonEmpty (sepBy1)
@@ -55,9 +55,16 @@ variable = lexeme do
   xs <- many (underscore <|> alphaNumChar)
   pure (x:xs)
 
+atom :: Parser Atom
+atom = lexeme do
+  x <- lowerChar
+  xs <- many (underscore <|> alphaNumChar)
+  pure (x:xs)
+
 pat :: Parser Pat
 pat = choice
   [ PatVar <$> variable
+  , PatAtom <$> atom
   , PatInteger <$> integer
   , PatWildcard <$ symbol "_"
   ]
@@ -74,6 +81,7 @@ term = choice
   [ parens expr
   , uncurry Match <$> try match
   , Var <$> variable
+  , Atom <$> atom
   , Integer <$> integer
   ]
 
