@@ -2,11 +2,12 @@ module Language.Agner.Parser (Ex(..), Parser, parse, expr, exprs, module_) where
 
 import Data.Char qualified as Char
 import Data.Void (Void)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 
 import Control.Monad (void)
-import Control.Exception (Exception, throw)
+import Control.Exception (Exception (..), throw)
 
-import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>), try)
+import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>), try, sepBy)
 import Text.Megaparsec.Char (char, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
@@ -20,7 +21,11 @@ type Parser = Parsec Void String
 data Ex
   = ParsingException String
   deriving stock (Show)
-  deriving anyclass (Exception)
+
+instance Exception Ex where
+  displayException = \case
+    ParsingException msg -> msg
+
 
 sc :: Parser ()
 sc = L.space space1 (L.skipLineComment "%") empty
@@ -76,10 +81,17 @@ match = do
   e <- expr
   pure (p, e)
 
+apply :: Parser (Atom, [Expr])
+apply = do
+  f <- atom
+  args <- parens (expr `sepBy` symbol ",")
+  pure (f, args)
+
 term :: Parser Expr
 term = choice
   [ parens expr
   , uncurry Match <$> try match
+  , uncurry Apply <$> try apply
   , Var <$> variable
   , Atom <$> atom
   , Integer <$> integer
@@ -90,8 +102,8 @@ expr = makeExprParser term operatorTable
   where
     operatorTable :: [[Operator Parser Expr]]
     operatorTable =
-      [ [ binary "+" (\a b -> BinOp a (:+) b) ]
-      ]
+      [ [ binary "+" (\a b -> BinOp a (:+) b)
+        , binary "-" (\a b -> BinOp a (:-) b) ] ]
 
     binary :: String -> (Expr -> Expr -> Expr) -> Operator Parser Expr
     binary name f = InfixL (f <$ symbol name)
@@ -99,11 +111,30 @@ expr = makeExprParser term operatorTable
 exprs :: Parser Exprs
 exprs = expr `sepBy1` symbol ","
 
+funClause :: Parser FunClause
+funClause = do
+  name <- atom
+  pats <- parens (pat `sepBy` symbol ",")
+  symbol "->"
+  body <- exprs
+  let funid = name :/ length pats
+  pure MkFunClause{funid, pats, body}
+
+funDecl :: Parser FunDecl
+funDecl = do
+  c :| cs <- funClause `sepBy1` symbol ";"
+  symbol "."
+  let clauses = c : cs
+  let funid = c.funid
+  pure MkFunDecl {funid, clauses}
+
 module_ :: Parser Module
-module_ = exprs
+module_ = do
+  decls <- many funDecl
+  pure MkModule{decls}
 
 parse :: Parser a -> String -> a
 parse p s =
-  case runParser (p <* eof) "" s of
+  case runParser (sc *> p <* eof) "" s of
     Right x -> x
     Left err -> throw (ParsingException (errorBundlePretty err))

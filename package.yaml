@@ -25,12 +25,14 @@ default-extensions:
   - TypeOperators
   - DataKinds
   - OverloadedLabels
+  - DuplicateRecordFields
 
 ghc-options:
   - -Wincomplete-patterns
 
 dependencies:
   - base
+  - aeson
 
 extra-source-files:
   - src/Language/Agner/X64.h

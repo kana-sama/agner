@@ -15,8 +15,11 @@ import Language.Agner.Value qualified as Value
 
 data Ex
   = UnboundVariable Syntax.Var Env
+  | UndefinedFunction Syntax.FunId
   | NoMatch Syntax.Pat Value Env
   | BinOp_BadArgs Syntax.BinOp
+  | NoEntryPoint
+  | NoFunctionClauseMatching Syntax.FunId [Value]
   deriving stock (Show)
   deriving anyclass (Exception)
 
@@ -26,10 +29,34 @@ binOp = \case
     case (a, b) of
       (Value.Integer a, Value.Integer b) -> Value.Integer (a + b)
       _ -> throw (BinOp_BadArgs (Syntax.:+))
+  (Syntax.:-) -> \a b ->
+    case (a, b) of
+      (Value.Integer a, Value.Integer b) -> Value.Integer (a - b)
+      _ -> throw (BinOp_BadArgs (Syntax.:-))
 
 type Env = Map Syntax.Var Value
+type FunEnv = Map Syntax.FunId ([Value] -> Value)
 
-expr :: Syntax.Expr -> (Env -> (Value, Env))
+funDecl :: FunEnv -> Syntax.FunDecl -> ([Value] -> Value)
+funDecl funs decl = let ?funs = funs in goClauses decl.clauses
+  where
+    goClauses [] =
+      \values -> throw (NoFunctionClauseMatching decl.funid values)
+    goClauses (c:cs) =
+      \values ->
+        case matchClause c.pats values Map.empty of
+          Nothing -> goClauses cs values
+          Just env -> let (v, _) = (exprs c.body) env in v
+
+    matchClause :: [Syntax.Pat] -> [Value] -> Env -> Maybe Env
+    matchClause [] [] env = Just env
+    matchClause (p:ps) (v:vs) env =
+      case match p v env of
+        Just env -> matchClause ps vs env
+        Nothing -> Nothing
+    matchClause _ _ _ = error "Denote.tryClause: impossible!!"
+
+expr :: (?funs :: FunEnv) => Syntax.Expr -> (Env -> (Value, Env))
 expr = \case
   Syntax.Integer i -> runState do
     pure (Value.Integer i)
@@ -50,6 +77,12 @@ expr = \case
     case (match p v) env of
       Nothing -> throw (NoMatch p v env)
       Just env -> put env *> pure v
+  Syntax.Apply f args -> runState do
+    f <- case ?funs Map.!? (f Syntax.:/ length args) of
+           Nothing -> throw (UndefinedFunction (f Syntax.:/ length args))
+           Just f -> pure f
+    vals <- traverse (state . expr) args
+    pure (f vals)
 
 match :: Syntax.Pat -> Value -> (Env -> Maybe Env)
 match Syntax.PatWildcard _ =
@@ -67,12 +100,15 @@ match (Syntax.PatVar var) val =
       Just val'
         | Value.same val val' -> Just env
         | otherwise -> Nothing
-  
       
-exprs :: Syntax.Exprs -> (Env -> (Value, Env))
+exprs :: (?funs :: FunEnv) => Syntax.Exprs -> (Env -> (Value, Env))
 exprs (e :| es) = runState do
   v <- state (expr e)
   foldlM (\_ e -> state (expr e)) v es
 
 module_ :: Syntax.Module -> Value
-module_ es = evalState (state (exprs es)) Map.empty
+module_ mod =
+  let funs = Map.fromList [(d.funid, funDecl funs d) | d <- mod.decls] 
+   in case funs Map.!? ("init" Syntax.:/ 0) of
+        Nothing -> throw NoEntryPoint
+        Just init -> init []

@@ -8,3 +8,4 @@ result
 .direnv
 runtime/*.o
 runtime/*.s
+adbg/src/debug.json

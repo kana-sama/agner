@@ -188,17 +188,17 @@ compileInstr = \case
     movq rax =<< _alloc
     movq rax =<< _alloc
 
-  SM.ENTER name vars -> do
-    tell [Label (mkFunName name)]
+  -- SM.ENTER name vars -> do
+  --   tell [Label (mkFunName name)]
 
-    pushq rbp
-    movq rsp rbp
+  --   pushq rbp
+  --   movq rsp rbp
 
-    _enter vars
-    subq (ImmL stackSizeName) rsp
-    for_ (zip vars [1 ..]) \(var, i) -> do
-      tell [Set (mkVarName var) (-WORD_SIZE * i)]
-      movq UNBOUND_TAG (mkVarOp var)
+  --   _enter vars
+  --   subq (ImmL stackSizeName) rsp
+  --   for_ (zip vars [1 ..]) \(var, i) -> do
+  --     tell [Set (mkVarName var) (-WORD_SIZE * i)]
+  --     movq UNBOUND_TAG (mkVarOp var)
 
   SM.LEAVE name -> do
     s <- _pop
@@ -225,54 +225,54 @@ compileInstr = \case
     movq (mkVarOp var) rax
     movq rax =<< _alloc
 
-  SM.MATCH_I i -> mdo
-    value <- _pop
-    movq value rax
-    cmpq (encodeInteger i) rax
-    je when_equal
+  -- SM.MATCH_I i -> mdo
+  --   value <- _pop
+  --   movq value rax
+  --   cmpq (encodeInteger i) rax
+  --   je when_equal
 
-    when_not_equal <- _label "match_i.when_not_equal"
-    _throw ("No match " ++ show i)
+  --   when_not_equal <- _label "match_i.when_not_equal"
+  --   _throw ("No match " ++ show i)
 
-    when_equal <- _label "match_i.when_equal"
-    pure ()
+  --   when_equal <- _label "match_i.when_equal"
+  --   pure ()
 
-  SM.MATCH_ATOM atom -> mdo
-    value <- _pop
-    movq value rax
-    atom' <- _atom atom
-    cmpq atom' rax
-    je when_equal
+  -- SM.MATCH_ATOM atom -> mdo
+  --   value <- _pop
+  --   movq value rax
+  --   atom' <- _atom atom
+  --   cmpq atom' rax
+  --   je when_equal
 
-    when_not_equal <- _label "match_i.when_not_equal"
-    _throw ("No match " ++ atom)
+  --   when_not_equal <- _label "match_i.when_not_equal"
+  --   _throw ("No match " ++ atom)
 
-    when_equal <- _label "match_i.when_equal"
-    pure ()
+  --   when_equal <- _label "match_i.when_equal"
+  --   pure ()
 
-  SM.MATCH_VAR var -> mdo
-    val <- _pop
+  -- SM.MATCH_VAR var -> mdo
+  --   val <- _pop
 
-    movq (mkVarOp var) rax
-    andq UNBOUND_TAG rax
-    jz when_bound
+  --   movq (mkVarOp var) rax
+  --   andq UNBOUND_TAG rax
+  --   jz when_bound
 
-    when_unbound <- _label "match_var.when_unbound"
-    movq val rax
-    movq rax (mkVarOp var)
-    jmp done
+  --   when_unbound <- _label "match_var.when_unbound"
+  --   movq val rax
+  --   movq rax (mkVarOp var)
+  --   jmp done
 
-    when_bound <- _label "match_var.when_bound"
-    mdo
-      movq (mkVarOp var) rax
-      cmpq rax val
-      je done
+  --   when_bound <- _label "match_var.when_bound"
+  --   mdo
+  --     movq (mkVarOp var) rax
+  --     cmpq rax val
+  --     je done
 
-      when_not_equal <- _label "match_var.when_not_equal"
-      _throw ("No match " ++ show var)
+  --     when_not_equal <- _label "match_var.when_not_equal"
+  --     _throw ("No match " ++ show var)
 
-    done <- _label "match_var.done"
-    pure ()
+  --   done <- _label "match_var.done"
+  --   pure ()
 
 _throw :: String -> M ()
 _throw msg = do

@@ -1,10 +1,11 @@
 import Named
 
 import Data.Bits (shiftR, Bits ((.&.)))
+import Data.Aeson (encodeFile)
 
 import System.Process.Typed (runProcess, shell, proc)
 import System.IO.Temp (withSystemTempDirectory)
-import System.Exit (ExitCode(..))
+import System.Exit (ExitCode(..), exitFailure)
 import System.FilePath ((</>), (<.>))
 import System.Environment (getArgs)
 import System.Info (os)
@@ -30,26 +31,34 @@ run value = do
 parseArgs :: IO X64.Target
 parseArgs = do
   args <- getArgs
-  case args of
-    ["--target", "linux"] -> pure X64.Linux
-    ["--target", "macos"] -> pure X64.MacOS
-    [] | "linux"  <-os-> pure X64.Linux
-       | "darwin" <-os-> pure X64.MacOS
+  pure $! case args of
+    ["--target", "linux"] -> X64.Linux
+    ["--target", "macos"] -> X64.MacOS
+    [] | "linux"  <-os-> X64.Linux
+       | "darwin" <-os-> X64.MacOS
     _ -> error "Иди отсюда, пёс"
 
 main :: IO ()
 main = do
   target <- parseArgs
 
-  !source <- Parser.parse Parser.module_ <$> readFile "example.agn"
+  !source <- try @Parser.Ex (evaluate =<< Parser.parse Parser.module_ <$> readFile "example.agn") >>= \case
+    Right source ->
+      pure source
+    Left ex -> do
+      putStrLn (displayException ex)
+      exitFailure
   putStrLn "source:"
-  print (Pretty.module_ source)
+  putStrLn (Pretty.module_ source)
 
   putStrLn "denote:"
   run @Denote.Ex (Denote.module_ source)
 
   putStrLn "stack machine:"
   let sm = SM.compileModule source
+  let !debug = SM.debug 1000 sm
+  encodeFile "adbg/src/debug.json" debug
+  putStrLn "debug done"
   run @SM.Ex (SM.run sm)
 
   withSystemTempDirectory "test" \path -> do

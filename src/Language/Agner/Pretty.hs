@@ -5,6 +5,7 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.List qualified as List
 
 import Language.Agner.Syntax
+import Data.List (intercalate)
 
 parens :: String -> String
 parens s = "(" ++ s ++ ")"
@@ -23,6 +24,7 @@ sepBy1 p s =
 binOp :: BinOp -> String
 binOp = \case
   (:+) -> "+"
+  (:-) -> "-"
 
 pat :: Pat -> String
 pat = \case
@@ -38,9 +40,19 @@ expr = \case
   BinOp a op b -> parens (expr a <+> binOp op <+> expr b)
   Var v -> v
   Match p e -> parens (pat p <+> "=" <+> expr e)
+  Apply f es -> f ++ parens ((expr `sepBy` ", ") es)
 
 exprs :: Exprs -> String
 exprs = expr `sepBy1` ", "
 
+funClause :: FunClause -> String
+funClause clause =
+  clause.funid.name ++ parens ((pat `sepBy` ", ") clause.pats) <+> "->" <+> exprs clause.body
+
+funDecl :: FunDecl -> String
+funDecl decl =
+  intercalate ";\n" [funClause c | c <- decl.clauses] ++ ".\n"
+
 module_ :: Module -> String
-module_ = exprs
+module_ mod =
+  unlines [funDecl d | d <- mod.decls]
