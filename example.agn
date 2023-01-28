@@ -3,4 +3,4 @@ B = 2,
 3 = A + B,
 C = hello,
 hello = C,
-C + A
+C
