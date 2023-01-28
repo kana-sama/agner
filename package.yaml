@@ -32,6 +32,9 @@ ghc-options:
 dependencies:
   - base
 
+extra-source-files:
+  - src/Language/Agner/X64.h
+
 library:
   source-dirs: src
   dependencies:
