@@ -22,6 +22,9 @@ default-extensions:
   - RecursiveDo
   - ImplicitParams
   - ConstraintKinds
+  - TypeOperators
+  - DataKinds
+  - OverloadedLabels
 
 ghc-options:
   - -Wincomplete-patterns
@@ -50,3 +53,4 @@ executables:
       - typed-process
       - temporary
       - filepath
+      - named

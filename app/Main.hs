@@ -1,3 +1,5 @@
+import Named
+
 import Data.Bits (shiftR, Bits ((.&.)))
 
 import System.Process.Typed (runProcess, shell, proc)
@@ -28,16 +30,16 @@ run value = do
 parseArgs :: IO X64.Target
 parseArgs = do
   args <- getArgs
-  pure case args of
-    ["--target", "linux"] -> X64.Linux
-    ["--target", "macos"] -> X64.MacOS
-    [] | "linux"  <-os-> X64.Linux
-       | "darwin" <-os-> X64.MacOS
+  case args of
+    ["--target", "linux"] -> pure X64.Linux
+    ["--target", "macos"] -> pure X64.MacOS
+    [] | "linux"  <-os-> pure X64.Linux
+       | "darwin" <-os-> pure X64.MacOS
     _ -> error "Иди отсюда, пёс"
 
 main :: IO ()
 main = do
-  !target <- parseArgs
+  target <- parseArgs
 
   !source <- Parser.parse Parser.module_ <$> readFile "example.agn"
   putStrLn "source:"
@@ -58,7 +60,10 @@ main = do
     let outputPath = path </> "temp"
 
     writeFile sourcePath gas
-    gcc target sourcePath runtimePath outputPath
+    gcc ! param #target target
+        ! param #source sourcePath
+        ! param #runtime runtimePath
+        ! param #output outputPath
 
     putStrLn "x64:"
     runProcess (shell outputPath) >>= \case
@@ -67,7 +72,12 @@ main = do
 
     writeFile "output.s" gas
 
-gcc :: X64.Target -> FilePath -> FilePath -> FilePath -> IO ExitCode
-gcc target sourcePath runtimePath outputPath = case target of
-  X64.MacOS -> runProcess (proc "gcc" [runtimePath, sourcePath, "-o", outputPath])
-  X64.Linux -> runProcess (proc "gcc" ["-z", "noexecstack", runtimePath, sourcePath, "-o", outputPath])
+gcc ::
+  "target" :! X64.Target ->
+  "source" :! FilePath ->
+  "runtime" :! FilePath ->
+  "output" :! FilePath ->
+  IO ExitCode
+gcc (Arg target) (Arg source) (Arg runtime) (Arg output) = case target of
+  X64.MacOS -> runProcess (proc "gcc" [runtime, source, "-o", output])
+  X64.Linux -> runProcess (proc "gcc" ["-z", "noexecstack", runtime, source, "-o", output])
