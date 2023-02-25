@@ -35,15 +35,16 @@ data Ex
 -- DSL
 
 data BiFContext
-  = NoContext
+  = WithoutContext
   | WithAtomContext Syntax.Atom
 
 bifs :: [(Syntax.FunId, (String, BiFContext))]
 bifs =
-  [ "agner:print/1" ~> ("_agner__print", WithAtomContext "ok")
+  [ "agner:print/1" ~> "_agner__print" // WithAtomContext "ok"
   ]
   where
-    name ~> runtime = (name, runtime)
+    a ~> b = (a, b)
+    (a, b) // c = (a, (b, c))
 
 type M = StateT CompileState (Writer Prog)
 data CompileState = MkCompileState
@@ -422,7 +423,7 @@ compile target prog = let ?target = target in execM do
   for_ bifs \(funId, (runtimeName, context)) -> do
     tell [Label (mkFunName funId)]
     case context of
-      NoContext -> pure ()
+      WithoutContext -> pure ()
       WithAtomContext a -> do
         a <- _atom a
         movq a rax
