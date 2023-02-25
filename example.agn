@@ -4,5 +4,7 @@ even(N) -> odd(N - 1).
 odd(0) -> false;
 odd(N) -> even(N - 1).
 
-init() ->
-  even(11).
+main() ->
+  agner:print(even(40)),
+  agner:print(even(41)),
+  agner:print(odd(41)).

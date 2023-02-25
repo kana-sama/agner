@@ -40,7 +40,12 @@ expr = \case
   BinOp a op b -> parens (expr a <+> binOp op <+> expr b)
   Var v -> v
   Match p e -> parens (pat p <+> "=" <+> expr e)
-  Apply f es -> f ++ parens ((expr `sepBy` ", ") es)
+  Apply (MkFunId ns f _a) es ->
+    concat
+      [ case ns of Just ns -> ns ++ ":"; Nothing -> ""
+      , f
+      , parens ((expr `sepBy` ", ") es)
+      ]
 
 exprs :: Exprs -> String
 exprs = expr `sepBy1` ", "

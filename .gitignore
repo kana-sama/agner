@@ -2,6 +2,7 @@ dist-newstyle
 agner.cabal
 cabal.project.local
 output.s
+output
 q
 q.s
 result

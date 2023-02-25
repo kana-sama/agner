@@ -1,9 +1,10 @@
-module Language.Agner.Denote (Ex(..), binOp, expr, exprs, module_) where
+module Language.Agner.Denote where
 
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Data.Foldable (foldlM)
 
 import Control.Exception (Exception, throw)
@@ -16,6 +17,7 @@ import Language.Agner.Value qualified as Value
 data Ex
   = UnboundVariable Syntax.Var Env
   | UndefinedFunction Syntax.FunId
+  | UnknownBiF Syntax.FunId
   | NoMatch Syntax.Pat Value Env
   | BinOp_BadArgs Syntax.BinOp
   | NoEntryPoint
@@ -35,10 +37,10 @@ binOp = \case
       _ -> throw (BinOp_BadArgs (Syntax.:-))
 
 type Env = Map Syntax.Var Value
-type FunEnv = Map Syntax.FunId ([Value] -> Value)
+type FunEnv = Map Syntax.FunId ([Value] -> IO Value)
 
-funDecl :: FunEnv -> Syntax.FunDecl -> ([Value] -> Value)
-funDecl funs decl = let ?funs = funs in goClauses decl.clauses
+funDecl :: FunEnv -> Syntax.FunDecl -> ([Value] -> IO Value)
+funDecl funs decl = goClauses decl.clauses
   where
     goClauses [] =
       \values -> throw (NoFunctionClauseMatching decl.funid values)
@@ -46,7 +48,9 @@ funDecl funs decl = let ?funs = funs in goClauses decl.clauses
       \values ->
         case matchClause c.pats values Map.empty of
           Nothing -> goClauses cs values
-          Just env -> let (v, _) = (exprs c.body) env in v
+          Just env -> do
+            (v, _) <- (let ?funs = funs in exprs c.body) env
+            pure v
 
     matchClause :: [Syntax.Pat] -> [Value] -> Env -> Maybe Env
     matchClause [] [] env = Just env
@@ -56,33 +60,31 @@ funDecl funs decl = let ?funs = funs in goClauses decl.clauses
         Nothing -> Nothing
     matchClause _ _ _ = error "Denote.tryClause: impossible!!"
 
-expr :: (?funs :: FunEnv) => Syntax.Expr -> (Env -> (Value, Env))
+expr :: (?funs :: FunEnv) => Syntax.Expr -> (Env -> IO (Value, Env))
 expr = \case
-  Syntax.Integer i -> runState do
+  Syntax.Integer i -> runStateT do
     pure (Value.Integer i)
-  Syntax.Atom a -> runState do
+  Syntax.Atom a -> runStateT do
     pure (Value.Atom a)
-  Syntax.BinOp a op b -> runState do
-    a <- state (expr a)
-    b <- state (expr b)
+  Syntax.BinOp a op b -> runStateT do
+    a <- StateT (expr a)
+    b <- StateT (expr b)
     pure ((binOp op) a b)
-  Syntax.Var var -> runState do
+  Syntax.Var var -> runStateT do
     env <- get
     case env Map.!? var of
       Just val -> pure val
       Nothing -> throw (UnboundVariable var env)
-  Syntax.Match p e -> runState do
-    v <- state (expr e)
+  Syntax.Match p e -> runStateT do
+    v <- StateT (expr e)
     env <- get
     case (match p v) env of
       Nothing -> throw (NoMatch p v env)
       Just env -> put env *> pure v
-  Syntax.Apply f args -> runState do
-    f <- case ?funs Map.!? (f Syntax.:/ length args) of
-           Nothing -> throw (UndefinedFunction (f Syntax.:/ length args))
-           Just f -> pure f
-    vals <- traverse (state . expr) args
-    pure (f vals)
+  Syntax.Apply funid args -> runStateT do
+    let !fun = resolveFunction funid
+    vals <- traverse (StateT . expr) args
+    liftIO (fun vals)
 
 match :: Syntax.Pat -> Value -> (Env -> Maybe Env)
 match Syntax.PatWildcard _ =
@@ -101,14 +103,33 @@ match (Syntax.PatVar var) val =
         | Value.same val val' -> Just env
         | otherwise -> Nothing
       
-exprs :: (?funs :: FunEnv) => Syntax.Exprs -> (Env -> (Value, Env))
-exprs (e :| es) = runState do
-  v <- state (expr e)
-  foldlM (\_ e -> state (expr e)) v es
+exprs :: (?funs :: FunEnv) => Syntax.Exprs -> (Env -> IO (Value, Env))
+exprs (e :| es) = runStateT do
+  v <- StateT (expr e)
+  foldlM (\_ e -> StateT (expr e)) v es
 
-module_ :: Syntax.Module -> Value
+module_ :: Syntax.Module -> IO Value
 module_ mod =
   let funs = Map.fromList [(d.funid, funDecl funs d) | d <- mod.decls] 
-   in case funs Map.!? ("init" Syntax.:/ 0) of
+   in case funs Map.!? ("main" Syntax.:/ 0) of
         Nothing -> throw NoEntryPoint
-        Just init -> init []
+        Just main -> main []
+
+isBif :: Syntax.FunId -> Bool
+isBif = (`Set.member` bifs)
+  where
+    bifs = Set.fromList
+      [ "agner:print/1"
+      ]
+
+bif :: Syntax.FunId -> ([Value] -> IO Value)
+bif = \case
+  "agner:print/1" -> \[value] -> do
+    putStrLn (Value.encode value)
+    pure (Value.Atom "ok")
+  funid -> throw (UnknownBiF funid)
+
+resolveFunction :: (?funs :: FunEnv) => Syntax.FunId -> ([Value] -> IO Value)
+resolveFunction funid | isBif funid = bif funid
+resolveFunction funid | Just f <- ?funs Map.!? funid = f
+resolveFunction funid = throw (UndefinedFunction funid)

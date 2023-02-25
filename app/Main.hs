@@ -10,7 +10,7 @@ import System.FilePath ((</>), (<.>))
 import System.Environment (getArgs)
 import System.Info (os)
 
-import Control.Exception (evaluate, try, Exception (displayException))
+import Control.Exception (evaluate, try, Exception (displayException), SomeException)
 
 import Language.Agner.Value (Value)
 import Language.Agner.Value qualified as Value
@@ -21,11 +21,11 @@ import Language.Agner.X64 qualified as X64
 import Language.Agner.Parser qualified as Parser
 import Language.Agner.Pretty qualified as Pretty
 
-run :: forall e. Exception e => Value -> IO ()
+run :: forall e. Exception e => IO Value -> IO ()
 run value = do
-  result <- try @e (evaluate value)
+  result <- try @e (evaluate =<< value)
   case result of
-    Left e -> putStrLn (displayException e)
+    Left e -> putStrLn ("!!" ++ displayException e)
     Right v -> putStrLn (Value.encode v)
 
 parseArgs :: IO X64.Target
@@ -56,9 +56,9 @@ main = do
 
   putStrLn "stack machine:"
   let sm = SM.compileModule source
-  let !debug = SM.debug 1000 sm
-  encodeFile "adbg/src/debug.json" debug
-  putStrLn "debug done"
+  -- let !debug = SM.debug 1000 sm
+  -- encodeFile "adbg/src/debug.json" debug
+  -- putStrLn "debug done"
   run @SM.Ex (SM.run sm)
 
   withSystemTempDirectory "test" \path -> do
@@ -80,6 +80,7 @@ main = do
       ExitSuccess -> pure ()
 
     writeFile "output.s" gas
+    putStrLn "output.s dumped"
 
 gcc ::
   "target" :! X64.Target ->

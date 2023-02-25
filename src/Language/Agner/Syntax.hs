@@ -4,15 +4,37 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.List.NonEmpty (NonEmpty)
 import Data.Aeson (ToJSON)
+import Data.List qualified as List
+import Data.String (IsString(..))
 import GHC.Generics (Generic)
 
 type Var = String
 type Atom = String
 type FunName = String
+type ModuleName = String
 
-data FunId = (:/) { name :: FunName, arity :: Int }
-  deriving stock (Eq, Ord, Show, Generic)
+pattern (:/) :: FunName -> Int -> FunId
+pattern f :/ arity = MkFunId Nothing f arity
+
+data FunId = MkFunId { ns :: Maybe ModuleName, name :: FunName, arity :: Int }
+  deriving stock (Eq, Ord, Generic)
   deriving anyclass (ToJSON)
+
+instance IsString FunId where
+  fromString src0 = 
+    let (ns, ':':src1) = List.break (== ':') src0
+        (f, '/':src2) = List.break (== '/') src1
+        a = read src2
+      in MkFunId (Just ns) f a
+
+instance Show FunId where
+  show f =
+    (show . concat)
+      [ case f.ns of Nothing -> ""; Just ns -> ns ++ ":"
+      , f.name
+      , "/"
+      , show f.arity
+      ]
 
 data BinOp
   = (:+)
@@ -26,7 +48,7 @@ data Expr
   | BinOp Expr BinOp Expr
   | Var Var
   | Match Pat Expr
-  | Apply Atom [Expr]
+  | Apply FunId [Expr]
   deriving stock (Show)
 
 data Pat

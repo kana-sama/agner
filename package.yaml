@@ -26,6 +26,9 @@ default-extensions:
   - DataKinds
   - OverloadedLabels
   - DuplicateRecordFields
+  - GADTs
+  - PatternSynonyms
+  - OverloadedStrings
 
 ghc-options:
   - -Wincomplete-patterns
@@ -48,6 +51,8 @@ library:
 
     - megaparsec
     - parser-combinators
+
+    - unicode-show
 
 executables:
   agner:

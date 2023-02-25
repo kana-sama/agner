@@ -1,30 +1,12 @@
 # include <stdio.h>
-# include <stdint.h>
 
 # include "../src/Language/Agner/X64.h"
 
-#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c"
-#define BYTE_TO_BINARY(byte)  \
-  (byte & 0x20480 ? '1' : '0'), \
-  (byte & 0x10240 ? '1' : '0'), \
-  (byte & 0x5120 ? '1' : '0'), \
-  (byte & 0x2560 ? '1' : '0'), \
-  (byte & 0x1280 ? '1' : '0'), \
-  (byte & 0x640 ? '1' : '0'), \
-  (byte & 0x320 ? '1' : '0'), \
-  (byte & 0x160 ? '1' : '0'), \
-  (byte & 0x80 ? '1' : '0'), \
-  (byte & 0x40 ? '1' : '0'), \
-  (byte & 0x20 ? '1' : '0'), \
-  (byte & 0x10 ? '1' : '0'), \
-  (byte & 0x08 ? '1' : '0'), \
-  (byte & 0x04 ? '1' : '0'), \
-  (byte & 0x02 ? '1' : '0'), \
-  (byte & 0x01 ? '1' : '0')
+typedef int64_t Value;
 
-extern void _print_value(int64_t value) {
-  printf("debug: " BYTE_TO_BINARY_PATTERN "\n", BYTE_TO_BINARY(value));
+Value RUNTIME_call_context;
 
+extern void _print_value(const int64_t value) {
   switch (value & TAG_MASK) {
     case NUMBER_TAG:
       printf("%lld\n", value >> 3);
@@ -34,4 +16,17 @@ extern void _print_value(int64_t value) {
       break;
   }
   fflush(stdout);
+}
+
+extern void _print_error_message(const char * msg) {
+  printf("error 🌚: %s\n", msg);
+}
+
+
+// BiFs
+
+// RUNTIME_call_context should be "ok" atom
+extern Value _agner__print(const Value value) {
+  _print_value(value);
+  return RUNTIME_call_context;
 }

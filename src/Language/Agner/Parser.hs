@@ -7,7 +7,7 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Control.Monad (void)
 import Control.Exception (Exception (..), throw)
 
-import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>), try, sepBy)
+import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>), try, sepBy, optional)
 import Text.Megaparsec.Char (char, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
@@ -81,11 +81,18 @@ match = do
   e <- expr
   pure (p, e)
 
-apply :: Parser (Atom, [Expr])
+apply :: Parser (FunId, [Expr])
 apply = do
-  f <- atom
+  (ns, f) <- name
   args <- parens (expr `sepBy` symbol ",")
-  pure (f, args)
+  pure (MkFunId ns f (length args), args)
+  where
+    name = do
+      a <- atom
+      b <- optional do symbol ":" *> atom
+      case (a, b) of
+        (a, Nothing) -> pure (Nothing, a)
+        (a, Just b) -> pure (Just a, b)
 
 term :: Parser Expr
 term = choice
@@ -117,7 +124,7 @@ funClause = do
   pats <- parens (pat `sepBy` symbol ",")
   symbol "->"
   body <- exprs
-  let funid = name :/ length pats
+  let funid = MkFunId Nothing name (length pats)
   pure MkFunClause{funid, pats, body}
 
 funDecl :: Parser FunDecl

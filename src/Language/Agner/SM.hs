@@ -1,4 +1,4 @@
-module Language.Agner.SM (Ex(..), Prog, Instr(..), compileModule, debug, run) where
+module Language.Agner.SM where
 
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -7,8 +7,9 @@ import Data.Map.Strict qualified as Map
 import Data.List qualified as List
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Aeson (ToJSON)
+import Data.Typeable (eqT)
 
-import Control.Exception (Exception (..), try, throw, SomeException, evaluate)
+import Control.Exception (Exception (..), try, throw, SomeException(..), evaluate)
 import System.IO.Unsafe
 
 import Control.Monad.State.Strict
@@ -23,7 +24,6 @@ import Language.Agner.Value qualified as Value
 import Language.Agner.Denote qualified as Denote
 import Language.Agner.Syntax (BinOp)
 
-import Debug.Trace
 
 data Ex
   = NotEnoughValuesForResult
@@ -40,10 +40,11 @@ data Ex
 
 instance Exception Ex where
   fromException e
-    | Just de <- fromException @Denote.Ex e = Just (DenoteEx de)
+    | Just e <- fromException @Denote.Ex e = Just (DenoteEx e)
+    | SomeException (e :: e) <- e, Just Refl <- eqT @e @Ex = Just e
     | otherwise = Nothing
 
-data OnMatchFail = Throw | NextClause
+data OnMatchFail = Throw | NextClause Syntax.FunId (Maybe Int)
   deriving stock (Generic)
   deriving anyclass (ToJSON)
 
@@ -55,9 +56,10 @@ data Instr
   | DUP
   | CALL Syntax.FunId
   
-  | FUNCTION Syntax.FunId
-  | CLAUSE Syntax.FunId
-  | FAIL_CLAUSE Syntax.FunId
+  | FUNCTION{funid :: Syntax.FunId, vars :: [Syntax.Var]}
+  | CLAUSE{funid :: Syntax.FunId, clauseIndex :: Int, vars :: [Syntax.Var]}
+  | FAIL_CLAUSE{funid :: Syntax.FunId, clauseIndex :: Int}
+  | FUNCTION_END{funid :: Syntax.FunId}
   | LEAVE Syntax.FunId
   | RET
 
@@ -84,7 +86,7 @@ compileExpr = \case
   Syntax.Match p e ->
     compileExpr e ++ [DUP] ++ compilePat Throw p
   Syntax.Apply f args -> do
-    foldMap compileExpr args ++ [CALL (f Syntax.:/ length args)]
+    foldMap compileExpr args ++ [CALL f]
 
 compilePat :: OnMatchFail -> Syntax.Pat -> Prog
 compilePat onMatchFail = \case
@@ -96,21 +98,25 @@ compilePat onMatchFail = \case
 compileExprs :: Syntax.Exprs -> Prog
 compileExprs exprs = List.intercalate [DROP] [compileExpr e | e <- NonEmpty.toList exprs]
 
-
 compileFunDecl :: Syntax.FunDecl -> Prog
 compileFunDecl funDecl =
   concat
-    [ [FUNCTION funDecl.funid]
-    , foldMap compileFunClause funDecl.clauses
-    , [FAIL_CLAUSE funDecl.funid]
+    [ [FUNCTION funDecl.funid (Set.toList (Syntax.funDeclVars funDecl))]
+    , foldMap ((uncurry . uncurry) compileFunClause) (zipWithLast (zip funDecl.clauses [0..]))
+    , [FAIL_CLAUSE funDecl.funid (length funDecl.clauses)]
+    , [FUNCTION_END funDecl.funid]
     ]
+  where
+    -- красиво
+    zipWithLast :: [a] -> [(a, Bool)]
+    zipWithLast xs = reverse (zip (reverse xs) ([True] ++ repeat False))
 
 -- args are in original order on stack
-compileFunClause :: Syntax.FunClause -> Prog
-compileFunClause clause =
+compileFunClause :: Syntax.FunClause -> Int -> Bool -> Prog
+compileFunClause clause ix isLast =
   concat
-    [ [CLAUSE clause.funid]
-    , foldMap (compilePat NextClause) clause.pats
+    [ [CLAUSE clause.funid ix (Set.toList (Syntax.funClauseVars clause))]
+    , foldMap (compilePat (NextClause clause.funid (if isLast then Nothing else Just (ix + 1)))) clause.pats
     , compileExprs clause.body
     , [LEAVE clause.funid]
     , [RET]
@@ -139,7 +145,7 @@ data Cfg = MkCfg
   deriving stock (Generic)
   deriving anyclass (ToJSON)
 
-type M = State Cfg
+type M = StateT Cfg IO
 
 push :: Value -> M ()
 push v = #stack %= (v:)
@@ -165,8 +171,8 @@ skipForNextClause :: M ()
 skipForNextClause = do
   instr <- gets currentInstr
   case instr of
-    CLAUSE _ -> pure ()
-    FAIL_CLAUSE _ -> pure ()
+    CLAUSE{} -> pure ()
+    FAIL_CLAUSE{} -> pure ()
     _ -> continue *> skipForNextClause
 
 type FunEnv = Map Syntax.FunId Int
@@ -181,27 +187,32 @@ leave = do
       #stack .= frame.stack
       #mem .= frame.mem
 
-instr :: (?funs :: FunEnv) => Instr -> (Cfg -> Cfg)
-instr (PUSH_I i) = execState do
+instr :: (?funs :: FunEnv) => Instr -> (Cfg -> IO Cfg)
+instr (PUSH_I i) = execStateT do
   push (Value.Integer i)
   continue
-instr (PUSH_ATOM a) = execState do
+instr (PUSH_ATOM a) = execStateT do
   push (Value.Atom a)
   continue
-instr (BINOP op) = execState do
+instr (BINOP op) = execStateT do
   b <- pop
   a <- pop
   push ((Denote.binOp op) a b)
   continue
-instr DROP = execState do
+instr DROP = execStateT do
   void pop
   continue
-instr DUP = execState do
+instr DUP = execStateT do
   a <- pop
   push a
   push a
   continue
-instr (CALL f) = execState do
+instr (CALL f) | Denote.isBif f = execStateT do
+  args <- replicateM f.arity pop
+  result <- liftIO do Denote.bif f args
+  push result
+  continue
+instr (CALL f) = execStateT do
   ret <- use #pos
   args <- replicateM f.arity pop
   stack <- #stack <<.= reverse args
@@ -211,25 +222,28 @@ instr (CALL f) = execState do
     Nothing -> throw (UndefinedFuncton f)
     Just pos -> #pos .= pos
 
-instr (FUNCTION _) = execState do
+instr (FUNCTION _ _) = execStateT do
   continue
 
-instr (CLAUSE _) = execState do
+instr (FUNCTION_END _) = execStateT do
+  continue
+
+instr (CLAUSE _ _ _) = execStateT do
   stack <- use #stack
   #frames %= (MkFrame{stack, mem = Map.empty, ret = 0} :)
   continue
 
-instr (FAIL_CLAUSE f) = execState do
+instr (FAIL_CLAUSE f _) = execStateT do
   vals <- reverse <$> replicateM f.arity pop
   throw (NoFunctionClauseMatching f vals)
 
-instr (LEAVE _) = execState do
+instr (LEAVE _) = execStateT do
   result <- pop
   leave
   push result
   continue
 
-instr RET = execState do
+instr RET = execStateT do
   use #frames >>= \case
     [] -> halt
     frame:_ -> do
@@ -239,22 +253,22 @@ instr RET = execState do
       #pos .= frame.ret
       continue
 
-instr (LOAD var) = execState do
+instr (LOAD var) = execStateT do
   mem <- use #mem
   case mem Map.!? var of
     Nothing -> throw (UnboundVariable var)
     Just val -> do
       push val
       continue
-instr (MATCH_I i onMatchFail) = execState do
+instr (MATCH_I i onMatchFail) = execStateT do
   value <- pop
   if Value.same (Value.Integer i) value
     then continue
     else case onMatchFail of
            Throw -> throw (NoMatch (Syntax.PatInteger i) value)
-           NextClause -> leave *> skipForNextClause
+           NextClause{} -> leave *> skipForNextClause
 
-instr (MATCH_VAR var onMatchFail) = execState do
+instr (MATCH_VAR var onMatchFail) = execStateT do
   val <- pop
   mem <- use #mem
   case mem Map.!? var of
@@ -266,17 +280,17 @@ instr (MATCH_VAR var onMatchFail) = execState do
       | otherwise ->
         case onMatchFail of
           Throw -> throw (NoMatch (Syntax.PatVar var) val)
-          NextClause -> leave *> skipForNextClause
+          NextClause{} -> leave *> skipForNextClause
 
-instr (MATCH_ATOM a onMatchFail) = execState do
+instr (MATCH_ATOM a onMatchFail) = execStateT do
   value <- pop
   if Value.same (Value.Atom a) value
     then continue
     else case onMatchFail of
           Throw -> throw (NoMatch (Syntax.PatAtom a) value)
-          NextClause -> leave *> skipForNextClause
+          NextClause{} -> leave *> skipForNextClause
 
-step :: (?funs :: FunEnv) => Cfg -> Cfg
+step :: (?funs :: FunEnv) => Cfg -> IO Cfg
 step cfg
   | cfg.halted = throw AlreadyHalted
   | otherwise = instr (currentInstr cfg) cfg
@@ -299,45 +313,46 @@ data DebugOutput = MkDebugOutput
   deriving stock (Generic)
   deriving anyclass (ToJSON)
 
-debug :: Int -> Prog -> DebugOutput
-debug fuel prog =
-  let ?funs = funs
-   in MkDebugOutput{prog, cfgs = go fuel (buildCfg prog entryPoint)}
-  where
-    funs :: FunEnv
-    funs = Map.fromList [(f, i) | (FUNCTION f, i) <- zip prog [0..]]
+-- debug :: Int -> Prog -> DebugOutput
+-- debug fuel prog =
+--   let ?funs = funs
+--    in MkDebugOutput{prog, cfgs = go fuel (buildCfg prog entryPoint)}
+--   where
+--     funs :: FunEnv
+--     funs = Map.fromList [(f, i) | (FUNCTION f _, i) <- zip prog [0..]]
 
-    entryPoint :: Int
-    entryPoint =
-      case funs Map.!? ("init" Syntax.:/ 0) of
-        Nothing -> throw NoEntryPoint
-        Just pos -> pos
+--     entryPoint :: Int
+--     entryPoint =
+--       case funs Map.!? ("main" Syntax.:/ 0) of
+--         Nothing -> throw NoEntryPoint
+--         Just pos -> pos
 
-    go 0 cfg = [cfg]
-    go fuel cfg
-      | cfg.halted = [cfg]
-      | otherwise = unsafePerformIO do
-        try @SomeException (evaluate (go (pred fuel) (step cfg))) >>= \case
-          Left e -> do
-            putStrLn (displayException e)
-            pure [cfg]
-          Right cfgs -> pure (cfg:cfgs)
+--     go 0 cfg = [cfg]
+--     go fuel cfg
+--       | cfg.halted = [cfg]
+--       | otherwise = unsafePerformIO do
+--         try @SomeException (evaluate (go (pred fuel) (step cfg))) >>= \case
+--           Left e -> do
+--             putStrLn (displayException e)
+--             pure [cfg]
+--           Right cfgs -> pure (cfg:cfgs)
 
-run :: Prog -> Value
-run prog =
-  case (let ?funs = funs in go (buildCfg prog entryPoint)).stack of
-    [result] -> result
+run :: Prog -> IO Value
+run prog = do
+  cfg <- let ?funs = funs in go (buildCfg prog entryPoint)
+  case cfg.stack of
+    [result] -> pure result
     _ -> throw NotEnoughValuesForResult
   where
     funs :: FunEnv
-    funs = Map.fromList [(f, i) | (FUNCTION f, i) <- zip prog [0..]]
+    funs = Map.fromList [(f, i) | (FUNCTION f _, i) <- zip prog [0..]]
 
     entryPoint :: Int
     entryPoint =
-      case funs Map.!? ("init" Syntax.:/ 0) of
+      case funs Map.!? ("main" Syntax.:/ 0) of
         Nothing -> throw NoEntryPoint
         Just pos -> pos
 
     go cfg
-      | cfg.halted = cfg
-      | otherwise = go (step cfg)
+      | cfg.halted = pure cfg
+      | otherwise = step cfg >>= go
