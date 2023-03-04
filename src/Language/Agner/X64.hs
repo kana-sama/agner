@@ -2,15 +2,13 @@
 
 module Language.Agner.X64 (Ex(..), Prog, Target(..), prettyProg, compile) where
 
-import Data.X64
+import Language.Agner.Prelude
 
+import Data.X64
 
 import Data.Zipper (Zipper)
 import Data.Zipper qualified as Zipper
-import Data.Foldable (traverse_, for_)
-import Data.Traversable (for)
 import Data.List qualified as List
-import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Bits (shiftL, (.|.))
 
@@ -145,6 +143,9 @@ mkFunName :: WithTarget => Syntax.FunId -> Label
 mkFunName (Syntax.MkFunId ns f arity) = mkLabel (ns' ++ "." ++ f ++ "." ++ show arity)
   where ns' = case ns of Nothing -> "main"; Just ns -> ns
 
+mkFunBody :: WithTarget => Syntax.FunId -> Label
+mkFunBody f = mkFunName f ++ ".body"
+
 mkFunClause :: WithTarget => Syntax.FunId -> Maybe Int -> Label
 mkFunClause f Nothing = mkFunName f ++ ".clause_fail"
 mkFunClause f (Just i) = mkFunName f ++ ".clause" ++ show i
@@ -225,7 +226,15 @@ compileInstr = \case
     movq rax =<< _alloc
     movq rax =<< _alloc
 
-  SM.CALL f -> do
+  SM.CALL f Syntax.TailCall -> do
+    for_ (reverse [1..f.arity]) \i -> do
+      arg <- _pop
+      movq arg rax
+      movq rax (mkArgOp i)
+    movq UNBOUND_TAG =<< _alloc
+    jmp (mkFunBody f)
+
+  SM.CALL f Syntax.SimpleCall -> do
     let argsOnStack = max 0 (f.arity - length regsForArguments)
 
     -- align stack
@@ -280,6 +289,8 @@ compileInstr = \case
 
     for_ (zip vars [funid.arity + 1 ..]) \(var, i) -> do
       tell [Set (mkVarName var) (-WORD_SIZE * i)]
+
+    tell [Label (mkFunBody funid)]
 
   SM.FUNCTION_END funid -> do
     requiredStackSize <- use #requiredStackSize

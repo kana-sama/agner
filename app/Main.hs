@@ -20,6 +20,7 @@ import Language.Agner.SM qualified as SM
 import Language.Agner.X64 qualified as X64
 import Language.Agner.Parser qualified as Parser
 import Language.Agner.Pretty qualified as Pretty
+import Language.Agner.Optimizer (optimize)
 
 run :: forall e. Exception e => IO Value -> IO ()
 run value = do
@@ -51,6 +52,8 @@ main = do
   putStrLn "source:"
   putStrLn (Pretty.module_ source)
 
+  source <- pure (optimize source)
+
   putStrLn "denote:"
   run @Denote.Ex (Denote.module_ source)
 
@@ -76,6 +79,7 @@ main = do
 
     putStrLn "x64:"
     runProcess (shell outputPath) >>= \case
+      ExitFailure (-11) -> putStrLn "сегфолт"
       ExitFailure i -> putStrLn ("ExitCode = " ++ show i)
       ExitSuccess -> pure ()
 

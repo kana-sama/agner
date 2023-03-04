@@ -1,22 +1,12 @@
 module Language.Agner.SM where
 
-import Data.Set (Set)
+import Language.Agner.Prelude
+
 import Data.Set qualified as Set
-import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.List qualified as List
-import Data.List.NonEmpty qualified as NonEmpty
 import Data.Aeson (ToJSON)
 import Data.Typeable (eqT)
-
-import Control.Exception (Exception (..), try, throw, SomeException(..), evaluate)
-import System.IO.Unsafe
-
-import Control.Monad.State.Strict
-
-import Control.Lens
-import GHC.Generics (Generic)
-import Data.Generics.Labels
 
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
@@ -54,7 +44,7 @@ data Instr
   | BINOP Syntax.BinOp
   | DROP
   | DUP
-  | CALL Syntax.FunId
+  | CALL{funid :: Syntax.FunId, tailness :: Syntax.CallTailness}
   
   | FUNCTION{funid :: Syntax.FunId, vars :: [Syntax.Var]}
   | CLAUSE{funid :: Syntax.FunId, clauseIndex :: Int, vars :: [Syntax.Var]}
@@ -85,8 +75,8 @@ compileExpr = \case
     [LOAD v]
   Syntax.Match p e ->
     compileExpr e ++ [DUP] ++ compilePat Throw p
-  Syntax.Apply f args -> do
-    foldMap compileExpr args ++ [CALL f]
+  Syntax.Apply tailness f args -> 
+    foldMap compileExpr args ++ [CALL f tailness]
 
 compilePat :: OnMatchFail -> Syntax.Pat -> Prog
 compilePat onMatchFail = \case
@@ -96,7 +86,7 @@ compilePat onMatchFail = \case
   Syntax.PatAtom a -> [MATCH_ATOM a onMatchFail]
 
 compileExprs :: Syntax.Exprs -> Prog
-compileExprs exprs = List.intercalate [DROP] [compileExpr e | e <- NonEmpty.toList exprs]
+compileExprs exprs = List.intercalate [DROP] [compileExpr e | e <- exprs]
 
 compileFunDecl :: Syntax.FunDecl -> Prog
 compileFunDecl funDecl =
@@ -207,12 +197,13 @@ instr DUP = execStateT do
   push a
   push a
   continue
-instr (CALL f) | Denote.isBif f = execStateT do
+instr (CALL f _) | Denote.isBif f = execStateT do
   args <- replicateM f.arity pop
   result <- liftIO do Denote.bif f args
   push result
   continue
-instr (CALL f) = execStateT do
+-- TODO: do not allocate more frames
+instr (CALL f _) = execStateT do
   ret <- use #pos
   args <- replicateM f.arity pop
   stack <- #stack <<.= reverse args

@@ -1,6 +1,5 @@
 module Language.Agner.Pretty where
 
-import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.List qualified as List
 
@@ -16,10 +15,6 @@ parens s = "(" ++ s ++ ")"
 sepBy :: (a -> String) -> String -> ([a] -> String)
 sepBy p s =
   \xs -> concat (List.intersperse s (p <$> xs))
-
-sepBy1 :: (a -> String) -> String -> (NonEmpty a -> String)
-sepBy1 p s =
-  \xs -> concat (NonEmpty.intersperse s (p <$> xs))
 
 binOp :: BinOp -> String
 binOp = \case
@@ -40,15 +35,17 @@ expr = \case
   BinOp a op b -> parens (expr a <+> binOp op <+> expr b)
   Var v -> v
   Match p e -> parens (pat p <+> "=" <+> expr e)
-  Apply (MkFunId ns f _a) es ->
+  Apply _ (MkFunId ns f _a) es ->
     concat
       [ case ns of Just ns -> ns ++ ":"; Nothing -> ""
       , f
       , parens ((expr `sepBy` ", ") es)
       ]
+  -- DynApply e1 es -> parens (expr e1) ++ parens ((expr `sepBy` ", ") es)
+  -- Fun f -> "fun" <+> f.name ++ "/" ++ show f.arity
 
 exprs :: Exprs -> String
-exprs = expr `sepBy1` ", "
+exprs = expr `sepBy` ", "
 
 funClause :: FunClause -> String
 funClause clause =

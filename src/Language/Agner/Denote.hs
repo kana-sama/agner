@@ -1,14 +1,9 @@
 module Language.Agner.Denote where
 
-import Data.List.NonEmpty (NonEmpty ((:|)))
-import Data.List.NonEmpty qualified as NonEmpty
-import Data.Map.Strict (Map)
+import Language.Agner.Prelude
+
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import Data.Foldable (foldlM)
-
-import Control.Exception (Exception, throw)
-import Control.Monad.State.Strict
 
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
@@ -81,7 +76,7 @@ expr = \case
     case (match p v) env of
       Nothing -> throw (NoMatch p v env)
       Just env -> put env *> pure v
-  Syntax.Apply funid args -> runStateT do
+  Syntax.Apply _ funid args -> runStateT do
     let !fun = resolveFunction funid
     vals <- traverse (StateT . expr) args
     liftIO (fun vals)
@@ -102,9 +97,10 @@ match (Syntax.PatVar var) val =
       Just val'
         | Value.same val val' -> Just env
         | otherwise -> Nothing
-      
+
 exprs :: (?funs :: FunEnv) => Syntax.Exprs -> (Env -> IO (Value, Env))
-exprs (e :| es) = runStateT do
+exprs [] = nonEmptyError "Denote.exprs"
+exprs (e : es) = runStateT do
   v <- StateT (expr e)
   foldlM (\_ e -> StateT (expr e)) v es
 

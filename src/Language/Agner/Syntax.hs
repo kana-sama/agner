@@ -1,12 +1,11 @@
 module Language.Agner.Syntax where
 
-import Data.Set (Set)
+import Language.Agner.Prelude
+
 import Data.Set qualified as Set
 import Data.List.NonEmpty (NonEmpty)
 import Data.Aeson (ToJSON)
 import Data.List qualified as List
-import Data.String (IsString(..))
-import GHC.Generics (Generic)
 
 type Var = String
 type Atom = String
@@ -42,13 +41,19 @@ data BinOp
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON)
 
+data CallTailness = SimpleCall | TailCall
+  deriving stock (Show, Generic)
+  deriving anyclass (ToJSON)
+
 data Expr
   = Integer Integer
   | Atom Atom
   | BinOp Expr BinOp Expr
   | Var Var
   | Match Pat Expr
-  | Apply FunId [Expr]
+  | Apply CallTailness FunId [Expr]
+  -- | DynApply Expr [Expr]
+  -- | Fun FunId
   deriving stock (Show)
 
 data Pat
@@ -58,7 +63,7 @@ data Pat
   | PatAtom Atom
   deriving (Show)
 
-type Exprs = NonEmpty Expr
+type Exprs = [Expr]
 
 data FunClause = MkFunClause
   { funid :: FunId
@@ -89,7 +94,9 @@ exprVars = \case
   BinOp a _ b -> exprVars a `Set.union` exprVars b
   Var v -> Set.singleton v
   Match p e -> patVars p `Set.union` exprVars e
-  Apply _ es -> foldMap exprVars es
+  Apply _ _ es -> foldMap exprVars es
+  -- DynApply _ es -> foldMap exprVars es
+  -- Fun _ -> Set.empty
 
 exprsVars :: Exprs -> Set Var
 exprsVars = foldMap exprVars

@@ -1,10 +1,4 @@
-even(0) -> true;
-even(N) -> odd(N - 1).
+f(0) -> hello;
+f(N) -> f(N - 1).
 
-odd(0) -> false;
-odd(N) -> even(N - 1).
-
-main() ->
-  ok = agner:print(even(40)),
-  ok = agner:print(even(41)),
-  ok = agner:print(odd(41)).
+main() -> agner:print(f(9999999)).

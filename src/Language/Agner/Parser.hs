@@ -1,17 +1,13 @@
 module Language.Agner.Parser (Ex(..), Parser, parse, expr, exprs, module_) where
 
+import Language.Agner.Prelude hiding (try)
+
 import Data.Char qualified as Char
-import Data.Void (Void)
-import Data.List.NonEmpty (NonEmpty ((:|)))
 
-import Control.Monad (void)
-import Control.Exception (Exception (..), throw)
-
-import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>), try, sepBy, optional)
+import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>), try, sepBy, sepBy1, optional)
 import Text.Megaparsec.Char (char, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
-import Control.Applicative.Combinators.NonEmpty (sepBy1)
 import Control.Monad.Combinators.Expr (makeExprParser, Operator(..))
 
 import Language.Agner.Syntax
@@ -94,11 +90,16 @@ apply = do
         (a, Nothing) -> pure (Nothing, a)
         (a, Just b) -> pure (Just a, b)
 
+-- fun :: Parser FunId
+-- fun = do
+--   symbol "fun"
+
 term :: Parser Expr
 term = choice
   [ parens expr
+  -- , Fun <$> fun
   , uncurry Match <$> try match
-  , uncurry Apply <$> try apply
+  , uncurry (Apply SimpleCall) <$> try apply
   , Var <$> variable
   , Atom <$> atom
   , Integer <$> integer
@@ -129,7 +130,7 @@ funClause = do
 
 funDecl :: Parser FunDecl
 funDecl = do
-  c :| cs <- funClause `sepBy1` symbol ";"
+  c : cs <- funClause `sepBy1` symbol ";"
   symbol "."
   let clauses = c : cs
   let funid = c.funid
