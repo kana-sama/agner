@@ -5,7 +5,7 @@ import Control.Monad.Writer (MonadWriter, tell)
 
 type Label = String
 
-data Op = MOVQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | JMP | JZ | JE | JNZ | SYSCALL | CMPQ | CALLQ
+data Op = MOVQ | MOVZBQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | JMP | JZ | JE | JNZ | SYSCALL | CMPQ | CALLQ
   deriving stock (Show)
 
 data Reg = RAX | RBX | RCX | RDX | RSI | RDI | RSP | RBP | RIP | R8 | R9
@@ -15,6 +15,7 @@ data Operand
   = Reg Reg -- RAX
   | MemReg Int Reg -- -8(%RSP)
   | MemRegL Label Reg -- qwe(%RBP)
+  | Static Label -- lbl@GOTPCREL(%RIP)
   | Imm Integer -- $8
   | ImmL String
   | Lbl Label
@@ -34,8 +35,9 @@ type Prog = [Instr]
 rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9 :: Operand
 [rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9] = [Reg r | r <- [RAX ..]]
 
-movq, subq, addq, andq, cmpq :: MonadWriter Prog m => Operand -> Operand -> m ()
+movq, movzbq, subq, addq, andq, cmpq :: MonadWriter Prog m => Operand -> Operand -> m ()
 movq a b = tell [Op MOVQ [a, b]]
+movzbq a b = tell [Op MOVZBQ  [a, b]]
 subq a b = tell [Op SUBQ [a, b]]
 addq a b = tell [Op ADDQ [a, b]]
 andq a b = tell [Op ANDQ [a, b]]
@@ -45,11 +47,11 @@ pushq, popq :: MonadWriter Prog m => Operand -> m ()
 pushq a = tell [Op PUSHQ [a]]
 popq a = tell [Op POPQ [a]]
 
-jmp, jz, je, callq :: MonadWriter Prog m => Label -> m ()
-jmp l = tell [Op JMP [Lbl l]]
-jz l = tell [Op JZ [Lbl l]]
-je l = tell [Op JE [Lbl l]]
-callq l = tell [Op CALLQ [Lbl l]]
+jmp, jz, je, callq :: MonadWriter Prog m => Operand -> m ()
+jmp l = tell [Op JMP [l]]
+jz l = tell [Op JZ [l]]
+je l = tell [Op JE [l]]
+callq l = tell [Op CALLQ [l]]
 
 retq, syscall :: MonadWriter Prog m => m ()
 retq = tell [Op RETQ []]
@@ -63,13 +65,18 @@ prettyOperand = \case
   Reg reg -> "%" ++ show reg
   MemReg offset reg -> (if offset > 0 then "+" else "") ++ show offset ++ "(%" ++ show reg ++ ")"
   MemRegL lbl reg -> lbl ++ "(%" ++ show reg ++ ")"
+  Static lbl -> lbl ++ "@GOTPCREL" ++ "(%" ++ show RIP ++ ")"
   Imm i -> "$" ++ show i
   ImmL l -> "$" ++ l
   Lbl l -> l
 
 prettyInstr :: Instr -> String
 prettyInstr = \case
-  Op op ops -> "    " ++ show op ++ " " ++ List.intercalate ", " [prettyOperand o | o <- ops]
+  -- TODO: cringe
+  Op CALLQ [Reg r] ->
+    "    " ++ show CALLQ ++ " " ++ ("*" ++ prettyOperand (Reg r))
+  Op op ops ->
+    "    " ++ show op ++ " " ++ List.intercalate ", " [prettyOperand o | o <- ops]
   Label l -> l ++ ":"
   Set l i -> ".set " ++ l ++ ", " ++ show i
   Meta m -> m

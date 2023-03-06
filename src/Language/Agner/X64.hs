@@ -24,6 +24,7 @@ import Text.Show.Unicode (ushow)
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
 import Language.Agner.Value qualified as Value
+import Language.Agner.Pretty qualified as Pretty
 import Language.Agner.SM qualified as SM
 
 data Ex
@@ -72,21 +73,18 @@ execM = execWriter . flip runStateT emptyState
 _uuid :: M Int
 _uuid = #uuid <<+= 1
 
-mkStaticOperand :: Label -> Operand
-mkStaticOperand lbl = MemRegL (lbl ++ "@GOTPCREL") RIP
-
 _string :: String -> M Operand
 _string s = do
   i <- _uuid
   let lbl = "__string." ++ show i
   #strings %= Map.insert lbl s
-  pure (mkStaticOperand lbl)
+  pure (Static lbl)
 
 _atom :: Syntax.Atom -> M Operand
 _atom a = do
   let lbl = "__atom." ++ a
   #atoms %= Map.insert lbl a
-  pure (mkStaticOperand lbl)
+  pure (Static lbl)
 
 _label :: String -> M Label
 _label base = do
@@ -146,15 +144,24 @@ mkFunName (Syntax.MkFunId ns f arity) = mkLabel (ns' ++ "." ++ f ++ "." ++ show 
 mkFunBody :: WithTarget => Syntax.FunId -> Label
 mkFunBody f = mkFunName f ++ ".body"
 
+mkFunEnd :: WithTarget => Syntax.FunId -> Label
+mkFunEnd f = mkFunName f ++ ".end"
+
 mkFunClause :: WithTarget => Syntax.FunId -> Maybe Int -> Label
 mkFunClause f Nothing = mkFunName f ++ ".clause_fail"
 mkFunClause f (Just i) = mkFunName f ++ ".clause" ++ show i
+
+mkFunMeta :: WithTarget => Syntax.FunId -> Label
+mkFunMeta f = mkFunName f ++ ".meta"
+
+mkFunMetaOpt :: WithTarget => String -> Syntax.FunId -> Label
+mkFunMetaOpt opt f = mkFunMeta f ++ "." ++ opt
 
 entryPointName :: WithTarget => Label
 entryPointName = mkLabel "main"
 
 callContextOp :: WithTarget => Operand
-callContextOp = mkStaticOperand (mkLabel "RUNTIME_call_context")
+callContextOp = Static (mkLabel "RUNTIME_call_context")
 
 data Syscall = Write | Exit
 
@@ -170,32 +177,41 @@ mkSyscall = \case
 
 -- Generators
 
-_assertInteger :: String -> Operand -> M ()
-_assertInteger errorMsg op = mdo
+_assertTag :: Integer -> Operand -> M () -> M ()
+_assertTag tag op onFail = mdo
   movq op rax
   andq TAG_MASK rax
-  cmpq NUMBER_TAG rax
-  je done
-
-  _throw errorMsg
-
-  done <- _label "assert_integer.done"
+  cmpq (Imm tag) rax
+  je (Lbl done)
+  onFail
+  done <- _label "assert_tag.done"
   pure ()
 
-_popInteger :: String -> M Operand
-_popInteger msg = do
+_popTag :: Integer -> (Operand -> M ()) -> M Operand
+_popTag tag onFail = do
   op <- _pop
-  _assertInteger (msg ++ ", integer was expected") op
+  _assertTag tag op (onFail op)
   pure op
 
-compileBinOp :: Syntax.BinOp -> M ()
+compileBinOp :: WithTarget => Syntax.BinOp -> M ()
 compileBinOp = \case
   (Syntax.:+) -> integerBinOp "+" addq
   (Syntax.:-) -> integerBinOp "-" subq
   where
     integerBinOp name operator = do
-      b <- _popInteger ("bad args for " ++ name)
-      a <- _popInteger ("bad args for " ++ name)
+      b <- _pop
+      a <- _pop
+
+      let throw = do
+            movq a rdi
+            movq b rsi
+            op <- _string name
+            movq op rdx
+            callq (Lbl (mkLabel "_THROW_badarith"))
+
+      _assertTag NUMBER_TAG a throw
+      _assertTag NUMBER_TAG b throw
+      
       movq a rax
       operator b rax
       movq rax =<< _alloc
@@ -214,6 +230,10 @@ compileInstr = \case
     movq a rax
     movq rax =<< _alloc
 
+  SM.PUSH_FUN funid -> do
+    movq (Static (mkFunName funid)) rax
+    movq rax =<< _alloc
+
   SM.BINOP op -> do
     compileBinOp op
 
@@ -226,13 +246,60 @@ compileInstr = \case
     movq rax =<< _alloc
     movq rax =<< _alloc
 
+  -- TODO: unify with simple call
+  SM.DYN_CALL arity -> mdo
+    let argsOnStack = max 0 (arity - length regsForArguments)
+
+    -- align stack
+    when (argsOnStack > 0 && odd argsOnStack) do
+      subq WORD_SIZE rsp
+
+    -- push last arguments to stack
+    replicateM argsOnStack do
+      val <- _pop
+      pushq val
+
+    -- move first arguments to regs
+    for_ (reverse (take arity regsForArguments)) \reg -> do
+      val <- _pop
+      movq val (Reg reg)
+
+    f <- _popTag FUN_TAG \value -> do
+      movq value rdi
+      callq (Lbl (mkLabel "_THROW_badfun"))
+
+    -- get arity
+    movq f rax
+    subq WORD_SIZE rax
+    movq (MemReg 0 RAX) rax
+    addq f rax
+    movq (MemReg 0 RAX) rax
+
+    cmpq (Imm (fromIntegral arity)) rax
+    je (Lbl done)
+
+    movq f rdi
+    movq (Imm (fromIntegral arity)) rsi
+    callq (Lbl (mkLabel "_THROW_badarity"))
+
+    done <- _label "dyn_call.done"
+    callq f
+
+    -- restore stack
+    when (argsOnStack > 0) do
+      let toRestore = argsOnStack + if odd argsOnStack then 1 else 0
+      addq (Imm (fromIntegral toRestore * WORD_SIZE)) rsp
+
+    -- push result to symbolic stack
+    movq rax =<< _alloc
+
   SM.CALL f Syntax.TailCall -> do
     for_ (reverse [1..f.arity]) \i -> do
       arg <- _pop
       movq arg rax
       movq rax (mkArgOp i)
     movq UNBOUND_TAG =<< _alloc
-    jmp (mkFunBody f)
+    jmp (Lbl (mkFunBody f))
 
   SM.CALL f Syntax.SimpleCall -> do
     let argsOnStack = max 0 (f.arity - length regsForArguments)
@@ -251,7 +318,7 @@ compileInstr = \case
       val <- _pop
       movq val (Reg reg)
 
-    callq (mkFunName f)
+    callq (Lbl (mkFunName f))
 
     -- restore stack
     when (argsOnStack > 0) do
@@ -264,6 +331,9 @@ compileInstr = \case
   SM.FUNCTION funid vars -> do
     tell [Meta "\n"]
 
+    tell [Meta (".align " ++ show WORD_SIZE)]
+    tell [Meta (".skip " ++ show FUN_TAG)]
+    tell [Meta  (mkFunMetaOpt "size" funid ++ ": .quad " ++ mkFunEnd funid ++ " - " ++ mkFunName funid)]
     tell [Label (mkFunName funid)]
 
     -- prologue
@@ -297,6 +367,11 @@ compileInstr = \case
     let isAligned = requiredStackSize `mod` (WORD_SIZE * 2) == 0
     _set (mkStackSizeName funid) (requiredStackSize + if isAligned then 0 else WORD_SIZE)
 
+    tell [Meta (".align " ++ show WORD_SIZE)]
+    tell [Label (mkFunEnd funid)]
+    tell [Meta  (mkFunMetaOpt "arity" funid ++ ": .quad " ++ show funid.arity)]
+    tell [Meta  (mkFunMetaOpt "name" funid ++ ": .asciz " ++ show (Pretty.funid' funid))]
+
   SM.CLAUSE funid clauseN vars -> do
     tell [Label (mkFunClause funid (Just clauseN))]
 
@@ -309,7 +384,9 @@ compileInstr = \case
 
   SM.FAIL_CLAUSE funid _ -> do
     tell [Label (mkFunClause funid Nothing)]
-    _throw ("No function clause matching " ++ show funid)
+    movq (Static (mkFunName funid)) rdi
+    movq rbp rsi
+    callq (Lbl (mkLabel "_THROW_function_clause"))
 
   SM.LEAVE _ -> do
     s <- _pop
@@ -324,26 +401,19 @@ compileInstr = \case
 
   SM.LOAD var -> mdo
     movq (mkVarOp var) rax
-    andq UNBOUND_TAG rax
-    jz when_bound
-
-    when_unbound <- _label "load.when_unbound"
-    _throw ("Unbound variable " ++ var)
-
-    when_bound <- _label "load.when_bound"
-    movq (mkVarOp var) rax
     movq rax =<< _alloc
 
   SM.MATCH_I i onFail -> mdo
     value <- _pop
     movq value rax
     cmpq (encodeInteger i) rax
-    je when_equal
+    je (Lbl when_equal)
 
     when_not_equal <- _label "match_i.when_not_equal"
     case onFail of
-      SM.Throw -> _throw ("No match " ++ show i)
-      SM.NextClause funid clauseN -> jmp (mkFunClause funid clauseN)
+      SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+      SM.NextClause funid clauseN -> do
+        jmp (Lbl (mkFunClause funid clauseN))
 
     when_equal <- _label "match_i.when_equal"
     pure ()
@@ -353,47 +423,41 @@ compileInstr = \case
     movq value rax
     atom' <- _atom atom
     cmpq atom' rax
-    je when_equal
+    je (Lbl when_equal)
 
     when_not_equal <- _label "match_i.when_not_equal"
     case onFail of
-      SM.Throw -> _throw ("No match " ++ atom)
-      SM.NextClause funid clauseN -> jmp (mkFunClause funid clauseN)
+      SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+      SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
 
     when_equal <- _label "match_i.when_equal"
     pure ()
 
   SM.MATCH_VAR var onFail -> mdo
-    val <- _pop
+    value <- _pop
 
     movq (mkVarOp var) rax
     andq UNBOUND_TAG rax
-    jz when_bound
+    jz (Lbl when_bound)
 
     when_unbound <- _label "match_var.when_unbound"
-    movq val rax
+    movq value rax
     movq rax (mkVarOp var)
-    jmp done
+    jmp (Lbl done)
 
     when_bound <- _label "match_var.when_bound"
     mdo
       movq (mkVarOp var) rax
-      cmpq rax val
-      je done
+      cmpq rax value
+      je (Lbl done)
 
       when_not_equal <- _label "match_var.when_not_equal"
       case onFail of
-        SM.Throw -> _throw ("No match " ++ show var)
-        SM.NextClause funid clauseN -> jmp (mkFunClause funid clauseN)
+        SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+        SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
 
     done <- _label "match_var.done"
     pure ()
-
-_throw :: String -> M ()
-_throw msg = do
-  str <- _string msg
-  movq str rdi
-  jmp "__throw"
 
 compileProg :: WithTarget => SM.Prog -> M ()
 compileProg = traverse_ compileInstr
@@ -413,20 +477,13 @@ compile target prog = let ?target = target in execM do
   tell [Label entryPointName]
   subq WORD_SIZE rsp
 
-  callq (mkFunName ("main" Syntax.:/ 0))
+  callq (Lbl (mkFunName ("main" Syntax.:/ 0)))
   movq rax rdi
-  callq (mkLabel "_print_value")
+  callq (Lbl (mkLabel "_print_value"))
 
   addq WORD_SIZE rsp
   movq 0 rax
   retq
-
-  tell [Label "__throw"]
-  callq (mkLabel "_print_error_message")
-
-  movq (mkSyscall Exit) rax
-  movq 1 rdi
-  syscall
 
   
   -- BiFs mapping
@@ -440,7 +497,7 @@ compile target prog = let ?target = target in execM do
         movq a rax
         movq callContextOp rbx
         movq rax (MemReg 0 RBX)
-    jmp (mkLabel runtimeName)
+    jmp (Lbl (mkLabel runtimeName))
 
   -- data
   tell [Meta ".data"]

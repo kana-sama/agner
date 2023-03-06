@@ -17,6 +17,8 @@ data Ex
   | BinOp_BadArgs Syntax.BinOp
   | NoEntryPoint
   | NoFunctionClauseMatching Syntax.FunId [Value]
+  | BadFunction Value
+  | BadArity Syntax.FunId Int
   deriving stock (Show)
   deriving anyclass (Exception)
 
@@ -61,6 +63,8 @@ expr = \case
     pure (Value.Integer i)
   Syntax.Atom a -> runStateT do
     pure (Value.Atom a)
+  Syntax.Fun f -> runStateT do
+    pure (Value.Fun f)
   Syntax.BinOp a op b -> runStateT do
     a <- StateT (expr a)
     b <- StateT (expr b)
@@ -76,10 +80,20 @@ expr = \case
     case (match p v) env of
       Nothing -> throw (NoMatch p v env)
       Just env -> put env *> pure v
-  Syntax.Apply _ funid args -> runStateT do
-    let !fun = resolveFunction funid
-    vals <- traverse (StateT . expr) args
-    liftIO (fun vals)
+  Syntax.Apply _ funid args ->
+    apply funid args
+  Syntax.DynApply e args -> runStateT do
+    StateT (expr e) >>= \case
+      Value.Fun funid -> StateT (apply funid args)
+      value -> throw (BadFunction value)
+
+apply :: (?funs :: FunEnv) => Syntax.FunId -> [Syntax.Expr] -> (Env -> IO (Value, Env))
+apply funid args = runStateT do
+  when (funid.arity /= length args) do
+    throw (BadArity funid (length args))
+  let !fun = resolveFunction funid
+  vals <- traverse (StateT . expr) args
+  liftIO (fun vals)
 
 match :: Syntax.Pat -> Value -> (Env -> Maybe Env)
 match Syntax.PatWildcard _ =
@@ -111,12 +125,13 @@ module_ mod =
         Nothing -> throw NoEntryPoint
         Just main -> main []
 
+bifs :: Set Syntax.FunId
+bifs = Set.fromList
+  [ "agner:print/1"
+  ]
+
 isBif :: Syntax.FunId -> Bool
 isBif = (`Set.member` bifs)
-  where
-    bifs = Set.fromList
-      [ "agner:print/1"
-      ]
 
 bif :: Syntax.FunId -> ([Value] -> IO Value)
 bif = \case

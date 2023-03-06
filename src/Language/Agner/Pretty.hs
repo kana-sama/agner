@@ -28,6 +28,13 @@ pat = \case
   PatWildcard -> "_"
   PatAtom a -> a
 
+funid' :: FunId -> String
+funid' (MkFunId ns f _a) =
+  (case ns of Just ns -> ns ++ ":"; Nothing -> "") ++ f
+
+funid'' :: FunId -> String
+funid'' f = funid' f ++ "/" ++ show f.arity
+
 expr :: Expr -> String
 expr = \case
   Integer i -> show i
@@ -35,14 +42,13 @@ expr = \case
   BinOp a op b -> parens (expr a <+> binOp op <+> expr b)
   Var v -> v
   Match p e -> parens (pat p <+> "=" <+> expr e)
-  Apply _ (MkFunId ns f _a) es ->
+  Apply _ f es ->
     concat
-      [ case ns of Just ns -> ns ++ ":"; Nothing -> ""
-      , f
+      [ funid' f
       , parens ((expr `sepBy` ", ") es)
       ]
-  -- DynApply e1 es -> parens (expr e1) ++ parens ((expr `sepBy` ", ") es)
-  -- Fun f -> "fun" <+> f.name ++ "/" ++ show f.arity
+  DynApply e1 es -> parens (expr e1) ++ parens ((expr `sepBy` ", ") es)
+  Fun f -> "fun" <+> funid' f ++ "/" ++ show f.arity
 
 exprs :: Exprs -> String
 exprs = expr `sepBy` ", "

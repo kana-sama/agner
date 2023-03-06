@@ -4,3 +4,4 @@
 # define NUMBER_TAG  0b000
 # define UNBOUND_TAG 0b001
 # define ATOM_TAG    0b010
+# define FUN_TAG     0b100

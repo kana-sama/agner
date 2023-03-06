@@ -77,29 +77,41 @@ match = do
   e <- expr
   pure (p, e)
 
+qualifiedName :: Parser (Maybe Atom, Atom)
+qualifiedName = do
+  a <- atom
+  b <- optional do symbol ":" *> atom
+  case (a, b) of
+    (a, Nothing) -> pure (Nothing, a)
+    (a, Just b) -> pure (Just a, b)
+
+fun :: Parser FunId
+fun = do
+  symbol "fun"
+  (ns, f) <- qualifiedName
+  symbol "/"
+  arity <- integer
+  pure (MkFunId ns f (fromInteger arity))
+
 apply :: Parser (FunId, [Expr])
 apply = do
-  (ns, f) <- name
+  (ns, f) <- qualifiedName
   args <- parens (expr `sepBy` symbol ",")
   pure (MkFunId ns f (length args), args)
-  where
-    name = do
-      a <- atom
-      b <- optional do symbol ":" *> atom
-      case (a, b) of
-        (a, Nothing) -> pure (Nothing, a)
-        (a, Just b) -> pure (Just a, b)
 
--- fun :: Parser FunId
--- fun = do
---   symbol "fun"
+dynApply :: Parser (Expr, [Expr])
+dynApply = do
+  f <- parens expr <|> Var <$> variable
+  args <- parens (expr `sepBy` symbol ",")
+  pure (f, args)
 
 term :: Parser Expr
 term = choice
-  [ parens expr
-  -- , Fun <$> fun
+  [ Fun <$> fun
   , uncurry Match <$> try match
   , uncurry (Apply SimpleCall) <$> try apply
+  , uncurry DynApply <$> try dynApply
+  , parens expr
   , Var <$> variable
   , Atom <$> atom
   , Integer <$> integer

@@ -26,6 +26,8 @@ data Ex
   | DenoteEx Denote.Ex
   | NoFunctionClauseMatching Syntax.FunId [Value]
   | NoEntryPoint
+  | BadFunction Value
+  | BadArity Syntax.FunId Int
   deriving stock (Show)
 
 instance Exception Ex where
@@ -35,16 +37,18 @@ instance Exception Ex where
     | otherwise = Nothing
 
 data OnMatchFail = Throw | NextClause Syntax.FunId (Maybe Int)
-  deriving stock (Generic)
+  deriving stock (Generic, Show)
   deriving anyclass (ToJSON)
 
 data Instr
   = PUSH_I Integer
   | PUSH_ATOM Syntax.Atom
+  | PUSH_FUN Syntax.FunId
   | BINOP Syntax.BinOp
   | DROP
   | DUP
   | CALL{funid :: Syntax.FunId, tailness :: Syntax.CallTailness}
+  | DYN_CALL{arity :: Int}
   
   | FUNCTION{funid :: Syntax.FunId, vars :: [Syntax.Var]}
   | CLAUSE{funid :: Syntax.FunId, clauseIndex :: Int, vars :: [Syntax.Var]}
@@ -58,7 +62,7 @@ data Instr
   | MATCH_VAR Syntax.Var OnMatchFail
   | MATCH_ATOM Syntax.Atom OnMatchFail
 
-  deriving stock (Generic)
+  deriving stock (Generic, Show)
   deriving anyclass (ToJSON)
 
 type Prog = [Instr]
@@ -69,6 +73,8 @@ compileExpr = \case
     [PUSH_I i]
   Syntax.Atom a ->
     [PUSH_ATOM a]
+  Syntax.Fun f ->
+    [PUSH_FUN f]
   Syntax.BinOp a op b ->
     compileExpr a ++ compileExpr b ++ [BINOP op]
   Syntax.Var v ->
@@ -77,6 +83,8 @@ compileExpr = \case
     compileExpr e ++ [DUP] ++ compilePat Throw p
   Syntax.Apply tailness f args -> 
     foldMap compileExpr args ++ [CALL f tailness]
+  Syntax.DynApply f args ->
+    compileExpr f ++ foldMap compileExpr args ++ [DYN_CALL (length args)]
 
 compilePat :: OnMatchFail -> Syntax.Pat -> Prog
 compilePat onMatchFail = \case
@@ -184,6 +192,9 @@ instr (PUSH_I i) = execStateT do
 instr (PUSH_ATOM a) = execStateT do
   push (Value.Atom a)
   continue
+instr (PUSH_FUN f) = execStateT do
+  push (Value.Fun f)
+  continue
 instr (BINOP op) = execStateT do
   b <- pop
   a <- pop
@@ -197,15 +208,32 @@ instr DUP = execStateT do
   push a
   push a
   continue
+
 instr (CALL f _) | Denote.isBif f = execStateT do
   args <- replicateM f.arity pop
   result <- liftIO do Denote.bif f args
   push result
   continue
+
 -- TODO: do not allocate more frames
 instr (CALL f _) = execStateT do
   ret <- use #pos
   args <- replicateM f.arity pop
+  stack <- #stack <<.= reverse args
+  mem <- #mem <<.= Map.empty
+  #frames %= (MkFrame{stack, mem, ret} :)
+  case ?funs Map.!? f of
+    Nothing -> throw (UndefinedFuncton f)
+    Just pos -> #pos .= pos
+
+instr (DYN_CALL arity) = execStateT do
+  ret <- use #pos
+  args <- replicateM arity pop
+  f <- pop >>= \case
+    Value.Fun f -> pure f
+    value -> throw (BadFunction value)
+  when (f.arity /= arity) do
+    throw (BadArity f arity)
   stack <- #stack <<.= reverse args
   mem <- #mem <<.= Map.empty
   #frames %= (MkFrame{stack, mem, ret} :)

@@ -48,12 +48,12 @@ data CallTailness = SimpleCall | TailCall
 data Expr
   = Integer Integer
   | Atom Atom
+  | Fun FunId
   | BinOp Expr BinOp Expr
   | Var Var
   | Match Pat Expr
   | Apply CallTailness FunId [Expr]
-  -- | DynApply Expr [Expr]
-  -- | Fun FunId
+  | DynApply Expr [Expr]
   deriving stock (Show)
 
 data Pat
@@ -95,8 +95,8 @@ exprVars = \case
   Var v -> Set.singleton v
   Match p e -> patVars p `Set.union` exprVars e
   Apply _ _ es -> foldMap exprVars es
-  -- DynApply _ es -> foldMap exprVars es
-  -- Fun _ -> Set.empty
+  DynApply _ es -> foldMap exprVars es
+  Fun _ -> Set.empty
 
 exprsVars :: Exprs -> Set Var
 exprsVars = foldMap exprVars
