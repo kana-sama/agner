@@ -20,13 +20,14 @@ import Language.Agner.SM qualified as SM
 import Language.Agner.X64 qualified as X64
 import Language.Agner.Parser qualified as Parser
 import Language.Agner.Pretty qualified as Pretty
+import Language.Agner.Linter qualified as Linter
 import Language.Agner.Optimizer (optimize)
 
 run :: forall e. Exception e => IO Value -> IO ()
 run value = do
   result <- try @e (evaluate =<< value)
   case result of
-    Left e -> putStrLn ("!!" ++ displayException e)
+    Left e -> putStrLn (displayException e)
     Right v -> putStrLn (Value.encode v)
 
 parseArgs :: IO X64.Target
@@ -44,13 +45,16 @@ main = do
   target <- parseArgs
 
   !source <- try @Parser.Ex (evaluate =<< Parser.parse Parser.module_ <$> readFile "example.agn") >>= \case
-    Right source ->
-      pure source
-    Left ex -> do
-      putStrLn (displayException ex)
-      exitFailure
+    Right source -> pure source
+    Left ex -> do putStrLn (displayException ex); exitFailure
   putStrLn "source:"
   putStrLn (Pretty.module_ source)
+
+  case Linter.check source of
+    Nothing -> pure ()
+    Just error -> do
+      putStrLn ("** linter error: " ++ Linter.prettyError error)
+      exitFailure
 
   source <- pure (optimize source)
 
