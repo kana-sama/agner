@@ -29,6 +29,7 @@ default-extensions:
   - GADTs
   - PatternSynonyms
   - OverloadedStrings
+  - RankNTypes
 
 ghc-options:
   - -Wincomplete-patterns
@@ -53,6 +54,8 @@ library:
     - parser-combinators
 
     - unicode-show
+    - prettyprinter
+    - prettyprinter-ansi-terminal
 
 executables:
   agner:

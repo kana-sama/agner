@@ -1,3 +1,17 @@
-f(a, b, c, d) -> 1 - (2 - (3 - (4 - 5))).
+inc(N) -> N + 1.
+dec(N) -> N - 1.
+
+dispatch(inc) -> fun inc/1;
+dispatch(dec) -> fun dec/1.
+
+apply(Action, State) ->
+  agner:print(Action),
+  Fun = dispatch(Action),
+  Fun(State).
+
 main() ->
-  agner:print(10 - 2).
+  X0 = 0,
+  X1 = apply(inc, X0),
+  X2 = apply(inc, X1),
+  X3 = apply(dec, X2),
+  X4 = apply(inc, X3).

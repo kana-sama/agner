@@ -5,7 +5,7 @@ module Language.Agner.Prelude
 
 import Data.Map.Strict as X (Map)
 import Data.Set as X (Set)
-import Data.Foldable as X (foldlM, for_, traverse_)
+import Data.Foldable as X (foldlM, for_, traverse_, toList)
 import Data.Void as X (Void)
 import Data.Generics.Labels as X ()
 import Data.String as X (IsString(..))

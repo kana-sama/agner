@@ -28,7 +28,7 @@ void print_value(value_t value) {
     }
     case FUN_TAG: {
       fun_meta_t* meta = get_fun_meta(value);
-      printf("fun %s/%lld\n", meta->name, meta->arity);
+      printf("fun %s/%lld", meta->name, meta->arity);
       break;
     }
   }

@@ -24,7 +24,7 @@ import Text.Show.Unicode (ushow)
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
 import Language.Agner.Value qualified as Value
-import Language.Agner.Pretty qualified as Pretty
+import Language.Agner.Prettier qualified as Prettier
 import Language.Agner.SM qualified as SM
 
 data Ex
@@ -99,7 +99,7 @@ regsForArguments = [RDI, RSI, RDX, RCX, R8, R9]
 mkSymbolStack :: Int -> Zipper Operand
 mkSymbolStack bookedStackForVars = Zipper.fromList (regs ++ onStack)
   where
-    regs = [Reg r | r <- [RBX]]
+    regs = [Reg r | r <- []]
     onStack = [MemReg (-WORD_SIZE * i) RBP | i <- [bookedStackForVars + 1 ..]]
 
 _alloc :: M Operand
@@ -283,7 +283,8 @@ compileInstr = \case
     callq (Lbl (mkLabel "_THROW_badarity"))
 
     done <- _label "dyn_call.done"
-    callq f
+    movq f rax
+    callq rax
 
     -- restore stack
     when (argsOnStack > 0) do
@@ -370,7 +371,7 @@ compileInstr = \case
     tell [Meta (".align " ++ show WORD_SIZE)]
     tell [Label (mkFunEnd funid)]
     tell [Meta  (mkFunMetaOpt "arity" funid ++ ": .quad " ++ show funid.arity)]
-    tell [Meta  (mkFunMetaOpt "name" funid ++ ": .asciz " ++ show (Pretty.funid' funid))]
+    tell [Meta  (mkFunMetaOpt "name" funid ++ ": .asciz " ++ show (Prettier.string Prettier.funId funid))]
 
   SM.CLAUSE funid clauseN vars -> do
     tell [Label (mkFunClause funid (Just clauseN))]

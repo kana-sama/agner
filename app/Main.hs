@@ -19,7 +19,7 @@ import Language.Agner.Denote qualified as Denote
 import Language.Agner.SM qualified as SM
 import Language.Agner.X64 qualified as X64
 import Language.Agner.Parser qualified as Parser
-import Language.Agner.Pretty qualified as Pretty
+import Language.Agner.Prettier qualified as Prettier
 import Language.Agner.Linter qualified as Linter
 import Language.Agner.Optimizer (optimize)
 
@@ -44,23 +44,28 @@ main :: IO ()
 main = do
   target <- parseArgs
 
+  -- parse
   !source <- try @Parser.Ex (evaluate =<< Parser.parse Parser.module_ <$> readFile "example.agn") >>= \case
     Right source -> pure source
     Left ex -> do putStrLn (displayException ex); exitFailure
-  putStrLn "source:"
-  putStrLn (Pretty.module_ source)
+  Prettier.io Prettier.module_ source
+  putStrLn ""
 
+  -- lint
   case Linter.check source of
     Nothing -> pure ()
     Just error -> do
       putStrLn ("** linter error: " ++ Linter.prettyError error)
       exitFailure
 
+  -- optimize
   source <- pure (optimize source)
 
+  -- eval
   putStrLn "denote:"
   run @Denote.Ex (Denote.module_ source)
 
+  -- eval vm
   putStrLn "stack machine:"
   let sm = SM.compileModule source
   -- let !debug = SM.debug 1000 sm
@@ -68,6 +73,7 @@ main = do
   -- putStrLn "debug done"
   run @SM.Ex (SM.run sm)
 
+  -- compile and run
   withSystemTempDirectory "test" \path -> do
     let gas = (X64.prettyProg . X64.compile target) sm
 

@@ -7,7 +7,7 @@ import Control.Monad.Except
 import Language.Agner.Prelude
 import Language.Agner.Syntax
 import Language.Agner.Denote (bifs)
-import Language.Agner.Pretty qualified as Pretty
+import Language.Agner.Prettier qualified as Prettier
 
 data Error
   = UnboundVariable Var
@@ -18,7 +18,8 @@ prettyError = \case
   UnboundVariable var ->
     "variable '" ++ var ++ "A' is unbound"
   UndefinedFunction funid ->
-    "function " ++ Pretty.funid'' funid ++ " undefined"
+    "function " ++ Prettier.string Prettier.funId funid ++
+      "/" ++ show funid.arity ++ " undefined"
 
 check :: Module -> Maybe Error
 check module_ = (toMaybe . runExcept) do
