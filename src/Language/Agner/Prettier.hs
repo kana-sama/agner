@@ -48,6 +48,7 @@ expr = \case
   Integer i -> pretty i
   Atom a -> pretty a
   Fun f -> "fun" <+> funId f <> "/" <> pretty f.arity
+  Tuple es -> braces (hsep (punctuate comma (expr <$> es)))
   BinOp l op r -> expr l <+> binop op <+> expr r
   Var v -> var v
   Match p e -> pat p <+> "=" <+> expr e
@@ -61,6 +62,7 @@ pat = \case
   PatWildcard -> "_"
   PatInteger i -> pretty i
   PatAtom a -> pretty a
+  PatTuple ps -> braces (hsep (punctuate comma (pat <$> ps)))
 
 listOf :: (a -> D) -> [a] -> D
 listOf p xs = hsep (punctuate comma (p <$> xs))

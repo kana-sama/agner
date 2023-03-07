@@ -234,6 +234,21 @@ compileInstr = \case
     movq (Static (mkFunName funid)) rax
     movq rax =<< _alloc
 
+  SM.PUSH_TUPLE size -> do
+    when (odd size) do
+      subq WORD_SIZE rsp
+    replicateM_ size do
+      pushq =<< _pop
+    
+    movq (Imm (fromIntegral size)) rdi
+    movq rsp rsi
+    callq (Lbl (mkLabel "_alloc_tuple"))
+    movq rax =<< _alloc
+
+    addq (Imm (fromIntegral (WORD_SIZE * size))) rsp
+    when (odd size) do
+      addq WORD_SIZE rsp
+
   SM.BINOP op -> do
     compileBinOp op
 
@@ -255,7 +270,7 @@ compileInstr = \case
       subq WORD_SIZE rsp
 
     -- push last arguments to stack
-    replicateM argsOnStack do
+    replicateM_ argsOnStack do
       val <- _pop
       pushq val
 
@@ -310,7 +325,7 @@ compileInstr = \case
       subq WORD_SIZE rsp
 
     -- push last arguments to stack
-    replicateM argsOnStack do
+    replicateM_ argsOnStack do
       val <- _pop
       pushq val
 
@@ -459,6 +474,24 @@ compileInstr = \case
 
     done <- _label "match_var.done"
     pure ()
+
+  SM.MATCH_TUPLE size onFail -> mdo
+    value <- _pop
+    movq value rdi
+    movq (Imm (fromIntegral size)) rsi
+    callq (Lbl (mkLabel "_match_tuple"))
+    cmpq 0 rax
+    jne (Lbl unpack_tuple)
+
+    case onFail of
+      SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+      SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
+
+    unpack_tuple <- _label "match_tuple.unpack_tuple"
+    movq rax rbx
+    for_ [1..size] \i -> do
+      movq (MemReg ((size-i) * WORD_SIZE) RBX) rax
+      movq rax =<< _alloc
 
 compileProg :: WithTarget => SM.Prog -> M ()
 compileProg = traverse_ compileInstr

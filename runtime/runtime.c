@@ -9,7 +9,22 @@ typedef struct fun_meta_t {
   char name[];
 } __attribute__((packed)) fun_meta_t;
 
+typedef struct boxed_tuple_t {
+  int64_t header;
+  int64_t size;
+  value_t values[];
+} __attribute__((packed)) boxed_tuple_t;
+
+typedef union boxed_value_t {
+  struct { int64_t header; } super;
+  boxed_tuple_t tuple;
+} boxed_value_t;
+
 value_t RUNTIME_call_context;
+
+// 1 gb of heap
+value_t RUNTIME_heap[125000000] __attribute__((aligned (8)));
+value_t* RUNTIME_heap_head = RUNTIME_heap;
 
 fun_meta_t* get_fun_meta(value_t fun) {
   int64_t fun_size = *((int64_t*)fun - 1);
@@ -31,6 +46,23 @@ void print_value(value_t value) {
       printf("fun %s/%lld", meta->name, meta->arity);
       break;
     }
+    case BOX_TAG: {
+      boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
+      
+      switch (ref->super.header) {
+        case TUPLE_HEADER: {
+          printf("{");
+          for (int i = 0; i < ref->tuple.size; i++) {
+            print_value(ref->tuple.values[i]);
+            if (i != ref->tuple.size - 1) printf(",");
+          }
+          printf("}");
+          break;
+        }
+      }
+
+      break;
+    }
   }
 }
 
@@ -40,6 +72,25 @@ extern void _print_value(value_t value) {
   fflush(stdout);
 }
 
+extern value_t _alloc_tuple(int64_t size, value_t* values) {
+  boxed_tuple_t* tuple = (boxed_tuple_t*)RUNTIME_heap_head;
+  RUNTIME_heap_head += sizeof(boxed_tuple_t)/WORD_SIZE + size;
+  tuple->header = TUPLE_HEADER;
+  tuple->size = size;
+  for (int i = 0; i < size; i++) {
+    tuple->values[i] = values[i];
+  }
+
+  return (value_t)tuple | BOX_TAG;
+}
+
+extern value_t* _match_tuple(value_t value, int64_t size) {
+  if ((value & TAG_MASK) != BOX_TAG) return 0;
+  boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
+  if (ref->super.header != TUPLE_HEADER) return 0;
+  if (ref->tuple.size != size) return 0;
+  return ref->tuple.values;
+}
 
 char* format_args(int64_t n) {
   switch (n) {

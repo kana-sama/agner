@@ -2,6 +2,7 @@ module Language.Agner.Value (Value(..), same, encode) where
 
 import Data.Aeson (ToJSON)
 import GHC.Generics (Generic)
+import Data.List (intercalate)
 
 import Language.Agner.Syntax qualified as Syntax
 
@@ -9,7 +10,8 @@ data Value
   = Integer Integer
   | Atom Syntax.Atom
   | Fun Syntax.FunId
-  deriving stock (Show, Generic)
+  | Tuple [Value]
+  deriving stock (Show, Generic, Eq)
   deriving anyclass (ToJSON)
 
 encode :: Value -> String
@@ -24,9 +26,8 @@ encode = \case
       , "/"
       , show f.arity
       ]
+  Tuple vs ->
+    "{" ++ intercalate "," [encode v | v <- vs] ++ "}"
 
 same :: Value -> Value -> Bool
-same (Integer i) (Integer j) | i == j = True
-same (Atom a) (Atom b) | a == b = True
-same (Fun a) (Fun b) | a == b = True
-same _ _ = False
+same = (==)

@@ -5,7 +5,7 @@ import Control.Monad.Writer (MonadWriter, tell)
 
 type Label = String
 
-data Op = MOVQ | MOVZBQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | JMP | JZ | JE | JNZ | SYSCALL | CMPQ | CALLQ
+data Op = MOVQ | MOVZBQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | ORQ | XORQ | JMP | JZ | JE | JNE | JNZ | SYSCALL | CMPQ | CALLQ
   deriving stock (Show)
 
 data Reg = RAX | RBX | RCX | RDX | RSI | RDI | RSP | RBP | RIP | R8 | R9
@@ -35,11 +35,13 @@ type Prog = [Instr]
 rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9 :: Operand
 [rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9] = [Reg r | r <- [RAX ..]]
 
-movq, movzbq, subq, addq, andq, cmpq :: MonadWriter Prog m => Operand -> Operand -> m ()
+movq, movzbq, subq, addq, orq, xorq, andq, cmpq :: MonadWriter Prog m => Operand -> Operand -> m ()
 movq a b = tell [Op MOVQ [a, b]]
 movzbq a b = tell [Op MOVZBQ  [a, b]]
 subq a b = tell [Op SUBQ [a, b]]
 addq a b = tell [Op ADDQ [a, b]]
+orq a b = tell [Op ORQ [a, b]]
+xorq a b = tell [Op XORQ [a, b]]
 andq a b = tell [Op ANDQ [a, b]]
 cmpq a b = tell [Op CMPQ [a, b]]
 
@@ -47,10 +49,11 @@ pushq, popq :: MonadWriter Prog m => Operand -> m ()
 pushq a = tell [Op PUSHQ [a]]
 popq a = tell [Op POPQ [a]]
 
-jmp, jz, je, callq :: MonadWriter Prog m => Operand -> m ()
+jmp, jz, je, jne, callq :: MonadWriter Prog m => Operand -> m ()
 jmp l = tell [Op JMP [l]]
 jz l = tell [Op JZ [l]]
 je l = tell [Op JE [l]]
+jne l = tell [Op JNE [l]]
 callq l = tell [Op CALLQ [l]]
 
 retq, syscall :: MonadWriter Prog m => m ()

@@ -49,6 +49,7 @@ data Expr
   = Integer Integer
   | Atom Atom
   | Fun FunId
+  | Tuple [Expr]
   | BinOp Expr BinOp Expr
   | Var Var
   | Match Pat Expr
@@ -61,6 +62,7 @@ data Pat
   | PatWildcard
   | PatInteger Integer
   | PatAtom Atom
+  | PatTuple [Pat]
   deriving (Show)
 
 type Exprs = [Expr]
@@ -86,17 +88,19 @@ patVars = \case
   PatWildcard -> Set.empty
   PatInteger _ -> Set.empty
   PatAtom _ -> Set.empty
+  PatTuple ps -> foldMap patVars ps
 
 exprVars :: Expr -> Set Var
 exprVars = \case
   Integer _ -> Set.empty
   Atom _ -> Set.empty
+  Fun _ -> Set.empty
+  Tuple es -> foldMap exprVars es
   BinOp a _ b -> exprVars a `Set.union` exprVars b
   Var v -> Set.singleton v
   Match p e -> patVars p `Set.union` exprVars e
   Apply _ _ es -> foldMap exprVars es
   DynApply _ es -> foldMap exprVars es
-  Fun _ -> Set.empty
 
 exprsVars :: Exprs -> Set Var
 exprsVars = foldMap exprVars

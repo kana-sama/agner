@@ -44,6 +44,7 @@ data Instr
   = PUSH_I Integer
   | PUSH_ATOM Syntax.Atom
   | PUSH_FUN Syntax.FunId
+  | PUSH_TUPLE Int
   | BINOP Syntax.BinOp
   | DROP
   | DUP
@@ -61,6 +62,7 @@ data Instr
   | MATCH_I Integer OnMatchFail
   | MATCH_VAR Syntax.Var OnMatchFail
   | MATCH_ATOM Syntax.Atom OnMatchFail
+  | MATCH_TUPLE Int OnMatchFail
 
   deriving stock (Generic, Show)
   deriving anyclass (ToJSON)
@@ -75,6 +77,8 @@ compileExpr = \case
     [PUSH_ATOM a]
   Syntax.Fun f ->
     [PUSH_FUN f]
+  Syntax.Tuple es ->
+    foldMap compileExpr es ++ [PUSH_TUPLE (length es)]
   Syntax.BinOp a op b ->
     compileExpr a ++ compileExpr b ++ [BINOP op]
   Syntax.Var v ->
@@ -92,6 +96,7 @@ compilePat onMatchFail = \case
   Syntax.PatInteger i -> [MATCH_I i onMatchFail]
   Syntax.PatWildcard -> [DROP]
   Syntax.PatAtom a -> [MATCH_ATOM a onMatchFail]
+  Syntax.PatTuple ps -> [MATCH_TUPLE (length ps) onMatchFail] ++ foldMap (compilePat onMatchFail) ps
 
 compileExprs :: Syntax.Exprs -> Prog
 compileExprs exprs = List.intercalate [DROP] [compileExpr e | e <- exprs]
@@ -194,6 +199,10 @@ instr (PUSH_ATOM a) = execStateT do
   continue
 instr (PUSH_FUN f) = execStateT do
   push (Value.Fun f)
+  continue
+instr (PUSH_TUPLE size) = execStateT do
+  vs <- reverse <$> replicateM size pop
+  push (Value.Tuple vs)
   continue
 instr (BINOP op) = execStateT do
   b <- pop
@@ -308,6 +317,13 @@ instr (MATCH_ATOM a onMatchFail) = execStateT do
     else case onMatchFail of
           Throw -> throw (NoMatch (Syntax.PatAtom a) value)
           NextClause{} -> leave *> skipForNextClause
+
+instr (MATCH_TUPLE size onMatchFail) = execStateT do
+  values <- pop >>= \case
+    Value.Tuple vs -> pure vs
+    value -> throw (NoMatch (Syntax.PatTuple (replicate size Syntax.PatWildcard)) value)
+  for_ (reverse values) push
+  continue
 
 step :: (?funs :: FunEnv) => Cfg -> IO Cfg
 step cfg

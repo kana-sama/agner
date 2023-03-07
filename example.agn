@@ -1,20 +1,10 @@
-inc(N) -> N + 1.
-dec(N) -> N - 1.
-
-dispatch(inc) -> fun inc/1;
-dispatch(dec) -> fun dec/1.
-
-apply(Action, State) ->
-  agner:print(Action),
-  Fun = dispatch(Action),
-  Fun(State).
+dispatch({add, N}, X) -> X + N;
+dispatch({sub, N}, X) -> X - N.
 
 main() ->
-  X0 = 0,
-  X1 = apply(inc, X0),
-  X2 = apply(inc, X1),
-  X3 = apply(dec, X2),
-  X4 = apply(inc, X3).
+  A = 0,
+  B = dispatch({add, 10}, A),
+  C = dispatch({sub, 3}, B).
 
 colors_example() ->
   A0 = B0 = C0 = D0 = E0 = F0 = G0 = 1,

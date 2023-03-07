@@ -65,6 +65,9 @@ expr = \case
     pure (Value.Atom a)
   Syntax.Fun f -> runStateT do
     pure (Value.Fun f)
+  Syntax.Tuple es -> runStateT do
+    vs <- for es \e -> StateT (expr e)
+    pure (Value.Tuple vs)
   Syntax.BinOp a op b -> runStateT do
     a <- StateT (expr a)
     b <- StateT (expr b)
@@ -103,6 +106,10 @@ match (Syntax.PatInteger i) value
   | otherwise = \env -> Nothing
 match (Syntax.PatAtom a) value
   | Value.same (Value.Atom a) value = \env -> Just env
+  | otherwise = \env -> Nothing
+match (Syntax.PatTuple ps) value
+  | Value.Tuple vs <- value, length ps == length vs =
+      \env -> foldlM (\env (p, v) -> match p v env) env (zip ps vs) 
   | otherwise = \env -> Nothing
 match (Syntax.PatVar var) val =
   \env ->

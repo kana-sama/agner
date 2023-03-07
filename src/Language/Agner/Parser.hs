@@ -68,6 +68,7 @@ pat = choice
   , PatWildcard <$ symbol "_"
   , PatAtom <$> atom
   , PatInteger <$> integer
+  , PatTuple <$> tupleOf pat
   ]
 
 match :: Parser (Pat, Expr)
@@ -93,6 +94,12 @@ fun = do
   arity <- integer
   pure (MkFunId ns f (fromInteger arity))
 
+braces :: Parser a -> Parser a
+braces = between (symbol "{") (symbol "}")
+
+tupleOf :: Parser a -> Parser [a]
+tupleOf elem = braces (elem `sepBy` symbol ",")
+
 apply :: Parser (FunId, [Expr])
 apply = do
   (ns, f) <- qualifiedName
@@ -115,6 +122,7 @@ term = choice
   , Var <$> variable
   , Atom <$> atom
   , Integer <$> integer
+  , Tuple <$> tupleOf expr
   ]
 
 expr :: Parser Expr
