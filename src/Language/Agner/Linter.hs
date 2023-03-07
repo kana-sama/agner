@@ -2,8 +2,6 @@ module Language.Agner.Linter (Error(..), prettyError, check) where
 
 import Data.Set qualified as Set
 
-import Control.Monad.Except
-
 import Language.Agner.Prelude
 import Language.Agner.Syntax
 import Language.Agner.Denote (bifs)
@@ -12,6 +10,7 @@ import Language.Agner.Prettier qualified as Prettier
 data Error
   = UnboundVariable Var
   | UndefinedFunction FunId
+  | FunctionAlreadyDefined FunId
 
 prettyError :: Error -> String
 prettyError = \case
@@ -20,11 +19,15 @@ prettyError = \case
   UndefinedFunction funid ->
     "function " ++ Prettier.string Prettier.funId funid ++
       "/" ++ show funid.arity ++ " undefined"
+  FunctionAlreadyDefined funid ->
+    "function " ++ Prettier.string Prettier.funId funid ++
+      "/" ++ show funid.arity ++ " already defined"
 
 check :: Module -> Maybe Error
 check module_ = (toMaybe . runExcept) do
   checkVariables module_
   checkFunctions module_
+  duplicateDefinitions module_
   where
     toMaybe (Left e) = Just e
     toMaybe (Right ()) = Nothing
@@ -40,6 +43,7 @@ checkVariables module_ = do
       Integer _ -> pure ()
       Atom _ -> pure ()
       Fun _ -> pure ()
+      Tuple es -> for_ es expr
       BinOp e1 _ e2 -> expr e1 *> expr e2
       Apply _ _ es -> for_ es expr
       DynApply e es -> for_ (e:es) expr
@@ -66,6 +70,7 @@ checkFunctions module_ = flip evalStateT Set.empty do
       Fun f -> do
         funs <- get
         check f
+      Tuple es -> for_ es expr
       BinOp e1 _ e2 -> expr e1 *> expr e2
       Apply _ f es -> do
         check f
@@ -79,3 +84,10 @@ checkFunctions module_ = flip evalStateT Set.empty do
       when (f `Set.notMember` funs) do
         throwError (UndefinedFunction f)
 
+duplicateDefinitions :: Module -> Except Error ()
+duplicateDefinitions module_ = go Set.empty [d.funid | d <- module_.decls]
+  where
+    go _ [] = pure ()
+    go funs (f:fs)
+      | f `Set.member` funs = throwError (FunctionAlreadyDefined f)
+      | otherwise = go (Set.insert f funs) fs
