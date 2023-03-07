@@ -4,7 +4,7 @@ import Language.Agner.Prelude hiding (try)
 
 import Data.Char qualified as Char
 
-import Text.Megaparsec (Parsec, between, choice, runParser, eof, many, empty, (<|>), try, sepBy, sepBy1, optional)
+import Text.Megaparsec (Parsec, between, choice, runParser, eof, some, many, empty, (<|>), try, sepBy, sepBy1, optional)
 import Text.Megaparsec.Char (char, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
@@ -52,8 +52,8 @@ parens = between (symbol "(") (symbol ")")
 
 variable :: Parser Var
 variable = lexeme do
-  x <- upperChar
-  xs <- many (underscore <|> alphaNumChar)
+  x <- upperChar <|> underscore
+  xs <- (if x == '_' then some else many) (underscore <|> alphaNumChar <|> char '@')
   pure (x:xs)
 
 atom :: Parser Atom
@@ -64,10 +64,10 @@ atom = lexeme do
 
 pat :: Parser Pat
 pat = choice
-  [ PatVar <$> variable
+  [ PatVar <$> try variable
+  , PatWildcard <$ symbol "_"
   , PatAtom <$> atom
   , PatInteger <$> integer
-  , PatWildcard <$ symbol "_"
   ]
 
 match :: Parser (Pat, Expr)

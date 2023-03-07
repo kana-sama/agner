@@ -10,19 +10,25 @@ import Prettyprinter.Render.Terminal
 
 import System.IO (stdout)
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 
 type D = Doc AnsiStyle
 
-colors :: [Color]
-colors = [Magenta, Green, Blue, Yellow, Red, Cyan]
+type WithVarStyles = (?varStyle :: Var -> AnsiStyle)
 
-type WithVarColors = (?varColor :: Var -> Color)
-
-withVarColors :: [Var] -> (WithVarColors => a) -> a
-withVarColors vars k = do
-  let map = Map.fromList (zip vars (cycle colors))
-  let ?varColor = \var -> map Map.! var
+withVarStyles :: [Var] -> (WithVarStyles => a) -> a
+withVarStyles vars k = do
+  let map = Map.fromList (zip vars (cycle styles))
+  let ?varStyle = \var -> map Map.! var
   k
+  where
+    colors = [Blue, Green, Magenta, Yellow, Red, Cyan, Black, White]
+    styles = concat
+      [ [color c | c <- colors, c /= White]
+      , [bgColor c | c <- colors]
+      , [color c <> italicized <> underlined | c <- colors, c /= White]
+      , [bgColor c <> italicized <> underlined | c <- colors]
+      ]
 
 binop :: BinOp -> D
 binop = \case
@@ -34,10 +40,10 @@ funId funid =
   let ns = pretty case funid.ns of Just ns -> ns ++ ":"; Nothing -> mempty
    in ns <> pretty funid.name
 
-var :: WithVarColors => Var -> D
-var v = annotate (color (?varColor v)) (pretty v)
+var :: WithVarStyles => Var -> D
+var v = annotate (?varStyle v) (pretty v)
 
-expr :: WithVarColors => Expr -> D
+expr :: WithVarStyles => Expr -> D
 expr = \case
   Integer i -> pretty i
   Atom a -> pretty a
@@ -49,7 +55,7 @@ expr = \case
   DynApply (Var v) es -> var v <> parens (listOf expr es)
   DynApply e es -> parens (expr e) <> parens (listOf expr es)
 
-pat :: WithVarColors => Pat -> D
+pat :: WithVarStyles => Pat -> D
 pat = \case
   PatVar v -> var v
   PatWildcard -> "_"
@@ -64,7 +70,7 @@ linesOf p xs = vsep (punctuate comma (p <$> xs))
 
 clause :: FunClause -> D
 clause c = do
-  withVarColors (toList (funClauseVars c)) do
+  withVarStyles (Set.toList (funClauseVars c)) do
     funId c.funid <> parens (listOf pat c.pats) <+> "->" <+>
       nest 2 (group (line' <> vcat (punctuate ", " (expr <$> c.body))))
 
