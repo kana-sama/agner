@@ -39,17 +39,10 @@ typedef struct heap_node_t {
   struct heap_node_t* next;
 } heap_node_t;
 
-typedef struct heap_t {
-  heap_node_t* head;
-  heap_node_t* last;
-} heap_t;
+heap_node_t* RUNTIME_heap;
 
-heap_t RUNTIME_heap;
-
-# define HEAP_CHUNK_SIZE 1024
+# define HEAP_CHUNK_SIZE (1024 * 1024 * 1024)
 heap_node_t* mk_heap() {
-  // puts("[new heap created]");
-
   heap_node_t* heap = malloc(sizeof(heap_node_t));
   heap->mem = malloc(HEAP_CHUNK_SIZE);
   
@@ -60,15 +53,13 @@ heap_node_t* mk_heap() {
 }
 
 void* allocate(int64_t size) {
-  heap_node_t* heap = RUNTIME_heap.last;
-  if (heap->mem_end - heap->mem_head < size) {
-    heap->next = mk_heap();
-    heap = heap->next;
-    RUNTIME_heap.last = heap;
+  if (RUNTIME_heap->mem_end - RUNTIME_heap->mem_head < size) {
+    RUNTIME_heap->next = mk_heap();
+    RUNTIME_heap = RUNTIME_heap->next;
   }
 
-  value_t* target = heap->mem_head;
-  heap->mem_head += size;
+  value_t* target = RUNTIME_heap->mem_head;
+  RUNTIME_heap->mem_head += size;
   return target;
 }
 
@@ -242,9 +233,7 @@ extern void _THROW_badarith(value_t l, value_t r, char* op) {
 }
 
 void _runtime_init() {
-  heap_node_t* heap = mk_heap();
-  RUNTIME_heap.head = heap;
-  RUNTIME_heap.last = heap;
+  RUNTIME_heap = mk_heap();
 }
 
 // BiFs

@@ -77,6 +77,9 @@ main = do
   withSystemTempDirectory "test" \path -> do
     let gas = (X64.prettyProg . X64.compile target) sm
 
+    writeFile "output.s" gas
+    putStrLn "output.s dumped"
+
     let runtimePath = "." </> "runtime" </> "runtime.c"
     let sourcePath = path </> "temp" <.> "s"
     let outputPath = path </> "temp"
@@ -92,9 +95,6 @@ main = do
       ExitFailure (-11) -> putStrLn "сегфолт"
       ExitFailure i -> putStrLn ("ExitCode = " ++ show i)
       ExitSuccess -> pure ()
-
-    writeFile "output.s" gas
-    putStrLn "output.s dumped"
 
 gcc ::
   "target" :! X64.Target ->

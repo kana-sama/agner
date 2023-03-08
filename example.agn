@@ -1,6 +1,7 @@
-reverse(List) -> reverse(List, []).
-reverse([H|T], Acc) -> reverse(T, [H|Acc]);
-reverse([], Acc) -> Acc.
+f(N) -> f(N, 0).
+f(0, Acc) -> Acc;
+f(N, Acc) ->
+  f(N-1, Acc + sum(replicate(1000000))).
 
 replicate(N) -> replicate(N, []).
 replicate(0, Acc) -> Acc;
@@ -11,4 +12,4 @@ sum([H|T], Acc) -> sum(T, Acc + H);
 sum([], Acc) -> Acc.
 
 main() ->
-  sum(replicate(100000000)) + sum(replicate(100000000)).
+  f(500).
