@@ -63,7 +63,7 @@ main = do
 
   -- eval
   putStrLn "denote:"
-  run @Denote.Ex (Denote.module_ source)
+  -- run @Denote.Ex (Denote.module_ source)
 
   -- eval vm
   putStrLn "stack machine:"
@@ -71,7 +71,7 @@ main = do
   -- let !debug = SM.debug 1000 sm
   -- encodeFile "adbg/src/debug.json" debug
   -- putStrLn "debug done"
-  run @SM.Ex (SM.run sm)
+  -- run @SM.Ex (SM.run sm)
 
   -- compile and run
   withSystemTempDirectory "test" \path -> do

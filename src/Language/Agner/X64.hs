@@ -550,6 +550,8 @@ compile target prog = let ?target = target in execM do
   tell [Label entryPointName]
   subq WORD_SIZE rsp
 
+  callq (Lbl (mkLabel "_runtime_init"))
+
   callq (Lbl (mkFunName ("main" Syntax.:/ 0)))
   movq rax rdi
   callq (Lbl (mkLabel "_print_value"))

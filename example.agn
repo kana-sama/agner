@@ -2,14 +2,13 @@ reverse(List) -> reverse(List, []).
 reverse([H|T], Acc) -> reverse(T, [H|Acc]);
 reverse([], Acc) -> Acc.
 
-map(F, [H|T]) -> [F(H)|map(F, T)];
-map(F, []) -> [].
+replicate(N) -> replicate(N, []).
+replicate(0, Acc) -> Acc;
+replicate(N, Acc) -> replicate(N-1, [N|Acc]).
 
-inc(N) -> N + 1.
+sum(List) -> sum(List, 0).
+sum([H|T], Acc) -> sum(T, Acc + H);
+sum([], Acc) -> Acc.
 
 main() ->
-  A = reverse(map(fun inc/1, [1, 2, 3, 4])),
-  agner:print(A),
-  agner:print([1 | 2]),
-  agner:print([1, 2, 3 | 4]),
-  agner:print([1, 2, 3 | [4, 5]]).
+  sum(replicate(100000000)) + sum(replicate(100000000)).

@@ -32,9 +32,45 @@ typedef union boxed_value_t {
 
 value_t RUNTIME_call_context;
 
-// 1 gb of heap
-value_t RUNTIME_heap[125000000] __attribute__((aligned (8)));
-value_t* RUNTIME_heap_head = RUNTIME_heap;
+typedef struct heap_node_t {
+  value_t* mem;
+  value_t* mem_head;
+  value_t* mem_end;
+  struct heap_node_t* next;
+} heap_node_t;
+
+typedef struct heap_t {
+  heap_node_t* head;
+  heap_node_t* last;
+} heap_t;
+
+heap_t RUNTIME_heap;
+
+# define HEAP_CHUNK_SIZE 1024
+heap_node_t* mk_heap() {
+  // puts("[new heap created]");
+
+  heap_node_t* heap = malloc(sizeof(heap_node_t));
+  heap->mem = malloc(HEAP_CHUNK_SIZE);
+  
+  heap->mem_head = heap->mem;
+  heap->mem_end = heap->mem + HEAP_CHUNK_SIZE/WORD_SIZE;
+  heap->next = NULL;
+  return heap;
+}
+
+void* allocate(int64_t size) {
+  heap_node_t* heap = RUNTIME_heap.last;
+  if (heap->mem_end - heap->mem_head < size) {
+    heap->next = mk_heap();
+    heap = heap->next;
+    RUNTIME_heap.last = heap;
+  }
+
+  value_t* target = heap->mem_head;
+  heap->mem_head += size;
+  return target;
+}
 
 fun_meta_t* get_fun_meta(value_t fun) {
   int64_t fun_size = *((int64_t*)fun - 1);
@@ -105,8 +141,7 @@ extern void _print_value(value_t value) {
 }
 
 extern value_t _alloc_tuple(int64_t size, value_t* values) {
-  boxed_tuple_t* tuple = (boxed_tuple_t*)RUNTIME_heap_head;
-  RUNTIME_heap_head += sizeof(boxed_tuple_t)/WORD_SIZE + size;
+  boxed_tuple_t* tuple = allocate(sizeof(boxed_tuple_t)/WORD_SIZE + size);
   tuple->header = TUPLE_HEADER;
   tuple->size = size;
   for (int i = 0; i < size; i++) {
@@ -133,8 +168,7 @@ int64_t is_list(value_t value) {
 }
 
 extern value_t _alloc_cons(value_t head, value_t tail) {
-  boxed_cons_t* cons = (boxed_cons_t*)RUNTIME_heap_head;
-  RUNTIME_heap_head += sizeof(boxed_cons_t)/WORD_SIZE;
+  boxed_cons_t* cons = allocate(sizeof(boxed_cons_t)/WORD_SIZE);
   cons->header = CONS_HEADER;
   cons->is_list = is_list(tail);
   cons->values.as_pair.head = head;
@@ -207,6 +241,11 @@ extern void _THROW_badarith(value_t l, value_t r, char* op) {
   exit(-1); 
 }
 
+void _runtime_init() {
+  heap_node_t* heap = mk_heap();
+  RUNTIME_heap.head = heap;
+  RUNTIME_heap.last = heap;
+}
 
 // BiFs
 
