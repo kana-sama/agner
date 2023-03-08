@@ -1,13 +1,15 @@
-dispatch({add, N}, X) -> X + N;
-dispatch({sub, N}, X) -> X - N.
+reverse(List) -> reverse(List, []).
+reverse([H|T], Acc) -> reverse(T, [H|Acc]);
+reverse([], Acc) -> Acc.
+
+map(F, [H|T]) -> [F(H)|map(F, T)];
+map(F, []) -> [].
+
+inc(N) -> N + 1.
 
 main() ->
-  A = 0,
-  B = dispatch({add, 10}, A),
-  C = dispatch({sub, 3}, B).
-
-colors_example() ->
-  A0 = B0 = C0 = D0 = E0 = F0 = G0 = 1,
-  H0 = I0 = J0 = K0 = L0 = M0 = N0 = P0 = 2,
-  Q0 = R0 = S0 = T0 = U0 = V0 = W0 = 3,
-  Y0 = Z0 = Z1 = Z2 = Z3 = Z4 = Z5 = Z6 = 4.
+  A = reverse(map(fun inc/1, [1, 2, 3, 4])),
+  agner:print(A),
+  agner:print([1 | 2]),
+  agner:print([1, 2, 3 | 4]),
+  agner:print([1, 2, 3 | [4, 5]]).

@@ -50,6 +50,8 @@ data Expr
   | Atom Atom
   | Fun FunId
   | Tuple [Expr]
+  | Nil
+  | Cons Expr Expr
   | BinOp Expr BinOp Expr
   | Var Var
   | Match Pat Expr
@@ -57,13 +59,37 @@ data Expr
   | DynApply Expr [Expr]
   deriving stock (Show)
 
+viewList :: Expr -> Maybe [Expr]
+viewList = \case
+  Nil -> Just []
+  Cons a b -> do xs <- viewList b; pure (a:xs)
+  _ -> Nothing
+
+pattern List :: [Expr] -> Expr
+pattern List es <- (viewList -> Just es)
+  where
+    List es = foldr Cons Nil es
+
 data Pat
   = PatVar Var
   | PatWildcard
   | PatInteger Integer
   | PatAtom Atom
   | PatTuple [Pat]
+  | PatNil
+  | PatCons Pat Pat
   deriving (Show)
+
+viewPatList :: Pat -> Maybe [Pat]
+viewPatList = \case
+  PatNil -> Just []
+  PatCons a b -> do xs <- viewPatList b; pure (a:xs)
+  _ -> Nothing
+
+pattern PatList :: [Pat] -> Pat
+pattern PatList ps <- (viewPatList -> Just ps)
+  where
+    PatList ps = foldr PatCons PatNil ps
 
 type Exprs = [Expr]
 
@@ -89,6 +115,8 @@ patVars = \case
   PatInteger _ -> Set.empty
   PatAtom _ -> Set.empty
   PatTuple ps -> foldMap patVars ps
+  PatNil -> Set.empty
+  PatCons a b -> patVars a `Set.union` patVars b
 
 exprVars :: Expr -> Set Var
 exprVars = \case
@@ -96,6 +124,8 @@ exprVars = \case
   Atom _ -> Set.empty
   Fun _ -> Set.empty
   Tuple es -> foldMap exprVars es
+  Nil -> Set.empty
+  Cons a b -> exprVars a `Set.union` exprVars b
   BinOp a _ b -> exprVars a `Set.union` exprVars b
   Var v -> Set.singleton v
   Match p e -> patVars p `Set.union` exprVars e

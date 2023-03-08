@@ -249,6 +249,15 @@ compileInstr = \case
     when (odd size) do
       addq WORD_SIZE rsp
 
+  SM.PUSH_NIL -> do
+    movq NIL_TAG =<< _alloc
+
+  SM.PUSH_CONS -> do
+    tail <- _pop; movq tail rsi
+    head <- _pop; movq head rdi
+    callq (Lbl (mkLabel "_alloc_cons"))
+    movq rax =<< _alloc
+
   SM.BINOP op -> do
     compileBinOp op
 
@@ -492,6 +501,36 @@ compileInstr = \case
     for_ [1..size] \i -> do
       movq (MemReg ((size-i) * WORD_SIZE) RBX) rax
       movq rax =<< _alloc
+
+  SM.MATCH_NIL onFail -> mdo
+    value <- _pop
+    movq value rax
+    cmpq NIL_TAG rax
+    je (Lbl when_equal)
+
+    case onFail of
+      SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+      SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
+
+    when_equal <- _label "match_nil.when_equal"
+    pure ()
+    
+  SM.MATCH_CONS onFail -> mdo
+    value <- _pop
+    movq value rdi
+    callq (Lbl (mkLabel "_match_cons"))
+    cmpq 0 rax
+    jne (Lbl unpack_cons)
+
+    case onFail of
+      SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+      SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
+
+    unpack_cons <- _label "match_cons.unpack_cons"
+    movq (MemReg (1 * WORD_SIZE) RAX) rbx
+    movq rbx =<< _alloc
+    movq (MemReg (0 * WORD_SIZE) RAX) rbx
+    movq rbx =<< _alloc
 
 compileProg :: WithTarget => SM.Prog -> M ()
 compileProg = traverse_ compileInstr

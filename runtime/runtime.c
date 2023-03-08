@@ -15,9 +15,19 @@ typedef struct boxed_tuple_t {
   value_t values[];
 } __attribute__((packed)) boxed_tuple_t;
 
+typedef struct boxed_cons_t {
+  int64_t header;
+  int64_t is_list;
+  union {
+    value_t as_array[2];
+    struct { value_t head; value_t tail; } as_pair;
+  } values;
+} __attribute__((packed)) boxed_cons_t;
+
 typedef union boxed_value_t {
   struct { int64_t header; } super;
   boxed_tuple_t tuple;
+  boxed_cons_t cons;
 } boxed_value_t;
 
 value_t RUNTIME_call_context;
@@ -46,6 +56,10 @@ void print_value(value_t value) {
       printf("fun %s/%lld", meta->name, meta->arity);
       break;
     }
+    case NIL_TAG: {
+      printf("[]");
+      break;
+    }
     case BOX_TAG: {
       boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
       
@@ -57,6 +71,24 @@ void print_value(value_t value) {
             if (i != ref->tuple.size - 1) printf(",");
           }
           printf("}");
+          break;
+        }
+        case CONS_HEADER: {
+          printf("[");
+          if (ref->cons.is_list == 1) {
+            value_t value = (value_t)ref | BOX_TAG;
+            while (value != NIL_TAG) {
+              boxed_cons_t* cons = (boxed_cons_t*)(value ^ BOX_TAG);
+              print_value(cons->values.as_pair.head);
+              if (cons->values.as_pair.tail != NIL_TAG) printf(",");
+              value = cons->values.as_pair.tail;
+            }
+          } else {
+            print_value(ref->cons.values.as_pair.head);
+            printf("|");
+            print_value(ref->cons.values.as_pair.tail);
+          }
+          printf("]");
           break;
         }
       }
@@ -90,6 +122,32 @@ extern value_t* _match_tuple(value_t value, int64_t size) {
   if (ref->super.header != TUPLE_HEADER) return 0;
   if (ref->tuple.size != size) return 0;
   return ref->tuple.values;
+}
+
+int64_t is_list(value_t value) {
+  if ((value & TAG_MASK) == NIL_TAG) return 1;
+  if ((value & TAG_MASK) != BOX_TAG) return 0;
+  boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
+  if (ref->super.header != CONS_HEADER) return 0;
+  return ref->cons.is_list;
+}
+
+extern value_t _alloc_cons(value_t head, value_t tail) {
+  boxed_cons_t* cons = (boxed_cons_t*)RUNTIME_heap_head;
+  RUNTIME_heap_head += sizeof(boxed_cons_t)/WORD_SIZE;
+  cons->header = CONS_HEADER;
+  cons->is_list = is_list(tail);
+  cons->values.as_pair.head = head;
+  cons->values.as_pair.tail = tail;
+
+  return (value_t)cons | BOX_TAG;
+}
+
+extern value_t* _match_cons(value_t value) {
+  if ((value & TAG_MASK) != BOX_TAG) return 0;
+  boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
+  if (ref->super.header != CONS_HEADER) return 0;
+  return ref->cons.values.as_array;
 }
 
 char* format_args(int64_t n) {

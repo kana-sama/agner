@@ -44,6 +44,8 @@ checkVariables module_ = do
       Atom _ -> pure ()
       Fun _ -> pure ()
       Tuple es -> for_ es expr
+      Nil -> pure ()
+      Cons a b -> do expr a; expr b
       BinOp e1 _ e2 -> expr e1 *> expr e2
       Apply _ _ es -> for_ es expr
       DynApply e es -> for_ (e:es) expr
@@ -71,6 +73,8 @@ checkFunctions module_ = flip evalStateT Set.empty do
         funs <- get
         check f
       Tuple es -> for_ es expr
+      Nil -> pure ()
+      Cons a b -> do expr a; expr b
       BinOp e1 _ e2 -> expr e1 *> expr e2
       Apply _ f es -> do
         check f

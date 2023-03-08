@@ -45,6 +45,8 @@ data Instr
   | PUSH_ATOM Syntax.Atom
   | PUSH_FUN Syntax.FunId
   | PUSH_TUPLE Int
+  | PUSH_NIL
+  | PUSH_CONS
   | BINOP Syntax.BinOp
   | DROP
   | DUP
@@ -63,6 +65,8 @@ data Instr
   | MATCH_VAR Syntax.Var OnMatchFail
   | MATCH_ATOM Syntax.Atom OnMatchFail
   | MATCH_TUPLE Int OnMatchFail
+  | MATCH_NIL OnMatchFail
+  | MATCH_CONS OnMatchFail
 
   deriving stock (Generic, Show)
   deriving anyclass (ToJSON)
@@ -79,6 +83,10 @@ compileExpr = \case
     [PUSH_FUN f]
   Syntax.Tuple es ->
     foldMap compileExpr es ++ [PUSH_TUPLE (length es)]
+  Syntax.Nil ->
+    [PUSH_NIL]
+  Syntax.Cons a b ->
+    compileExpr a ++ compileExpr b ++ [PUSH_CONS]
   Syntax.BinOp a op b ->
     compileExpr a ++ compileExpr b ++ [BINOP op]
   Syntax.Var v ->
@@ -97,6 +105,8 @@ compilePat onMatchFail = \case
   Syntax.PatWildcard -> [DROP]
   Syntax.PatAtom a -> [MATCH_ATOM a onMatchFail]
   Syntax.PatTuple ps -> [MATCH_TUPLE (length ps) onMatchFail] ++ foldMap (compilePat onMatchFail) ps
+  Syntax.PatNil -> [MATCH_NIL onMatchFail]
+  Syntax.PatCons a b -> [MATCH_CONS onMatchFail] ++ compilePat onMatchFail a ++ compilePat onMatchFail b
 
 compileExprs :: Syntax.Exprs -> Prog
 compileExprs exprs = List.intercalate [DROP] [compileExpr e | e <- exprs]
@@ -203,6 +213,14 @@ instr (PUSH_FUN f) = execStateT do
 instr (PUSH_TUPLE size) = execStateT do
   vs <- reverse <$> replicateM size pop
   push (Value.Tuple vs)
+  continue
+instr PUSH_NIL = execStateT do
+  push Value.Nil
+  continue
+instr PUSH_CONS = execStateT do
+  b <- pop
+  a <- pop
+  push (Value.Cons a b)
   continue
 instr (BINOP op) = execStateT do
   b <- pop
@@ -324,6 +342,25 @@ instr (MATCH_TUPLE size onMatchFail) = execStateT do
     value -> throw (NoMatch (Syntax.PatTuple (replicate size Syntax.PatWildcard)) value)
   for_ (reverse values) push
   continue
+
+instr (MATCH_NIL onMatchFail) = execStateT do
+  value <- pop
+  if Value.same Value.Nil value
+    then continue
+    else case onMatchFail of
+          Throw -> throw (NoMatch Syntax.PatNil value)
+          NextClause{} -> leave *> skipForNextClause
+
+instr (MATCH_CONS onMatchFail) = execStateT do
+  pop >>= \case
+    Value.Cons a b -> do
+      push b
+      push a
+      continue
+    value ->
+      case onMatchFail of
+        Throw -> throw (NoMatch (Syntax.PatCons Syntax.PatWildcard Syntax.PatWildcard) value)
+        NextClause{} -> leave *> skipForNextClause
 
 step :: (?funs :: FunEnv) => Cfg -> IO Cfg
 step cfg

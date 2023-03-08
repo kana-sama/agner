@@ -11,8 +11,21 @@ data Value
   | Atom Syntax.Atom
   | Fun Syntax.FunId
   | Tuple [Value]
+  | Nil
+  | Cons Value Value
   deriving stock (Show, Generic, Eq)
   deriving anyclass (ToJSON)
+
+viewList :: Value -> Maybe [Value]
+viewList = \case
+  Nil -> Just []
+  Cons a b -> do xs <- viewList b; pure (a:xs)
+  _ -> Nothing
+
+pattern List :: [Value] -> Value
+pattern List es <- (viewList -> Just es)
+  where
+    List es = foldr Cons Nil es
 
 encode :: Value -> String
 encode = \case
@@ -26,8 +39,10 @@ encode = \case
       , "/"
       , show f.arity
       ]
-  Tuple vs ->
-    "{" ++ intercalate "," [encode v | v <- vs] ++ "}"
+  Tuple vs -> "{" ++ intercalate "," [encode v | v <- vs] ++ "}"
+  List vs -> "[" ++ intercalate "," [encode v | v <- vs] ++ "]"
+  Nil -> "[]"
+  Cons a b -> "[" ++ encode a ++ "|" ++ encode b ++ "]"
 
 same :: Value -> Value -> Bool
 same = (==)

@@ -35,6 +35,9 @@ binop = \case
   (:+) -> "+"
   (:-) -> "-"
 
+keyword :: D -> D
+keyword = annotate bold
+
 funId :: FunId -> D
 funId funid =
   let ns = pretty case funid.ns of Just ns -> ns ++ ":"; Nothing -> mempty
@@ -47,7 +50,10 @@ expr :: WithVarStyles => Expr -> D
 expr = \case
   Integer i -> pretty i
   Atom a -> pretty a
-  Fun f -> "fun" <+> funId f <> "/" <> pretty f.arity
+  Fun f -> keyword "fun" <+> funId f <> "/" <> pretty f.arity
+  List es -> brackets (hsep (punctuate comma (expr <$> es)))
+  Nil -> "[]"
+  Cons a b -> brackets (expr a <+> "|" <+> expr b)
   Tuple es -> braces (hsep (punctuate comma (expr <$> es)))
   BinOp l op r -> expr l <+> binop op <+> expr r
   Var v -> var v
@@ -63,6 +69,9 @@ pat = \case
   PatInteger i -> pretty i
   PatAtom a -> pretty a
   PatTuple ps -> braces (hsep (punctuate comma (pat <$> ps)))
+  PatList ps -> brackets (hsep (punctuate comma (pat <$> ps)))
+  PatNil -> "[]"
+  PatCons a b -> brackets (pat a <+> "|" <+> pat b)
 
 listOf :: (a -> D) -> [a] -> D
 listOf p xs = hsep (punctuate comma (p <$> xs))
