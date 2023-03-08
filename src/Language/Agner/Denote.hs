@@ -68,6 +68,12 @@ expr = \case
   Syntax.Tuple es -> runStateT do
     vs <- for es \e -> StateT (expr e)
     pure (Value.Tuple vs)
+  Syntax.Nil -> runStateT do
+    pure Value.Nil
+  Syntax.Cons a b -> runStateT do
+    a <- StateT (expr a)
+    b <- StateT (expr b)
+    pure (Value.Cons a b)
   Syntax.BinOp a op b -> runStateT do
     a <- StateT (expr a)
     b <- StateT (expr b)
@@ -110,6 +116,12 @@ match (Syntax.PatAtom a) value
 match (Syntax.PatTuple ps) value
   | Value.Tuple vs <- value, length ps == length vs =
       \env -> foldlM (\env (p, v) -> match p v env) env (zip ps vs) 
+  | otherwise = \env -> Nothing
+match Syntax.PatNil value
+  | Value.Nil <- value = \env -> Just env
+  | otherwise = \env -> Nothing
+match (Syntax.PatCons pa pb) value
+  | Value.Cons a b <- value = match pa a >=> match pb b
   | otherwise = \env -> Nothing
 match (Syntax.PatVar var) val =
   \env ->

@@ -69,6 +69,7 @@ pat = choice
   , PatAtom <$> atom
   , PatInteger <$> integer
   , PatTuple <$> tupleOf pat
+  , makeList PatCons PatNil <$> listOf pat
   ]
 
 match :: Parser (Pat, Expr)
@@ -97,6 +98,9 @@ fun = do
 braces :: Parser a -> Parser a
 braces = between (symbol "{") (symbol "}")
 
+brackets :: Parser a -> Parser a
+brackets = between (symbol "[") (symbol "]")
+
 tupleOf :: Parser a -> Parser [a]
 tupleOf elem = braces (elem `sepBy` symbol ",")
 
@@ -112,6 +116,19 @@ dynApply = do
   args <- parens (expr `sepBy` symbol ",")
   pure (f, args)
 
+listOf :: Parser a -> Parser ([a], Maybe a)
+listOf elem = brackets do
+  elem `sepBy` symbol "," >>= \case
+    [] -> pure ([], Nothing)
+    es -> do
+      rest <- optional (symbol "|" *> elem)
+      pure (es, rest)
+
+makeList :: (a -> a -> a) -> a -> ([a], Maybe a) -> a
+makeList cons nil ([], Just rest) = rest
+makeList cons nil ([], Nothing) = nil
+makeList cons nil (e:es, rest) = cons e (makeList cons nil (es, rest))
+
 term :: Parser Expr
 term = choice
   [ Fun <$> fun
@@ -123,6 +140,7 @@ term = choice
   , Atom <$> atom
   , Integer <$> integer
   , Tuple <$> tupleOf expr
+  , makeList Cons Nil <$> listOf expr
   ]
 
 expr :: Parser Expr

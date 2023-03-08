@@ -30,6 +30,7 @@ default-extensions:
   - PatternSynonyms
   - OverloadedStrings
   - RankNTypes
+  - ViewPatterns
 
 ghc-options:
   - -Wincomplete-patterns
