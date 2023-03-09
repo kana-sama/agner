@@ -2,7 +2,7 @@
 set -e
 
 
-gcc output.s runtime/runtime.c -o example
+cabal run agner -- example.agn -o example
 
 ./example &
 pid=$(ps -A | grep example | awk '{print $1}' | head -n 1)
@@ -22,7 +22,7 @@ start=$(date +%s)
 # get the process' memory usage and run until `ps` fails which it will do when
 # the pid cannot be found any longer
 
-while mem=$(ps -o vsz= -p "$pid"); do
+while mem=$(ps -o rss= -p "$pid"); do
     time=$(date +%s)
 
     # print the time since starting the program followed by its memory usage
@@ -45,7 +45,7 @@ set xtics rotate by 45 offset -2.2,-1.5
 set nomxtics
 set grid ytics lc rgb "#bbbbbb" lw 1 lt 0
 set grid xtics lc rgb "#bbbbbb" lw 1 lt 0
-plot "$logfile" using 1:2 title "vsz" with lines
+plot "$logfile" using 1:2 title "rss" with lines
 EOF
 
 echo ./memory.png
