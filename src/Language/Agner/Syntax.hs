@@ -20,11 +20,21 @@ data FunId = MkFunId { ns :: Maybe ModuleName, name :: FunName, arity :: Int }
   deriving anyclass (ToJSON)
 
 instance IsString FunId where
-  fromString src0 = 
-    let (ns, ':':src1) = List.break (== ':') src0
-        (f, '/':src2) = List.break (== '/') src1
-        a = read src2
-      in MkFunId (Just ns) f a
+  fromString src0 =
+    let (ns,    src1) = parseNamespace src0
+        (name,  src2) = parseName src1
+        (arity,   "") = parseArity src2
+      in MkFunId ns name arity
+    where
+      parseNamespace src
+        | ':' `elem` src =
+            let (ns, ':':src') = List.break (== ':') src
+             in (Just ns, src')
+        | otherwise = (Nothing, src)
+      parseName src =
+        tail <$> List.break (== '/') src
+      parseArity src =
+        (read src, "")
 
 instance Show FunId where
   show f =

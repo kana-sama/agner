@@ -5,10 +5,10 @@ import Control.Monad.Writer (MonadWriter, tell)
 
 type Label = String
 
-data Op = MOVQ | MOVZBQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | ORQ | XORQ | JMP | JZ | JE | JNE | JNZ | SYSCALL | CMPQ | CALLQ
+data Op = LEAQ | MOVQ | MOVZBQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | ORQ | XORQ | JMP | JZ | JE | JNE | JNZ | SYSCALL | CMPQ | CALLQ
   deriving stock (Show)
 
-data Reg = RAX | RBX | RCX | RDX | RSI | RDI | RSP | RBP | RIP | R8 | R9
+data Reg = RAX | RBX | RCX | RDX | RSI | RDI | RSP | RBP | RIP | R8 | R9 | R10 | R11 | R12 | R13
   deriving stock (Show, Enum, Bounded)
 
 data Operand
@@ -32,10 +32,11 @@ data Instr
 
 type Prog = [Instr]
 
-rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9 :: Operand
-[rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9] = [Reg r | r <- [RAX ..]]
+rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9, r10, r11, r12, r13 :: Operand
+[rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9, r10, r11, r12, r13] = [Reg r | r <- [RAX ..]]
 
-movq, movzbq, subq, addq, orq, xorq, andq, cmpq :: MonadWriter Prog m => Operand -> Operand -> m ()
+leaq, movq, movzbq, subq, addq, orq, xorq, andq, cmpq :: MonadWriter Prog m => Operand -> Operand -> m ()
+leaq a b = tell [Op LEAQ [a, b]]
 movq a b = tell [Op MOVQ [a, b]]
 movzbq a b = tell [Op MOVZBQ  [a, b]]
 subq a b = tell [Op SUBQ [a, b]]

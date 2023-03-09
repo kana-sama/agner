@@ -19,6 +19,7 @@ data Ex
   | NoFunctionClauseMatching Syntax.FunId [Value]
   | BadFunction Value
   | BadArity Syntax.FunId Int
+  | Custom Value
   deriving stock (Show)
   deriving anyclass (Exception)
 
@@ -147,6 +148,7 @@ module_ mod =
 bifs :: Set Syntax.FunId
 bifs = Set.fromList
   [ "agner:print/1"
+  , "error/1"
   ]
 
 isBif :: Syntax.FunId -> Bool
@@ -157,6 +159,8 @@ bif = \case
   "agner:print/1" -> \[value] -> do
     putStrLn (Value.encode value)
     pure (Value.Atom "ok")
+  "error/1" -> \[value] -> do
+    throw (Custom value)
   funid -> throw (UnknownBiF funid)
 
 resolveFunction :: (?funs :: FunEnv) => Syntax.FunId -> ([Value] -> IO Value)

@@ -33,13 +33,75 @@ data Ex
 
 -- DSL
 
+data RuntimeName
+  = RuntimeHeap
+  | RuntimeStack
+  | RuntimeCallingContext
+  | RuntimeCallStack
+
+  | RuntimeInit
+  | RuntimePrintValue
+  | RuntimePushCallStack
+  | RuntimeDropCallStack
+
+  | RuntimeAllocTuple
+  | RuntimeMatchTuple
+  | RuntimeAllocCons
+  | RuntimeMatchCons
+
+  | ThrowBadArith
+  | ThrowBadFun
+  | ThrowBadArity
+  | ThrowBadMatch
+  | ThrowFunctionClause
+  deriving stock Eq
+
+isRuntimeVariable :: RuntimeName -> Bool
+isRuntimeVariable = (`elem` variables)
+  where
+    variables =
+      [ RuntimeHeap
+      , RuntimeStack
+      , RuntimeCallingContext
+      , RuntimeCallStack
+      ]
+
+runtimeName :: RuntimeName -> String
+runtimeName = \case
+  RuntimeHeap -> "_runtime__heap"
+  RuntimeStack -> "_runtime__stack"
+  RuntimeCallingContext -> "_runtime__calling_context"
+  RuntimeCallStack -> "_runtime__call_stack"
+
+  RuntimeInit -> "_runtime__init"
+  RuntimePrintValue -> "_runtime__print_value"
+  RuntimePushCallStack -> "_runtime__push_callstack"
+  RuntimeDropCallStack -> "_runtime__drop_callstack"
+
+  RuntimeAllocTuple -> "_runtime__alloc_tuple"
+  RuntimeMatchTuple -> "_runtime__match_tuple"
+  RuntimeAllocCons -> "_runtime__alloc_cons"
+  RuntimeMatchCons -> "_runtime__match_cons"
+
+  ThrowBadArith -> "_THROW_badarith"
+  ThrowBadFun -> "_THROW_badfun"
+  ThrowBadArity -> "_THROW_badarity"
+  ThrowBadMatch -> "_THROW_badmatch"
+  ThrowFunctionClause -> "_THROW_function_clause"
+
+runtime :: WithTarget => RuntimeName -> Operand
+runtime name =
+  (if isRuntimeVariable name then Static else Lbl)
+    (mkLabel (runtimeName name))
+
 data BiFContext
   = WithoutContext
   | WithAtomContext Syntax.Atom
 
 bifs :: [(Syntax.FunId, (String, BiFContext))]
 bifs =
-  [ "agner:print/1" ~> "_agner__print" // WithAtomContext "ok"
+  [ "agner:print/1" ~> "_agner__print"  // WithAtomContext "ok"
+  , "error/1"       ~> "_global__error" // WithoutContext
   ]
   where
     a ~> b = (a, b)
@@ -96,11 +158,15 @@ _label base = do
 regsForArguments :: [Reg]
 regsForArguments = [RDI, RSI, RDX, RCX, R8, R9]
 
+valuesStackReg, stackFrameReg :: Reg
+valuesStackReg = R12
+stackFrameReg = R13
+
 mkSymbolStack :: Int -> Zipper Operand
 mkSymbolStack bookedStackForVars = Zipper.fromList (regs ++ onStack)
   where
     regs = [Reg r | r <- []]
-    onStack = [MemReg (-WORD_SIZE * i) RBP | i <- [bookedStackForVars + 1 ..]]
+    onStack = [MemReg (WORD_SIZE * i) stackFrameReg | i <- [bookedStackForVars ..]]
 
 _alloc :: M Operand
 _alloc = do
@@ -108,7 +174,7 @@ _alloc = do
   #requiredStackSize %= max (getAllocated dest)
   pure dest
   where
-    getAllocated (MemReg n RBP) = -n
+    getAllocated (MemReg n _) = n + WORD_SIZE
     getAllocated _ = 0
 
 _pop :: M Operand
@@ -127,10 +193,10 @@ mkArgName :: Int -> Label
 mkArgName ix = "." ++ "arg" ++ show ix
 
 mkVarOp :: Syntax.Var -> Operand
-mkVarOp var = MemRegL (mkVarName var) RBP
+mkVarOp var = MemRegL (mkVarName var) stackFrameReg
 
 mkArgOp :: Int -> Operand
-mkArgOp ix = MemRegL (mkArgName ix) RBP
+mkArgOp ix = MemRegL (mkArgName ix) stackFrameReg
 
 mkLabel :: WithTarget => String -> Label
 mkLabel name = case ?target of
@@ -160,16 +226,11 @@ mkFunMetaOpt opt f = mkFunMeta f ++ "." ++ opt
 entryPointName :: WithTarget => Label
 entryPointName = mkLabel "main"
 
-callContextOp :: WithTarget => Operand
-callContextOp = Static (mkLabel "RUNTIME_call_context")
-
-data Syscall = Write | Exit
+data Syscall
+  = Exit
 
 mkSyscall :: WithTarget => Syscall -> Operand
 mkSyscall = \case
-  Write -> case ?target of
-    Linux -> 1
-    MacOS -> 0x2000004
   Exit -> case ?target of
     Linux -> 60
     MacOS -> 0x2000001
@@ -207,7 +268,7 @@ compileBinOp = \case
             movq b rsi
             op <- _string name
             movq op rdx
-            callq (Lbl (mkLabel "_THROW_badarith"))
+            callq (runtime ThrowBadArith)
 
       _assertTag NUMBER_TAG a throw
       _assertTag NUMBER_TAG b throw
@@ -242,7 +303,7 @@ compileInstr = \case
     
     movq (Imm (fromIntegral size)) rdi
     movq rsp rsi
-    callq (Lbl (mkLabel "_alloc_tuple"))
+    callq (runtime RuntimeAllocTuple)
     movq rax =<< _alloc
 
     addq (Imm (fromIntegral (WORD_SIZE * size))) rsp
@@ -255,7 +316,7 @@ compileInstr = \case
   SM.PUSH_CONS -> do
     tail <- _pop; movq tail rsi
     head <- _pop; movq head rdi
-    callq (Lbl (mkLabel "_alloc_cons"))
+    callq (runtime RuntimeAllocCons)
     movq rax =<< _alloc
 
   SM.BINOP op -> do
@@ -290,7 +351,7 @@ compileInstr = \case
 
     f <- _popTag FUN_TAG \value -> do
       movq value rdi
-      callq (Lbl (mkLabel "_THROW_badfun"))
+      callq (runtime ThrowBadFun)
 
     -- get arity
     movq f rax
@@ -304,7 +365,7 @@ compileInstr = \case
 
     movq f rdi
     movq (Imm (fromIntegral arity)) rsi
-    callq (Lbl (mkLabel "_THROW_badarity"))
+    callq (runtime ThrowBadArity)
 
     done <- _label "dyn_call.done"
     movq f rax
@@ -319,7 +380,8 @@ compileInstr = \case
     movq rax =<< _alloc
 
   SM.CALL f Syntax.TailCall -> do
-    for_ (reverse [1..f.arity]) \i -> do
+    callq (runtime RuntimeDropCallStack)
+    for_ (reverse [0 .. f.arity-1]) \i -> do
       arg <- _pop
       movq arg rax
       movq rax (mkArgOp i)
@@ -362,38 +424,42 @@ compileInstr = \case
     tell [Label (mkFunName funid)]
 
     -- prologue
-    pushq rbp
-    movq rsp rbp
-    subq (ImmL (mkStackSizeName funid)) rsp
+    pushq (Reg stackFrameReg)
+    movq (Reg valuesStackReg) (Reg stackFrameReg)
+    addq (ImmL (mkStackSizeName funid)) (Reg valuesStackReg)
 
     -- enter
     let bookedStackForVars = funid.arity + length vars
     #requiredStackSize .= bookedStackForVars * WORD_SIZE
     #stack .= mkSymbolStack bookedStackForVars
 
-    for_ (zip [1..funid.arity] regsForArguments) \(argN, reg) -> do
-      _set (mkArgName argN) (-WORD_SIZE * argN)
+    for_ (zip [0..funid.arity - 1] regsForArguments) \(argN, reg) -> do
+      _set (mkArgName argN) (WORD_SIZE * argN)
       movq (Reg reg) (mkArgOp argN)
 
-    for_ (drop (length regsForArguments) [1..funid.arity]) \argN -> do
-      -- 2 is return address + RBP
-      let from = WORD_SIZE * (2 + (argN-1) - length regsForArguments)
+    for_ (drop (length regsForArguments) [0..funid.arity - 1]) \argN -> do
+      -- 2 is return address + stack reg
+      let from = WORD_SIZE * (2 + argN - length regsForArguments)
       _set (mkArgName argN) (WORD_SIZE * argN)
-      movq (MemReg from RBP) rax
+      movq (MemReg from RSP) rax
       movq rax (mkArgOp argN)
 
-    for_ (zip vars [funid.arity + 1 ..]) \(var, i) -> do
-      tell [Set (mkVarName var) (-WORD_SIZE * i)]
+    for_ (zip vars [funid.arity ..]) \(var, varN) -> do
+      tell [Set (mkVarName var) (WORD_SIZE * varN)]
 
     tell [Label (mkFunBody funid)]
 
+    movq (Static (mkFunMeta funid)) rdi
+    movq (Reg stackFrameReg) rsi
+    callq (runtime RuntimePushCallStack)
+
   SM.FUNCTION_END funid -> do
-    requiredStackSize <- use #requiredStackSize
-    let isAligned = requiredStackSize `mod` (WORD_SIZE * 2) == 0
-    _set (mkStackSizeName funid) (requiredStackSize + if isAligned then 0 else WORD_SIZE)
+    _set (mkStackSizeName funid) =<< use #requiredStackSize
 
     tell [Meta (".align " ++ show WORD_SIZE)]
     tell [Label (mkFunEnd funid)]
+
+    tell [Label (mkFunMeta funid)]
     tell [Meta  (mkFunMetaOpt "arity" funid ++ ": .quad " ++ show funid.arity)]
     tell [Meta  (mkFunMetaOpt "name" funid ++ ": .asciz " ++ show (Prettier.string Prettier.funId funid))]
 
@@ -403,23 +469,25 @@ compileInstr = \case
     for_ vars \var -> do
       movq UNBOUND_TAG (mkVarOp var)
 
-    for_ (reverse [1..funid.arity]) \argN -> do
+    for_ (reverse [0..funid.arity - 1]) \argN -> do
       movq (mkArgOp argN) rax
       movq rax =<< _alloc
 
   SM.FAIL_CLAUSE funid _ -> do
     tell [Label (mkFunClause funid Nothing)]
     movq (Static (mkFunName funid)) rdi
-    movq rbp rsi
-    callq (Lbl (mkLabel "_THROW_function_clause"))
+    movq (Reg stackFrameReg) rsi
+    callq (runtime ThrowFunctionClause)
 
   SM.LEAVE _ -> do
+    callq (runtime RuntimeDropCallStack)
+
     s <- _pop
     movq s rax
 
     -- epilogue
-    movq rbp rsp
-    popq rbp
+    movq (Reg stackFrameReg) (Reg valuesStackReg)
+    popq (Reg stackFrameReg)
 
   SM.RET -> do
     retq
@@ -436,7 +504,7 @@ compileInstr = \case
 
     when_not_equal <- _label "match_i.when_not_equal"
     case onFail of
-      SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+      SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
       SM.NextClause funid clauseN -> do
         jmp (Lbl (mkFunClause funid clauseN))
 
@@ -452,7 +520,7 @@ compileInstr = \case
 
     when_not_equal <- _label "match_i.when_not_equal"
     case onFail of
-      SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+      SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
       SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
 
     when_equal <- _label "match_i.when_equal"
@@ -478,7 +546,7 @@ compileInstr = \case
 
       when_not_equal <- _label "match_var.when_not_equal"
       case onFail of
-        SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+        SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
         SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
 
     done <- _label "match_var.done"
@@ -488,12 +556,12 @@ compileInstr = \case
     value <- _pop
     movq value rdi
     movq (Imm (fromIntegral size)) rsi
-    callq (Lbl (mkLabel "_match_tuple"))
+    callq (runtime RuntimeMatchTuple)
     cmpq 0 rax
     jne (Lbl unpack_tuple)
 
     case onFail of
-      SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+      SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
       SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
 
     unpack_tuple <- _label "match_tuple.unpack_tuple"
@@ -509,7 +577,7 @@ compileInstr = \case
     je (Lbl when_equal)
 
     case onFail of
-      SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+      SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
       SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
 
     when_equal <- _label "match_nil.when_equal"
@@ -518,12 +586,12 @@ compileInstr = \case
   SM.MATCH_CONS onFail -> mdo
     value <- _pop
     movq value rdi
-    callq (Lbl (mkLabel "_match_cons"))
+    callq (runtime RuntimeMatchCons)
     cmpq 0 rax
     jne (Lbl unpack_cons)
 
     case onFail of
-      SM.Throw -> do movq value rdi; callq (Lbl (mkLabel "_THROW_badmatch"))
+      SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
       SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
 
     unpack_cons <- _label "match_cons.unpack_cons"
@@ -533,7 +601,10 @@ compileInstr = \case
     movq rbx =<< _alloc
 
 compileProg :: WithTarget => SM.Prog -> M ()
-compileProg = traverse_ compileInstr
+compileProg prog = do
+  for_ prog \instr -> do
+    tell [Meta ("// " ++ show instr)]
+    compileInstr instr
       
 compile :: Target -> SM.Prog -> Prog
 compile target prog = let ?target = target in execM do
@@ -550,11 +621,12 @@ compile target prog = let ?target = target in execM do
   tell [Label entryPointName]
   subq WORD_SIZE rsp
 
-  callq (Lbl (mkLabel "_runtime_init"))
+  callq (runtime RuntimeInit)
+  movq rax (Reg valuesStackReg)
 
   callq (Lbl (mkFunName ("main" Syntax.:/ 0)))
   movq rax rdi
-  callq (Lbl (mkLabel "_print_value"))
+  callq (runtime RuntimePrintValue)
 
   addq WORD_SIZE rsp
   movq 0 rax
@@ -570,7 +642,7 @@ compile target prog = let ?target = target in execM do
       WithAtomContext a -> do
         a <- _atom a
         movq a rax
-        movq callContextOp rbx
+        movq (runtime RuntimeCallingContext) rbx
         movq rax (MemReg 0 RBX)
     jmp (Lbl (mkLabel runtimeName))
 
