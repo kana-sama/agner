@@ -94,14 +94,12 @@ runtime name =
   (if isRuntimeVariable name then Static else Lbl)
     (mkLabel (runtimeName name))
 
-data BiFContext
-  = WithoutContext
-  | WithAtomContext Syntax.Atom
 
-bifs :: [(Syntax.FunId, (String, BiFContext))]
+bifs :: [(Syntax.FunId, (String, [Syntax.Atom]))]
 bifs =
-  [ "agner:print/1" ~> "_agner__print"  // WithAtomContext "ok"
-  , "error/1"       ~> "_global__error" // WithoutContext
+  [ "agner:print/1" ~> "_agner__print"  // ["ok"]
+  , "error/1"       ~> "_global__error" // []
+  , "timer:sleep/1" ~> "_timer__sleep"  // ["ok", "infinite"]
   ]
   where
     a ~> b = (a, b)
@@ -475,7 +473,7 @@ compileInstr = \case
 
   SM.FAIL_CLAUSE funid _ -> do
     tell [Label (mkFunClause funid Nothing)]
-    movq (Static (mkFunName funid)) rdi
+    movq (Static (mkFunMeta funid)) rdi
     movq (Reg stackFrameReg) rsi
     callq (runtime ThrowFunctionClause)
 
@@ -637,13 +635,12 @@ compile target prog = let ?target = target in execM do
   tell [Meta "// BiFs mapping"]
   for_ bifs \(funId, (runtimeName, context)) -> do
     tell [Label (mkFunName funId)]
-    case context of
-      WithoutContext -> pure ()
-      WithAtomContext a -> do
+    when (not (null context)) do
+      movq (runtime RuntimeCallingContext) rbx
+      for_ (zip context [0..]) \(a, i) -> do
         a <- _atom a
         movq a rax
-        movq (runtime RuntimeCallingContext) rbx
-        movq rax (MemReg 0 RBX)
+        movq rax (MemReg (i * WORD_SIZE) RBX)
     jmp (Lbl (mkLabel runtimeName))
 
   -- data

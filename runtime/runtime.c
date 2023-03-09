@@ -1,6 +1,7 @@
 # include <stdio.h>
 # include <stdlib.h>
 # include <stdbool.h>
+# include <time.h>
 # include "../src/Language/Agner/X64.h"
 
 typedef int64_t value_t;
@@ -45,12 +46,12 @@ typedef struct call_stack_t {
   struct call_stack_t* next;
 } __attribute__((packed)) call_stack_t;
 
-value_t _runtime__calling_context;
+value_t _runtime__calling_context[10];
 heap_node_t* _runtime__heap;
 value_t* _runtime__stack;
 call_stack_t* _runtime__call_stack;
 
-# define HEAP_CHUNK_SIZE (1024 * 1024 * 1024)
+# define HEAP_CHUNK_SIZE (64 * 1024 * 1024)
 heap_node_t* mk_heap() {
   heap_node_t* heap = malloc(sizeof(heap_node_t));
   heap->mem = malloc(HEAP_CHUNK_SIZE);
@@ -272,9 +273,7 @@ extern void _THROW_badfun(value_t value) {
   exit(-1);
 }
 
-extern void _THROW_function_clause(value_t fun, value_t* args) {
-  fun_meta_t* meta = get_fun_meta(fun);
-
+extern void _THROW_function_clause(fun_meta_t* meta, value_t* args) {
   printf("** exception error: no function clause matching %s(", meta->name);
 
   for (int i = 0; i < meta->arity; i++) {
@@ -312,10 +311,10 @@ value_t* _runtime__init() {
 
 // BiFs
 
-// RUNTIME_call_context should be "ok" atom
+// _runtime__calling_context[0] should be "ok" atom
 extern value_t _agner__print(value_t value) {
   _runtime__print_value(value);
-  return _runtime__calling_context;
+  return _runtime__calling_context[0];
 }
 
 extern void _global__error(value_t value) {
@@ -324,4 +323,34 @@ extern void _global__error(value_t value) {
   printf("\n");
   print_call_stack();
   exit(-1);
+}
+
+// _runtime__calling_context[0] should be "ok" atom
+// _runtime__calling_context[1] should be "infinity" atom
+fun_meta_t _timer__sleep__meta = {1, "timer:sleep"};
+extern value_t _timer__sleep(value_t duration) {
+  switch (duration & TAG_MASK) {
+    case NUMBER_TAG: {
+      struct timespec ts;
+      int64_t msec = duration >> TAG_SIZE;
+      int res;
+
+      ts.tv_sec = msec / 1000;
+      ts.tv_nsec = (msec % 1000) * 1000000;
+
+      do res = nanosleep(&ts, &ts); while (res);
+      return _runtime__calling_context[0];
+    }
+    case ATOM_TAG: {
+      if (duration == _runtime__calling_context[1]) {
+        while (true);
+        return _runtime__calling_context[0];
+      }
+    }
+    default: {
+      value_t args[1] = {duration};
+      _THROW_function_clause(&_timer__sleep__meta, args);
+      return _runtime__calling_context[0];
+    }
+  }
 }

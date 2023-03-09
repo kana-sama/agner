@@ -5,6 +5,8 @@ import Language.Agner.Prelude
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 
+import Control.Concurrent (threadDelay)
+
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
 import Language.Agner.Value qualified as Value
@@ -149,6 +151,7 @@ bifs :: Set Syntax.FunId
 bifs = Set.fromList
   [ "agner:print/1"
   , "error/1"
+  , "timer:sleep/1"
   ]
 
 isBif :: Syntax.FunId -> Bool
@@ -161,6 +164,16 @@ bif = \case
     pure (Value.Atom "ok")
   "error/1" -> \[value] -> do
     throw (Custom value)
+  "timer:sleep/1" -> \[value] ->
+    case value of
+      Value.Integer duration -> do
+        threadDelay (fromInteger duration * 1000)
+        pure (Value.Atom "ok")
+      Value.Atom "infinity" -> do
+        let loop = do threadDelay (1000 * 1000); loop
+        loop
+      value -> do
+        throw (NoFunctionClauseMatching "timer:sleep/1" [value])
   funid -> throw (UnknownBiF funid)
 
 resolveFunction :: (?funs :: FunEnv) => Syntax.FunId -> ([Value] -> IO Value)

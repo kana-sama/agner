@@ -12,4 +12,5 @@ sum([H|T], Acc) -> sum(T, Acc + H);
 sum([], Acc) -> Acc.
 
 main() ->
-  f(500).
+  timer:sleep(1000),
+  f(100).
