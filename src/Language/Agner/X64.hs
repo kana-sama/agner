@@ -39,15 +39,13 @@ data RuntimeName
   | RuntimeCallingContext
   | RuntimeCallStack
 
-  | RuntimeInit
+  | RuntimeInit | RuntimeFinalize
   | RuntimePrintValue
   | RuntimePushCallStack
   | RuntimeDropCallStack
 
-  | RuntimeAllocTuple
-  | RuntimeMatchTuple
-  | RuntimeAllocCons
-  | RuntimeMatchCons
+  | RuntimeAllocTuple | RuntimeFillTuple | RuntimeMatchTuple
+  | RuntimeAllocCons  | RuntimeFillCons  | RuntimeMatchCons
 
   | ThrowBadArith
   | ThrowBadFun
@@ -73,15 +71,22 @@ runtimeName = \case
   RuntimeCallingContext -> "_runtime__calling_context"
   RuntimeCallStack -> "_runtime__call_stack"
 
+
   RuntimeInit -> "_runtime__init"
+  RuntimeFinalize -> "_runtime__finalize"
   RuntimePrintValue -> "_runtime__print_value"
   RuntimePushCallStack -> "_runtime__push_callstack"
   RuntimeDropCallStack -> "_runtime__drop_callstack"
 
+
   RuntimeAllocTuple -> "_runtime__alloc_tuple"
+  RuntimeFillTuple -> "_runtime__fill_tuple"
   RuntimeMatchTuple -> "_runtime__match_tuple"
+
   RuntimeAllocCons -> "_runtime__alloc_cons"
+  RuntimeFillCons -> "_runtime__fill_cons"
   RuntimeMatchCons -> "_runtime__match_cons"
+
 
   ThrowBadArith -> "_THROW_badarith"
   ThrowBadFun -> "_THROW_badfun"
@@ -293,16 +298,21 @@ compileInstr = \case
     movq (Static (mkFunName funid)) rax
     movq rax =<< _alloc
 
-  SM.PUSH_TUPLE size -> do
+  SM.PUSH_TUPLE size -> do  
+    movq (Imm (fromIntegral size)) rdi
+    callq (runtime RuntimeAllocTuple)
+
     when (odd size) do
       subq WORD_SIZE rsp
     replicateM_ size do
       pushq =<< _pop
-    
-    movq (Imm (fromIntegral size)) rdi
-    movq rsp rsi
-    callq (runtime RuntimeAllocTuple)
+
     movq rax =<< _alloc
+
+    movq rax rdi
+    movq (Imm (fromIntegral size)) rsi
+    movq rsp rdx
+    callq (runtime RuntimeFillTuple)
 
     addq (Imm (fromIntegral (WORD_SIZE * size))) rsp
     when (odd size) do
@@ -312,10 +322,16 @@ compileInstr = \case
     movq NIL_TAG =<< _alloc
 
   SM.PUSH_CONS -> do
-    tail <- _pop; movq tail rsi
-    head <- _pop; movq head rdi
     callq (runtime RuntimeAllocCons)
+
+    tail <- _pop; pushq tail
+    head <- _pop; pushq head
     movq rax =<< _alloc
+
+    movq rax rdi
+    popq rsi
+    popq rdx
+    callq (runtime RuntimeFillCons)
 
   SM.BINOP op -> do
     compileBinOp op
@@ -625,6 +641,8 @@ compile target prog = let ?target = target in execM do
   callq (Lbl (mkFunName ("main" Syntax.:/ 0)))
   movq rax rdi
   callq (runtime RuntimePrintValue)
+
+  callq (runtime RuntimeFinalize)
 
   addq WORD_SIZE rsp
   movq 0 rax

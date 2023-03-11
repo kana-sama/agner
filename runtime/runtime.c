@@ -2,39 +2,43 @@
 # include <stdlib.h>
 # include <stdbool.h>
 # include <time.h>
+# include <string.h>
 # include "../src/Language/Agner/X64.h"
 
+struct timespec rt_start, rt_end;
+uint64_t rt_in_gc = 0;
+
 typedef int64_t value_t;
+
+void print_value(value_t value);
 
 typedef struct fun_meta_t {
   int64_t arity;
   char name[];
 } __attribute__((packed)) fun_meta_t;
 
-typedef struct boxed_tuple_t {
+typedef struct boxed_super_t {
   int64_t header;
+  int64_t gc_offset;
+} boxed_super_t;
+
+typedef struct boxed_tuple_t {
+  boxed_super_t super;
   int64_t size;
   value_t values[];
 } __attribute__((packed)) boxed_tuple_t;
 
 typedef struct boxed_cons_t {
-  int64_t header;
+  boxed_super_t super;
   int64_t is_list;
   struct { value_t head; value_t tail; } values;
 } __attribute__((packed)) boxed_cons_t;
 
 typedef union boxed_value_t {
-  struct { int64_t header; } super;
+  boxed_super_t super;
   boxed_tuple_t tuple;
   boxed_cons_t cons;
 } boxed_value_t;
-
-typedef struct heap_node_t {
-  value_t* mem;
-  value_t* mem_head;
-  value_t* mem_end;
-  struct heap_node_t* next;
-} __attribute__((packed)) heap_node_t;
 
 typedef struct call_stack_t {
   int64_t size;
@@ -43,24 +47,191 @@ typedef struct call_stack_t {
   struct call_stack_t* next;
 } __attribute__((packed)) call_stack_t;
 
+typedef struct heap_t {
+  value_t* mem;
+  value_t* mem_head;
+  value_t* mem_end;
+  int64_t size;
+} heap_t;
+
+heap_t* mk_heap(int64_t size);
+
 value_t _runtime__calling_context[10];
-heap_node_t* _runtime__heap;
+heap_t* _runtime__heap;
 value_t* _runtime__stack;
 call_stack_t* _runtime__call_stack;
 
-# define HEAP_CHUNK_SIZE (64 * 1024 * 1024)
-heap_node_t* mk_heap() {
-  heap_node_t* heap = malloc(sizeof(heap_node_t));
-  heap->mem = malloc(HEAP_CHUNK_SIZE);
+typedef struct gc_traverse_stack_t {
+  boxed_value_t* value;
+  int64_t size;
+  struct gc_traverse_stack_t* next;
+} gc_traverse_stack_t;
+
+gc_traverse_stack_t* gc_traverse_stack__push(boxed_value_t* value, gc_traverse_stack_t* stack) {
+  gc_traverse_stack_t* new_stack = malloc(sizeof(gc_traverse_stack_t));
+  new_stack->value = value;
+  new_stack->next = stack;
+  new_stack->size = stack == NULL ? 1 : stack->size + 1;
+  return new_stack;
+}
+
+gc_traverse_stack_t* gc_traverse_stack__pop(boxed_value_t** out, gc_traverse_stack_t* stack) {
+  *out = stack->value;
+  gc_traverse_stack_t* next = stack->next;
+  free(stack);
+  return next;
+}
+
+int64_t boxed_value_size(boxed_value_t* ref) {
+  switch (ref->super.header) {
+    case TUPLE_HEADER:
+      return sizeof(boxed_tuple_t)/sizeof(value_t) + ref->tuple.size;
+    case CONS_HEADER:
+      return sizeof(boxed_cons_t)/sizeof(value_t);
+    default:
+      printf("Unknown boxed value header: %lld\n", ref->super.header);
+      exit(-1);
+  }
+}
+
+typedef struct boxed_value_children_t {
+  value_t* values;
+  int64_t count;
+} boxed_value_children_t;
+
+boxed_value_children_t boxed_value_children(boxed_value_t* ref) {
+  switch (ref->super.header) {
+    case TUPLE_HEADER:
+      return (boxed_value_children_t){ .values=ref->tuple.values, .count=ref->tuple.size };
+    case CONS_HEADER:
+      return (boxed_value_children_t){ .values=(value_t*)&ref->cons.values, .count=2 };
+    default:
+      printf("Unknown boxed value header: %lld\n", ref->super.header);
+      exit(-1);
+  }
+}
+
+gc_traverse_stack_t* boxed_value_traverse(boxed_value_t* ref, gc_traverse_stack_t* stack) {
+  switch (ref->super.header) {
+    case TUPLE_HEADER:
+      for (int i = 0; i < ref->tuple.size; i++)
+        if ((ref->tuple.values[i] & TAG_MASK) == BOX_TAG)
+          stack = gc_traverse_stack__push((boxed_value_t*)(ref->tuple.values[i] ^ BOX_TAG), stack);
+      return stack;
+
+    case CONS_HEADER:
+      if ((ref->cons.values.head & TAG_MASK) == BOX_TAG)
+        stack = gc_traverse_stack__push((boxed_value_t*)(ref->cons.values.head ^ BOX_TAG), stack);
+      if ((ref->cons.values.tail & TAG_MASK) == BOX_TAG)
+        stack = gc_traverse_stack__push((boxed_value_t*)(ref->cons.values.tail ^ BOX_TAG), stack);
+      return stack;
+
+    default:
+      printf("Unknown boxed value header: %lld\n", ref->super.header);
+      exit(-1);
+  }
+}
+
+// mark and copy algorithm
+heap_t* gc(
+  value_t* stack, int64_t stack_size,
+  heap_t* heap
+) {
+  struct timespec gc_start, gc_end;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &gc_start);
+
+  int64_t offset = 0;
+  gc_traverse_stack_t* traverse_stack = NULL;
+
+  for (int i = 0; i < stack_size; i++) {
+    value_t value = stack[i];
+    if ((value & TAG_MASK) != BOX_TAG) continue;
+    boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
+
+    if (ref->super.gc_offset == 0) {
+      ref->super.gc_offset = offset;
+      offset += boxed_value_size(ref);
+      traverse_stack = boxed_value_traverse(ref, traverse_stack);
+    }
+  }
+
+  {
+    boxed_value_t* ref;
+    while (traverse_stack != NULL) {
+      traverse_stack = gc_traverse_stack__pop(&ref, traverse_stack);
+
+      if (ref->super.gc_offset == 0) {
+        ref->super.gc_offset = offset;
+        offset += boxed_value_size(ref);
+        traverse_stack = boxed_value_traverse(ref, traverse_stack);
+      }
+    }
+  }
+
+  heap_t* new_heap = mk_heap(offset * 2);
+  new_heap->mem_head = new_heap->mem + offset;
+
+  for (int i = 0; i < stack_size; i++) {
+    value_t value = stack[i];
+    if ((value & TAG_MASK) == BOX_TAG) {
+      boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
+      stack[i] = (value_t)(new_heap->mem + ref->super.gc_offset) | BOX_TAG;
+      
+      traverse_stack = gc_traverse_stack__push(ref, traverse_stack);
+    }
+  }
+
+  {
+    boxed_value_t* ref;
+    while (traverse_stack != NULL) {
+      traverse_stack = gc_traverse_stack__pop(&ref, traverse_stack);
+
+      void* dst = (void*)(new_heap->mem + ref->super.gc_offset);
+      void* src = (void*)ref;
+      size_t count = boxed_value_size(ref) * sizeof(value_t);
+      memcpy(dst, src, count);
+
+      boxed_value_t* new_ref = (boxed_value_t*)dst;
+      new_ref->super.gc_offset = 0;
+
+      boxed_value_children_t children = boxed_value_children(new_ref);
+      for (int i = 0; i < children.count; i++) {
+        if ((children.values[i] & TAG_MASK) == BOX_TAG) {
+          boxed_value_t* ref = (boxed_value_t*)(children.values[i] ^ BOX_TAG);
+          children.values[i] = (value_t)(new_heap->mem + ref->super.gc_offset) | BOX_TAG;
+        }
+      }
+      
+      traverse_stack = boxed_value_traverse(ref, traverse_stack);
+    }
+  }
+
+  // TODO
+  // printf("GC collected %lld values\n", (heap->mem_end - heap->mem) - offset);
+
+  free(heap->mem);
+  free(heap);
+
+  clock_gettime(CLOCK_MONOTONIC_RAW, &gc_end);
+  rt_in_gc += (gc_end.tv_sec - gc_start.tv_sec) * 1000 + (gc_end.tv_nsec - gc_start.tv_nsec) / 1000000;
+
+  return new_heap;
+}
+
+
+heap_t* mk_heap(int64_t size) {
+  // TODO
+  // printf("Creating heap with size of %lld words\n", size);
+  heap_t* heap = malloc(sizeof(heap_t));
+  heap->mem = malloc(size * sizeof(value_t));
   heap->mem_head = heap->mem;
-  heap->mem_end = heap->mem + HEAP_CHUNK_SIZE/WORD_SIZE;
-  heap->next = NULL;
+  heap->mem_end = heap->mem + size;
+  heap->size = size;
   return heap;
 }
 
-# define STACK_SIZE (1024 * 1024 * 512)
-value_t* mk_stack() {
-  return malloc(STACK_SIZE);
+value_t* mk_stack(int64_t size) {
+  return malloc(size * sizeof(value_t));
 }
 
 fun_meta_t* get_fun_meta(value_t fun) {
@@ -181,12 +352,16 @@ void print_call_stack() {
 
 void* allocate(int64_t size) {
   if (_runtime__heap->mem_end - _runtime__heap->mem_head < size) {
-    _runtime__heap->next = mk_heap();
-    _runtime__heap = _runtime__heap->next;
+    _runtime__heap = gc(_runtime__stack, get_stack_size(), _runtime__heap);
   }
 
   value_t* target = _runtime__heap->mem_head;
   _runtime__heap->mem_head += size;
+
+  for (int i = 0; i < size; i++) {
+    target[i] = 0;
+  }
+
   return target;
 }
 
@@ -196,15 +371,18 @@ extern void _runtime__print_value(value_t value) {
   fflush(stdout);
 }
 
-extern value_t _runtime__alloc_tuple(int64_t size, value_t* values) {
+extern value_t _runtime__alloc_tuple(int64_t size) {
   boxed_tuple_t* tuple = allocate(sizeof(boxed_tuple_t)/WORD_SIZE + size);
-  tuple->header = TUPLE_HEADER;
+  tuple->super.header = TUPLE_HEADER;
   tuple->size = size;
+  return (value_t)tuple | BOX_TAG;
+}
+
+extern void _runtime__fill_tuple(value_t value, int64_t size, value_t* values) {
+  boxed_tuple_t* tuple = (boxed_tuple_t*)(value ^ BOX_TAG);
   for (int i = 0; i < size; i++) {
     tuple->values[i] = values[i];
   }
-
-  return (value_t)tuple | BOX_TAG;
 }
 
 extern value_t* _runtime__match_tuple(value_t value, int64_t size) {
@@ -223,14 +401,17 @@ int64_t is_list(value_t value) {
   return ref->cons.is_list;
 }
 
-extern value_t _runtime__alloc_cons(value_t head, value_t tail) {
+extern value_t _runtime__alloc_cons() {
   boxed_cons_t* cons = allocate(sizeof(boxed_cons_t)/WORD_SIZE);
-  cons->header = CONS_HEADER;
-  cons->is_list = is_list(tail);
+  cons->super.header = CONS_HEADER;
+  return (value_t)cons | BOX_TAG;
+}
+
+extern void _runtime__fill_cons(value_t value, value_t head, value_t tail) {
+  boxed_cons_t* cons = (boxed_cons_t*)(value ^ BOX_TAG);
   cons->values.head = head;
   cons->values.tail = tail;
-
-  return (value_t)cons | BOX_TAG;
+  cons->is_list = is_list(tail);
 }
 
 extern value_t* _runtime__match_cons(value_t value) {
@@ -299,11 +480,22 @@ extern void _THROW_badarith(value_t l, value_t r, char* op) {
   exit(-1); 
 }
 
-value_t* _runtime__init() {
-  _runtime__heap = mk_heap();
-  _runtime__stack = mk_stack();
+# define HEAP_INITIAL_SIZE (1024 * 1024)
+# define STACK_INITIAL_SIZE (1024 * 1024 * 64)
+extern value_t* _runtime__init() {
+  clock_gettime(CLOCK_MONOTONIC_RAW, &rt_start);
+
+  _runtime__heap = mk_heap(HEAP_INITIAL_SIZE);
+  _runtime__stack = mk_stack(STACK_INITIAL_SIZE);
   _runtime__call_stack = NULL;
   return _runtime__stack;
+}
+
+extern void _runtime__finalize() {
+  clock_gettime(CLOCK_MONOTONIC_RAW, &rt_end);
+  uint64_t total_time = (rt_end.tv_sec - rt_start.tv_sec) * 1000 + (rt_end.tv_nsec - rt_start.tv_nsec) / 1000000;
+  printf("total time: %lldms\n"
+         "   gc time: %lldms\n", total_time, rt_in_gc);
 }
 
 // BiFs
