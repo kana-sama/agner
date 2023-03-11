@@ -20,10 +20,7 @@ typedef struct boxed_tuple_t {
 typedef struct boxed_cons_t {
   int64_t header;
   int64_t is_list;
-  union {
-    value_t as_array[2];
-    struct { value_t head; value_t tail; } as_pair;
-  } values;
+  struct { value_t head; value_t tail; } values;
 } __attribute__((packed)) boxed_cons_t;
 
 typedef union boxed_value_t {
@@ -111,14 +108,14 @@ void print_value_(value_t value, bool trancated) {
             value_t value = (value_t)ref | BOX_TAG;
             while (value != NIL_TAG) {
               boxed_cons_t* cons = (boxed_cons_t*)(value ^ BOX_TAG);
-              print_value_(cons->values.as_pair.head, trancated);
-              if (cons->values.as_pair.tail != NIL_TAG) printf(",");
-              value = cons->values.as_pair.tail;
+              print_value_(cons->values.head, trancated);
+              if (cons->values.tail != NIL_TAG) printf(",");
+              value = cons->values.tail;
             }
           } else {
-            print_value_(ref->cons.values.as_pair.head, trancated);
+            print_value_(ref->cons.values.head, trancated);
             printf("|");
-            print_value_(ref->cons.values.as_pair.tail, trancated);
+            print_value_(ref->cons.values.tail, trancated);
           }
           printf("]");
           break;
@@ -230,8 +227,8 @@ extern value_t _runtime__alloc_cons(value_t head, value_t tail) {
   boxed_cons_t* cons = allocate(sizeof(boxed_cons_t)/WORD_SIZE);
   cons->header = CONS_HEADER;
   cons->is_list = is_list(tail);
-  cons->values.as_pair.head = head;
-  cons->values.as_pair.tail = tail;
+  cons->values.head = head;
+  cons->values.tail = tail;
 
   return (value_t)cons | BOX_TAG;
 }
@@ -240,7 +237,7 @@ extern value_t* _runtime__match_cons(value_t value) {
   if ((value & TAG_MASK) != BOX_TAG) return 0;
   boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
   if (ref->super.header != CONS_HEADER) return 0;
-  return ref->cons.values.as_array;
+  return (value_t*)(&ref->cons.values);
 }
 
 char* format_args(int64_t n) {
