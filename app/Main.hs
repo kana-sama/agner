@@ -21,7 +21,7 @@ import Language.Agner.X64 qualified as X64
 import Language.Agner.Parser qualified as Parser
 import Language.Agner.Prettier qualified as Prettier
 import Language.Agner.Linter qualified as Linter
-import Language.Agner.Optimizer (optimize)
+import Language.Agner.Optimizer qualified as Optimizer
 
 data Command
   = Compile{target :: Maybe X64.Target, source :: FilePath, output :: Maybe FilePath}
@@ -66,38 +66,53 @@ compile ::
   "output" :! FilePath ->
   IO ()
 compile (Arg target) (Arg source) (Arg output) = do
-  -- parse
-  !source <- try @Parser.Ex (evaluate =<< Parser.parse Parser.module_ <$> readFile source) >>= \case
-    Right source -> pure source
-    Left ex -> do putStrLn (displayException ex); exitFailure
+  source <- parse        source
+  source <- lint         source
+  source <- optimize     source
+  sm     <- compileToSM  source
+  x64    <- compileToX64 sm
+  compileToBinary output x64
+  where
+    parse :: FilePath -> IO Syntax.Module
+    parse source =
+      try @Parser.Ex (evaluate =<< Parser.parse Parser.module_ <$> readFile source) >>= \case
+        Right source -> pure source
+        Left ex -> do putStrLn (displayException ex); exitFailure
 
-  -- lint
-  case Linter.check source of
-    Nothing -> pure ()
-    Just error -> do
-      putStrLn ("** linter error: " ++ Linter.prettyError error)
-      exitFailure
+    lint :: Syntax.Module -> IO Syntax.Module
+    lint module_ =
+      case Linter.check module_ of
+        Nothing -> pure module_
+        Just error -> do
+          putStrLn ("** linter error: " ++ Linter.prettyError error)
+          exitFailure
 
-  -- optimize
-  source <- pure (optimize source)
+    optimize :: Syntax.Module -> IO Syntax.Module
+    optimize module_ = pure (Optimizer.optimize module_)
 
-  let sm = SM.compileModule source
+    compileToSM :: Syntax.Module -> IO SM.Prog
+    compileToSM module_ = pure (SM.compileModule module_)
 
-  -- compile
-  withSystemTempDirectory "test" \path -> do
-    let gas = (X64.prettyProg . X64.compile target) sm
+    compileToX64 :: SM.Prog -> IO X64.Prog
+    compileToX64 prog = pure (X64.compile target prog)
 
-    let runtimePath = "." </> "runtime" </> "runtime.c"
-    let sourcePath = path </> "temp" <.> "s"
-    let outputPath = output
+    compileToBinary :: FilePath -> X64.Prog -> IO ()
+    compileToBinary output prog = do
+      withSystemTempDirectory "test" \path -> do
+        let gas = X64.prettyProg prog
 
-    writeFile sourcePath gas
-    gcc ! param #target target
-        ! param #source sourcePath
-        ! param #runtime runtimePath
-        ! param #output outputPath
+        let runtimePath = "." </> "runtime" </> "runtime.c"
+        let sourcePath = path </> "temp" <.> "s"
+        let outputPath = output
 
-  pure ()
+        writeFile sourcePath gas
+        gcc ! param #target target
+            ! param #source sourcePath
+            ! param #runtime runtimePath
+            ! param #output outputPath
+
+      pure ()
+
 
 main :: IO ()
 main = parseArgs >>= \case
@@ -125,7 +140,7 @@ example target = do
       exitFailure
 
   -- optimize
-  source <- pure (optimize source)
+  source <- pure (Optimizer.optimize source)
 
   -- eval
   putStrLn "denote:"
