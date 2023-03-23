@@ -31,6 +31,8 @@ default-extensions:
   - OverloadedStrings
   - RankNTypes
   - ViewPatterns
+  - GeneralizedNewtypeDeriving
+  - NoFieldSelectors
 
 ghc-options:
   - -Wincomplete-patterns
@@ -48,6 +50,7 @@ library:
     - containers
 
     - mtl
+    - transformers
     - lens
     - generic-lens
 

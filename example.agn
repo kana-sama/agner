@@ -1,16 +1,15 @@
-f(N) -> f(N, 0).
-f(0, Acc) -> Acc;
-f(N, Acc) ->
-  f(N-1, Acc + sum(replicate(1000000))).
+log(Msg) -> agner:print({self(), Msg}).
 
-replicate(N) -> replicate(N, []).
-replicate(0, Acc) -> Acc;
-replicate(N, Acc) -> replicate(N-1, [N|Acc]).
-
-sum(List) -> sum(List, 0).
-sum([H|T], Acc) -> sum(T, Acc + H);
-sum([], Acc) -> Acc.
+printer() -> log(start), printer(1), log(finish).
+printer(6) -> ok;
+printer(N) -> log(N), printer(N+1).
 
 main() ->
-  timer:sleep(1000),
-  f(100).
+  log(main_start),
+  % repeat(5, fun spawn_printer/0),
+  log(main_finish).
+
+spawn_printer() -> spawn(fun printer/0).
+
+repeat(0, F) -> ok;
+repeat(N, F) -> F(), repeat(N-1, F).

@@ -54,6 +54,7 @@ data Instr
   | DYN_CALL{arity :: Int}
   
   | FUNCTION{funid :: Syntax.FunId, vars :: [Syntax.Var]}
+  | YIELD
   | CLAUSE{funid :: Syntax.FunId, clauseIndex :: Int, vars :: [Syntax.Var]}
   | FAIL_CLAUSE{funid :: Syntax.FunId, clauseIndex :: Int}
   | FUNCTION_END{funid :: Syntax.FunId}
@@ -115,12 +116,12 @@ compileFunDecl :: Syntax.FunDecl -> Prog
 compileFunDecl funDecl =
   concat
     [ [FUNCTION funDecl.funid (Set.toList (Syntax.funDeclVars funDecl))]
+    , [YIELD]
     , foldMap ((uncurry . uncurry) compileFunClause) (zipWithLast (zip funDecl.clauses [0..]))
     , [FAIL_CLAUSE funDecl.funid (length funDecl.clauses)]
     , [FUNCTION_END funDecl.funid]
     ]
   where
-    -- красиво
     zipWithLast :: [a] -> [(a, Bool)]
     zipWithLast xs = reverse (zip (reverse xs) ([True] ++ repeat False))
 
@@ -238,7 +239,8 @@ instr DUP = execStateT do
 
 instr (CALL f _) | Denote.isBif f = execStateT do
   args <- replicateM f.arity pop
-  result <- liftIO do Denote.bif f args
+  -- result <- liftIO do Denote.bif f args
+  result <- undefined
   push result
   continue
 
@@ -269,6 +271,10 @@ instr (DYN_CALL arity) = execStateT do
     Just pos -> #pos .= pos
 
 instr (FUNCTION _ _) = execStateT do
+  continue
+
+instr YIELD = execStateT do
+  error "YIELD"
   continue
 
 instr (FUNCTION_END _) = execStateT do

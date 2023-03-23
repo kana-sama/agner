@@ -1,10 +1,14 @@
-module Language.Agner.Value (Value(..), same, encode) where
+module Language.Agner.Value (Value(..), PID(..), same, encode) where
 
 import Data.Aeson (ToJSON)
 import GHC.Generics (Generic)
 import Data.List (intercalate)
 
 import Language.Agner.Syntax qualified as Syntax
+
+newtype PID = MkPID Integer
+  deriving stock (Show, Eq)
+  deriving newtype (ToJSON)
 
 data Value
   = Integer Integer
@@ -13,6 +17,7 @@ data Value
   | Tuple [Value]
   | Nil
   | Cons Value Value
+  | PID PID
   deriving stock (Show, Generic, Eq)
   deriving anyclass (ToJSON)
 
@@ -43,6 +48,7 @@ encode = \case
   List vs -> "[" ++ intercalate "," [encode v | v <- vs] ++ "]"
   Nil -> "[]"
   Cons a b -> "[" ++ encode a ++ "|" ++ encode b ++ "]"
+  PID (MkPID x) -> "<" ++ show x ++ ">"
 
 same :: Value -> Value -> Bool
 same = (==)

@@ -18,7 +18,7 @@ import Control.Exception as X (Exception (..), try, throw, SomeException(..), ev
 import Control.Monad.State.Strict as X
 import Control.Monad.Except as X
 
-import Control.Lens as X hiding (pattern List)
+import Control.Lens as X hiding (pattern List, Context)
 import GHC.Generics as X (Generic)
 
 nonEmptyError :: String -> a

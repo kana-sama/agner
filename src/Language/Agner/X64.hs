@@ -34,15 +34,10 @@ data Ex
 -- DSL
 
 data RuntimeName
-  = RuntimeHeap
-  | RuntimeStack
-  | RuntimeCallingContext
-  | RuntimeCallStack
+  = RuntimeCallingContext
 
   | RuntimeInit | RuntimeFinalize
-  | RuntimePrintValue
-  | RuntimePushCallStack
-  | RuntimeDropCallStack
+  | RuntimeYield
 
   | RuntimeAllocTuple | RuntimeFillTuple | RuntimeMatchTuple
   | RuntimeAllocCons  | RuntimeFillCons  | RuntimeMatchCons
@@ -58,25 +53,16 @@ isRuntimeVariable :: RuntimeName -> Bool
 isRuntimeVariable = (`elem` variables)
   where
     variables =
-      [ RuntimeHeap
-      , RuntimeStack
-      , RuntimeCallingContext
-      , RuntimeCallStack
+      [ RuntimeCallingContext
       ]
 
 runtimeName :: RuntimeName -> String
 runtimeName = \case
-  RuntimeHeap -> "_runtime__heap"
-  RuntimeStack -> "_runtime__stack"
   RuntimeCallingContext -> "_runtime__calling_context"
-  RuntimeCallStack -> "_runtime__call_stack"
-
 
   RuntimeInit -> "_runtime__init"
+  RuntimeYield -> "_runtime__yield"
   RuntimeFinalize -> "_runtime__finalize"
-  RuntimePrintValue -> "_runtime__print_value"
-  RuntimePushCallStack -> "_runtime__push_callstack"
-  RuntimeDropCallStack -> "_runtime__drop_callstack"
 
 
   RuntimeAllocTuple -> "_runtime__alloc_tuple"
@@ -103,8 +89,10 @@ runtime name =
 bifs :: [(Syntax.FunId, (String, [Syntax.Atom]))]
 bifs =
   [ "agner:print/1" ~> "_agner__print"  // ["ok"]
-  , "error/1"       ~> "_global__error" // []
   , "timer:sleep/1" ~> "_timer__sleep"  // ["ok", "infinite"]
+  , "error/1"       ~> "_global__error" // []
+  , "spawn/1"       ~> "_global__spawn" // []
+  , "self/0"        ~> "_global__self"  // []
   ]
   where
     a ~> b = (a, b)
@@ -394,7 +382,6 @@ compileInstr = \case
     movq rax =<< _alloc
 
   SM.CALL f Syntax.TailCall -> do
-    callq (runtime RuntimeDropCallStack)
     for_ (reverse [0 .. f.arity-1]) \i -> do
       arg <- _pop
       movq arg rax
@@ -465,7 +452,9 @@ compileInstr = \case
 
     movq (Static (mkFunMeta funid)) rdi
     movq (Reg stackFrameReg) rsi
-    callq (runtime RuntimePushCallStack)
+
+  SM.YIELD -> do
+    callq (runtime RuntimeYield)
 
   SM.FUNCTION_END funid -> do
     _set (mkStackSizeName funid) =<< use #requiredStackSize
@@ -494,8 +483,6 @@ compileInstr = \case
     callq (runtime ThrowFunctionClause)
 
   SM.LEAVE _ -> do
-    callq (runtime RuntimeDropCallStack)
-
     s <- _pop
     movq s rax
 
@@ -637,11 +624,7 @@ compile target prog = let ?target = target in execM do
 
   callq (runtime RuntimeInit)
   movq rax (Reg valuesStackReg)
-
   callq (Lbl (mkFunName ("main" Syntax.:/ 0)))
-  movq rax rdi
-  callq (runtime RuntimePrintValue)
-
   callq (runtime RuntimeFinalize)
 
   addq WORD_SIZE rsp
