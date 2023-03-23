@@ -22,5 +22,3 @@ typedef struct process_t {
 
 process_t* process_new();
 void process_free(process_t* process);
-void process_mount(process_t* process);
-void process_unmount(process_t* process);

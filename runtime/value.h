@@ -9,7 +9,7 @@ typedef int64_t PID_t;
 typedef struct fun_meta_t {
   int64_t arity;
   char    name[];
-} __attribute__((packed)) fun_meta_t;
+} fun_meta_t;
 
 typedef struct boxed_super_t {
   int64_t header;
@@ -20,13 +20,13 @@ typedef struct boxed_tuple_t {
   boxed_super_t super;
   int64_t       size;
   value_t       values[];
-} __attribute__((packed)) boxed_tuple_t;
+} boxed_tuple_t;
 
 typedef struct boxed_cons_t {
   boxed_super_t super;
   int64_t       is_list;
   struct { value_t head; value_t tail; } values;
-} __attribute__((packed)) boxed_cons_t;
+} boxed_cons_t;
 
 typedef union boxed_value_t {
   boxed_super_t super;

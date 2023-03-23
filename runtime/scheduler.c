@@ -57,7 +57,6 @@ void action_wrapper(scheduler_t* scheduler, action_t action, jmp_buf* spawner, p
   if (setjmp(*process->context) == 0)
     longjmp(*spawner, 1);
 
-  // process_mount(process);
   action();
   tasks_queue_enqueue(scheduler->to_release, process);
   scheduler_switch(scheduler);
@@ -89,22 +88,17 @@ PID_t scheduler_spawn(scheduler_t* scheduler, action_t action) {
     : "rdi", "rsi", "rdx", "rcx", "memory", "r12", "r13"
   );
 
-  // process_mount(scheduler->current);
-
   return process->pid;
 }
 
 void scheduler_yield(scheduler_t* scheduler) {
   scheduler->fuel -= 1;
   if (scheduler->fuel <= 0) {
-    // process_unmount(scheduler->current);
     tasks_queue_enqueue(scheduler->queue, scheduler->current);
 
     if (setjmp(*scheduler->current->context) == 0) {
       scheduler_switch(scheduler);
     }
-
-    // process_mount(scheduler->current);
   }
 
   scheduler_collect(scheduler);
