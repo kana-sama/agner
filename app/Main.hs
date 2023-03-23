@@ -26,6 +26,7 @@ import Language.Agner.Optimizer qualified as Optimizer
 data Command
   = Compile{target :: Maybe X64.Target, source :: FilePath, output :: Maybe FilePath}
   | Example{target :: Maybe X64.Target}
+  | Pretty{source :: FilePath}
 
 run :: forall e. Exception e => IO () -> IO ()
 run value = do
@@ -37,6 +38,7 @@ run value = do
 parseArgs :: IO Command
 parseArgs = do
   getArgs >>= \case
+    ["pretty", source] -> pure Pretty{source}
     [] -> pure Example{target = Nothing}
     ["--target", "linux"] -> pure Example{target = Just X64.Linux}
     ["--target", "macos"] -> pure Example{target = Just X64.MacOS}
@@ -61,8 +63,18 @@ getOutput source Nothing =
     Just path -> path
 
 runtime :: [FilePath]
-runtime = rt <$> ["value", "throw", "heap", "runtime"]
-  where rt f = "." </> "runtime" </> f <.> "c"
+runtime = rt <$> sources
+  where
+    rt f = "." </> "runtime" </> f <.> "c"
+    sources =
+      [ "value"
+      , "throw"
+      , "heap"
+      , "process"
+      , "tasks_queue"
+      , "scheduler"
+      , "runtime"
+      ]
 
 compile ::  
   "target" :! X64.Target ->
@@ -126,6 +138,14 @@ main = parseArgs >>= \case
             ! param #output (getOutput source output)
   Example{target} ->
     example (getTarget target)
+  Pretty{source} -> pretty source
+
+pretty :: FilePath -> IO ()
+pretty source = do
+  !source <- try @Parser.Ex (evaluate =<< Parser.parse Parser.module_ <$> readFile source) >>= \case
+    Right source -> pure source
+    Left ex -> do putStrLn (displayException ex); exitFailure
+  Prettier.io Prettier.module_ source
 
 example :: X64.Target -> IO ()
 example target = do

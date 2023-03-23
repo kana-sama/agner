@@ -2,7 +2,7 @@
 
 # include "value.h"
 
-value_t* _runtime__init();
+void _runtime__init(value_t entry);
 void _runtime__finalize();
 void _runtime__yield();
 

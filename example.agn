@@ -1,12 +1,12 @@
 log(Msg) -> agner:print({self(), Msg}).
 
-printer() -> log(start), printer(1), log(finish).
-printer(6) -> ok;
-printer(N) -> log(N), printer(N+1).
+printer() -> log(start), printer(3), log(finish).
+printer(0) -> ok;
+printer(N) -> log(N), printer(N-1).
 
 main() ->
   log(main_start),
-  repeat(5, fun spawn_printer/0),
+  repeat(3, fun spawn_printer/0),
   log(main_finish).
 
 spawn_printer() -> spawn(fun printer/0).

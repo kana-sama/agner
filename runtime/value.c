@@ -2,7 +2,7 @@
 # include <stdlib.h>
 # include <stdbool.h>
 
-# include "../src/Language/Agner/X64.h"
+# include "tags.h"
 # include "value.h"
 
 fun_meta_t* get_fun_meta(value_t fun) {

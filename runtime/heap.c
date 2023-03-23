@@ -3,7 +3,7 @@
 # include <time.h>
 # include <string.h>
 
-# include "../src/Language/Agner/X64.h"
+# include "tags.h"
 # include "value.h"
 # include "heap.h"
 
@@ -118,7 +118,7 @@ extern heap_t* collect_garbage(
     }
   }
 
-  heap_t* new_heap = mk_heap(offset * 2);
+  heap_t* new_heap = heap_new(offset * 2);
   new_heap->mem_head = new_heap->mem + offset;
 
   for (int i = 0; i < stack_size; i++) {
@@ -156,8 +156,7 @@ extern heap_t* collect_garbage(
     }
   }
 
-  free(heap->mem);
-  free(heap);
+  heap_free(heap);
 
   clock_gettime(CLOCK_MONOTONIC_RAW, &gc_end);
   gc_time_ += (gc_end.tv_sec - gc_start.tv_sec) * 1000 + (gc_end.tv_nsec - gc_start.tv_nsec) / 1000000;
@@ -165,13 +164,18 @@ extern heap_t* collect_garbage(
   return new_heap;
 }
 
-extern heap_t* mk_heap(int64_t size) {
+extern heap_t* heap_new(int64_t size) {
   heap_t* heap = malloc(sizeof(heap_t));
   heap->mem = malloc(size * sizeof(value_t));
   heap->mem_head = heap->mem;
   heap->mem_end = heap->mem + size;
   heap->size = size;
   return heap;
+}
+
+extern void heap_free(heap_t* heap) {
+  free(heap->mem);
+  free(heap);
 }
 
 extern void* allocate(heap_t** heap, value_t* stack, value_t* stack_head, int64_t size) {

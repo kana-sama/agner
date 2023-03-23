@@ -1,4 +1,4 @@
-# include "./X64.h"
+# include "../../../runtime/tags.h"
 
 module Language.Agner.X64 (Ex(..), Prog, Target(..), prettyProg, compile) where
 
@@ -622,9 +622,8 @@ compile target prog = let ?target = target in execM do
   tell [Label entryPointName]
   subq WORD_SIZE rsp
 
+  movq (Static (mkFunName ("main" Syntax.:/ 0))) rdi
   callq (runtime RuntimeInit)
-  movq rax (Reg valuesStackReg)
-  callq (Lbl (mkFunName ("main" Syntax.:/ 0)))
   callq (runtime RuntimeFinalize)
 
   addq WORD_SIZE rsp

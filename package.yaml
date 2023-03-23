@@ -42,7 +42,7 @@ dependencies:
   - aeson
 
 extra-source-files:
-  - src/Language/Agner/X64.h
+  - runtime/tags.h
 
 library:
   source-dirs: src
