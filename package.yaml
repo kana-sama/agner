@@ -55,6 +55,7 @@ library:
     - transformers
     - lens
     - generic-lens
+    - free
 
     - megaparsec
     - parser-combinators

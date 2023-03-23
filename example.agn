@@ -6,7 +6,7 @@ printer(N) -> log(N), printer(N+1).
 
 main() ->
   log(main_start),
-  % repeat(5, fun spawn_printer/0),
+  repeat(5, fun spawn_printer/0),
   log(main_finish).
 
 spawn_printer() -> spawn(fun printer/0).

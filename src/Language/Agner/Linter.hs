@@ -4,7 +4,7 @@ import Data.Set qualified as Set
 
 import Language.Agner.Prelude
 import Language.Agner.Syntax
-import Language.Agner.Denote (bifs)
+import Language.Agner.BiF qualified as BiF
 import Language.Agner.Prettier qualified as Prettier
 
 data Error
@@ -59,7 +59,6 @@ checkVariables module_ = do
 
 checkFunctions :: Module -> Except Error ()
 checkFunctions module_ = flip evalStateT Set.empty do
-  put bifs
   for_ module_.decls \decl -> do
     modify (Set.insert decl.funid)
   for_ module_.decls \decl ->
@@ -83,6 +82,7 @@ checkFunctions module_ = flip evalStateT Set.empty do
       Var v -> pure ()
       Match p e -> expr e
 
+    check f | Just _ <- BiF.parse f = pure ()
     check f = do
       funs <- get
       when (f `Set.notMember` funs) do

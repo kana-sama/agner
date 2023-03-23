@@ -13,6 +13,7 @@ import Language.Agner.Value (Value)
 import Language.Agner.Value qualified as Value
 import Language.Agner.Denote qualified as Denote
 import Language.Agner.Syntax (BinOp)
+import Language.Agner.BiF qualified as BiF
 
 
 data Ex
@@ -236,12 +237,19 @@ instr DUP = execStateT do
   push a
   continue
 
-instr (CALL f _) | Denote.isBif f = execStateT do
+instr (CALL f _) | Just b <- BiF.parse f = execStateT do
   args <- replicateM f.arity pop
-  -- result <- liftIO do Denote.bif f args
-  result <- undefined
+  result <- BiF.runSpec alg (BiF.spec b args)
   push result
   continue
+  where
+    alg :: BiF.SpecF a -> StateT Cfg IO a
+    alg = \case
+      BiF.RunIO io k -> k <$> liftIO io
+      -- BiF.Spawn funid k -> k <$> spawn (void (resolveFunction funid []))
+      -- BiF.Yield k -> k <$ yield
+      -- BiF.Self k -> k <$> self
+      BiF.Error e -> throw (DenoteEx (Denote.Custom e))
 
 -- TODO: do not allocate more frames
 instr (CALL f _) = execStateT do
@@ -311,6 +319,7 @@ instr (LOAD var) = execStateT do
     Just val -> do
       push val
       continue
+
 instr (MATCH_I i onMatchFail) = execStateT do
   value <- pop
   if Value.same (Value.Integer i) value

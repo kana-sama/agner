@@ -12,6 +12,7 @@ import Control.Concurrent (threadDelay)
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
 import Language.Agner.Value qualified as Value
+import Language.Agner.BiF qualified as BiF
 
 data Ex
   = UnboundVariable Syntax.Var Env
@@ -228,47 +229,19 @@ module_ mod = withScheduler do
           main []
           pure ()
 
-bifs :: Set Syntax.FunId
-bifs = Set.fromList
-  [ "agner:print/1"
-  , "timer:sleep/1"
-  , "error/1"
-  , "spawn/1"
-  , "self/0"
-  ]
-
-isBif :: Syntax.FunId -> Bool
-isBif = (`Set.member` bifs)
-
-bif :: (WithScheduler, ?funs :: FunEnv) => Syntax.FunId -> ([Value] -> IO Value)
-bif funid args = do
+bif :: (WithScheduler, ?funs :: FunEnv) => BiF.BiF -> ([Value] -> IO Value)
+bif b args = do
   yield
-  body funid args
+  BiF.runSpec alg (BiF.spec b args)
   where
-    body = \case
-      "self/0" -> \[] -> do
-        pid <- self
-        pure (Value.PID pid)
-      "spawn/1" -> \[Value.Fun funid] -> do
-        pid <- spawn (do resolveFunction funid []; pure ())
-        pure (Value.PID pid)
-      "agner:print/1" -> \[value] -> do
-        liftIO do putStrLn (Value.encode value)
-        pure (Value.Atom "ok")
-      "error/1" -> \[value] -> do
-        throw (Custom value)
-      "timer:sleep/1" -> \[value] ->
-        case value of
-          Value.Integer duration -> do
-            liftIO do threadDelay (fromInteger duration * 1000)
-            pure (Value.Atom "ok")
-          Value.Atom "infinity" -> do
-            forever do liftIO do threadDelay (1000 * 1000)
-          value -> do
-            throw (NoFunctionClauseMatching "timer:sleep/1" [value])
-      funid -> throw (UnknownBiF funid)
+    alg = \case
+      BiF.RunIO io k -> k <$> io
+      BiF.Spawn funid k -> k <$> spawn (void (resolveFunction funid []))
+      BiF.Yield k -> k <$ yield
+      BiF.Self k -> k <$> self
+      BiF.Error e -> throw (Custom e)
 
 resolveFunction :: (WithScheduler, ?funs :: FunEnv) => Syntax.FunId -> ([Value] -> IO Value)
-resolveFunction funid | isBif funid = bif funid
+resolveFunction funid | Just b <- BiF.parse funid = bif b
 resolveFunction funid | Just f <- ?funs Map.!? funid = f
 resolveFunction funid = throw (UndefinedFunction funid)
