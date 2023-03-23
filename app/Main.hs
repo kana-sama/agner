@@ -60,22 +60,27 @@ getOutput source Nothing =
     Nothing -> error "unknown extension"
     Just path -> path
 
+runtime :: [FilePath]
+runtime = rt <$> ["value", "throw", "heap", "runtime"]
+  where rt f = "." </> "runtime" </> f <.> "c"
+
 compile ::  
   "target" :! X64.Target ->
   "source" :! FilePath ->
   "output" :! FilePath ->
   IO ()
-compile (Arg target) (Arg source) (Arg output) = do
-  source <- parse        source
-  source <- lint         source
-  source <- optimize     source
-  sm     <- compileToSM  source
-  x64    <- compileToX64 sm
+compile (Arg target) (Arg sourcePath) (Arg output) = do
+  sourceCode <- readFile     sourcePath
+  source     <- parse        sourceCode
+  source     <- lint         source
+  source     <- optimize     source
+  sm         <- compileToSM  source
+  x64        <- compileToX64 sm
   compileToBinary output x64
   where
-    parse :: FilePath -> IO Syntax.Module
+    parse :: String -> IO Syntax.Module
     parse source =
-      try @Parser.Ex (evaluate =<< Parser.parse Parser.module_ <$> readFile source) >>= \case
+      try @Parser.Ex (evaluate (Parser.parse Parser.module_ source)) >>= \case
         Right source -> pure source
         Left ex -> do putStrLn (displayException ex); exitFailure
 
@@ -101,14 +106,13 @@ compile (Arg target) (Arg source) (Arg output) = do
       withSystemTempDirectory "test" \path -> do
         let gas = X64.prettyProg prog
 
-        let runtimePath = "." </> "runtime" </> "runtime.c"
         let sourcePath = path </> "temp" <.> "s"
         let outputPath = output
 
         writeFile sourcePath gas
         gcc ! param #target target
             ! param #source sourcePath
-            ! param #runtime runtimePath
+            ! param #runtime runtime
             ! param #output outputPath
 
       pure ()
@@ -152,7 +156,7 @@ example target = do
   -- let !debug = SM.debug 1000 sm
   -- encodeFile "adbg/src/debug.json" debug
   -- putStrLn "debug done"
-  run @SM.Ex (SM.run sm)
+  -- run @SM.Ex (SM.run sm)
 
   -- compile and run
   withSystemTempDirectory "test" \path -> do
@@ -161,14 +165,13 @@ example target = do
     writeFile "output.s" gas
     putStrLn "output.s dumped"
 
-    let runtimePath = "." </> "runtime" </> "runtime.c"
     let sourcePath = path </> "temp" <.> "s"
     let outputPath = path </> "temp"
 
     writeFile sourcePath gas
     gcc ! param #target target
         ! param #source sourcePath
-        ! param #runtime runtimePath
+        ! param #runtime runtime
         ! param #output outputPath
 
     putStrLn "x64:"
@@ -180,9 +183,9 @@ example target = do
 gcc ::
   "target" :! X64.Target ->
   "source" :! FilePath ->
-  "runtime" :! FilePath ->
+  "runtime" :! [FilePath] ->
   "output" :! FilePath ->
   IO ExitCode
 gcc (Arg target) (Arg source) (Arg runtime) (Arg output) = case target of
-  X64.MacOS -> runProcess (proc "gcc" [runtime, source, "-o", output])
-  X64.Linux -> runProcess (proc "gcc" ["-z", "noexecstack", runtime, source, "-o", output])
+  X64.MacOS -> runProcess (proc "gcc" (runtime ++ [source, "-o", output]))
+  X64.Linux -> runProcess (proc "gcc" (runtime ++ ["-z", "noexecstack", source, "-o", output]))
