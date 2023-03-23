@@ -1,3 +1,21 @@
+Компилятор сабсета эрланга в бинарник. Для образовательных целей.
+
+Для сборки нужен ghc 9.6.1 и hpack
+```
+hpack
+cabal install
+```
+
+### Использование
+```bash
+# собрать в example
+agner example.agn -o example
+./example
+
+# притипринтинг
+agner pretty example.agn
+```
+
 # TODO:
 - [x] целые числа
 - [x] атомы
