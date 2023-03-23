@@ -16,15 +16,12 @@ struct timespec rt_start, rt_end;
 value_t _runtime__calling_context[10];
 scheduler_t* scheduler;
 
-void _runtime__init(value_t entry) {
+void _runtime__start(value_t entry) {
   clock_gettime(CLOCK_MONOTONIC_RAW, &rt_start);
-  scheduler = scheduler_new();
-  
   if ((entry & TAG_MASK) != FUN_TAG) _THROW_badfun(entry);
-  scheduler_run(scheduler, (action_t)entry);
-}
 
-void _runtime__finalize() {
+  scheduler = scheduler_new();
+  scheduler_run(scheduler, (action_t)entry);
   scheduler_free(scheduler);
 
   clock_gettime(CLOCK_MONOTONIC_RAW, &rt_end);

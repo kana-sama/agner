@@ -2,8 +2,7 @@
 
 # include "value.h"
 
-void _runtime__init(value_t entry);
-void _runtime__finalize();
+void _runtime__start(value_t entry);
 void _runtime__yield();
 
 value_t _runtime__alloc_tuple(int64_t size);

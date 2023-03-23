@@ -12,3 +12,4 @@ runtime/*.s
 adbg/src/debug.json
 example
 memory.png
+*.dSYM

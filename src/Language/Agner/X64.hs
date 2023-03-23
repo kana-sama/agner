@@ -36,7 +36,7 @@ data Ex
 data RuntimeName
   = RuntimeCallingContext
 
-  | RuntimeInit | RuntimeFinalize
+  | RuntimeStart
   | RuntimeYield
 
   | RuntimeAllocTuple | RuntimeFillTuple | RuntimeMatchTuple
@@ -60,9 +60,9 @@ runtimeName :: RuntimeName -> String
 runtimeName = \case
   RuntimeCallingContext -> "_runtime__calling_context"
 
-  RuntimeInit -> "_runtime__init"
+
+  RuntimeStart -> "_runtime__start"
   RuntimeYield -> "_runtime__yield"
-  RuntimeFinalize -> "_runtime__finalize"
 
 
   RuntimeAllocTuple -> "_runtime__alloc_tuple"
@@ -623,8 +623,7 @@ compile target prog = let ?target = target in execM do
   subq WORD_SIZE rsp
 
   movq (Static (mkFunName ("main" Syntax.:/ 0))) rdi
-  callq (runtime RuntimeInit)
-  callq (runtime RuntimeFinalize)
+  callq (runtime RuntimeStart)
 
   addq WORD_SIZE rsp
   movq 0 rax
