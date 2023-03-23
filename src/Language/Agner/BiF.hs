@@ -67,19 +67,25 @@ error v = liftF (Error v)
 
 spec :: BiF -> ([Value] -> Spec Value)
 spec BiF__agner__print__1 [value] = do
+  yield
   runIO do putStrLn (Value.encode value)
   pure (Value.Atom "ok")
 spec BiF__timer__sleep__1 [Value.Integer duration] = do
+  yield
   runIO do threadDelay (fromInteger duration * 1000)
   pure (Value.Atom "ok")
 spec BiF__timer__sleep__1 [Value.Atom "infinity"] = do
+  yield
   forever do
     runIO do threadDelay (1000 * 1000)
 spec BiF__erlang__error__1 [value] = do
+  yield
   error value
 spec BiF__erlang__spawn__1 [Value.Fun funid] = do
+  yield
   Value.PID <$> spawn funid
 spec BiF__erlang__self__0 [] = do
+  yield
   Value.PID <$> self
 spec bif args = do
   Prelude.error ("Invalid bif call: " ++ show bif ++ " with " ++ show args)

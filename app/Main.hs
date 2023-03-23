@@ -2,6 +2,7 @@ import Named
 
 import Data.Bits (shiftR, Bits ((.&.)))
 import Data.Aeson (encodeFile)
+import Data.IORef (newIORef, readIORef)
 
 import System.Process.Typed (runProcess, shell, proc)
 import System.IO.Temp (withSystemTempDirectory)
@@ -170,13 +171,8 @@ example target = do
   putStrLn "denote:"
   run @Denote.Ex (Denote.module_ source)
 
-  -- eval vm
-  putStrLn "stack machine:"
+  -- compile to SM
   let sm = SM.compileModule source
-  -- let !debug = SM.debug 1000 sm
-  -- encodeFile "adbg/src/debug.json" debug
-  -- putStrLn "debug done"
-  -- run @SM.Ex (SM.run sm)
 
   -- compile and run
   withSystemTempDirectory "test" \path -> do

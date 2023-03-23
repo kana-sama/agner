@@ -117,10 +117,7 @@ type Env = Map Syntax.Var Value
 type FunEnv = Map Syntax.FunId ([Value] -> IO Value)
 
 funDecl :: WithScheduler => FunEnv -> Syntax.FunDecl -> ([Value] -> IO Value)
-funDecl funs decl =
-  \args -> do
-    yield
-    goClauses decl.clauses args
+funDecl funs decl = goClauses decl.clauses
   where
     goClauses [] =
       \values -> throw (NoFunctionClauseMatching decl.funid values)
@@ -222,12 +219,12 @@ exprs (e : es) = runStateT do
 
 module_ :: Syntax.Module -> IO ()
 module_ mod = withScheduler do
-  let funs = Map.fromList [(d.funid, funDecl funs d) | d <- mod.decls] 
-   in case funs Map.!? ("main" Syntax.:/ 0) of
-        Nothing -> throw NoEntryPoint
-        Just main -> do
-          main []
-          pure ()
+  let funs = Map.fromList [(d.funid, funDecl funs d) | d <- mod.decls]
+  case funs Map.!? ("main" Syntax.:/ 0) of
+    Nothing -> throw NoEntryPoint
+    Just main -> do
+      main []
+      pure ()
 
 bif :: (WithScheduler, ?funs :: FunEnv) => BiF.BiF -> ([Value] -> IO Value)
 bif b args = do

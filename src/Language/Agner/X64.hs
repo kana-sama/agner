@@ -449,10 +449,6 @@ compileInstr = \case
       tell [Set (mkVarName var) (WORD_SIZE * varN)]
 
     tell [Label (mkFunBody funid)]
-
-    movq (Static (mkFunMeta funid)) rdi
-    movq (Reg stackFrameReg) rsi
-
   SM.YIELD -> do
     callq (runtime RuntimeYield)
 

@@ -93,6 +93,7 @@ PID_t scheduler_spawn(scheduler_t* scheduler, action_t action) {
 
 void scheduler_yield(scheduler_t* scheduler) {
   scheduler->fuel -= 1;
+
   if (scheduler->fuel <= 0) {
     tasks_queue_enqueue(scheduler->queue, scheduler->current);
 
