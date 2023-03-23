@@ -16,8 +16,7 @@ import Language.Agner.Syntax (BinOp)
 
 
 data Ex
-  = NotEnoughValuesForResult
-  | EmptyStack
+  = EmptyStack
   | AlreadyHalted
   | PositionIsOutOfProg
   | NoMatch Syntax.Pat Value
@@ -415,12 +414,11 @@ data DebugOutput = MkDebugOutput
 --             pure [cfg]
 --           Right cfgs -> pure (cfg:cfgs)
 
-run :: Prog -> IO Value
+run :: Prog -> IO ()
 run prog = do
-  cfg <- let ?funs = funs in go (buildCfg prog entryPoint)
-  case cfg.stack of
-    [result] -> pure result
-    _ -> throw NotEnoughValuesForResult
+  let ?funs = funs
+  go (buildCfg prog entryPoint)
+  pure ()
   where
     funs :: FunEnv
     funs = Map.fromList [(f, i) | (FUNCTION f _, i) <- zip prog [0..]]

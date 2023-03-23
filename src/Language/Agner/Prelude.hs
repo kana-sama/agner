@@ -13,7 +13,7 @@ import Data.Traversable as X (for)
 
 import Debug.Trace as X
 
-import Control.Monad as X (void)
+import Control.Monad as X (void, forever, (>=>), when, replicateM, replicateM_)
 import Control.Exception as X (Exception (..), try, throw, SomeException(..), evaluate)
 import Control.Monad.State.Strict as X
 import Control.Monad.Except as X

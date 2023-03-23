@@ -27,12 +27,12 @@ data Command
   = Compile{target :: Maybe X64.Target, source :: FilePath, output :: Maybe FilePath}
   | Example{target :: Maybe X64.Target}
 
-run :: forall e. Exception e => IO Value -> IO ()
+run :: forall e. Exception e => IO () -> IO ()
 run value = do
   result <- try @e (evaluate =<< value)
   case result of
     Left e -> putStrLn (displayException e)
-    Right v -> putStrLn (Value.encode v)
+    Right v -> pure ()
 
 parseArgs :: IO Command
 parseArgs = do

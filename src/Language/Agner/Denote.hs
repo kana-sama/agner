@@ -4,11 +4,10 @@ import Language.Agner.Prelude
 
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
+import Data.IORef (IORef, newIORef, atomicModifyIORef')
 
+import Control.Monad.IO.Cont (PromptTag, newPromptTag, prompt, control0)
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.MVar (MVar, newEmptyMVar, readMVar, putMVar)
-import Control.Monad.Reader
-import Control.Monad.Trans.Cont
 
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
@@ -28,23 +27,26 @@ data Ex
   deriving stock (Show)
   deriving anyclass (Exception)
 
-data SchedulerCtx = MkSchedulerCtx
-  { queue :: [(Value.PID, M ())]
+data SchedulerState = MkSchedulerState
+  { queue :: [(Value.PID, IO ())]
   , fuel :: Int
   , current :: Value.PID
   , gen :: Integer
   } deriving stock (Generic)
 
-type M = ContT () (StateT SchedulerCtx IO)
+type WithScheduler = (?schedulerState :: IORef SchedulerState, ?schedulerPromptTag :: PromptTag ())
 
-runM :: M a -> IO a
-runM action = do
-  result <- newEmptyMVar
-  let action' = liftIO . putMVar result =<< action
-  evalStateT (runContT (do spawn action'; switch) pure) initial
-  readMVar result
+scheduler :: (State SchedulerState a) -> (WithScheduler => IO a)
+scheduler action = atomicModifyIORef' ?schedulerState \s ->
+  let (s', a) = runState action s in (a, s')
+
+withScheduler :: (WithScheduler => IO ()) -> IO ()
+withScheduler action = do
+  schedulerState <- newIORef initialSchedulerState; let ?schedulerState = schedulerState
+  schedulerPromptTag <- newPromptTag; let ?schedulerPromptTag = schedulerPromptTag
+  do spawn action; switch
   where
-    initial = MkSchedulerCtx
+    initialSchedulerState = MkSchedulerState
       { queue = []
       , fuel = 0
       , current = Value.MkPID (-1)
@@ -53,39 +55,51 @@ runM action = do
 
 _FUEL = 10
 
-push :: Value.PID -> M () -> M ()
-push pid action = do
-  #queue <>= [(pid, action)]
+push :: WithScheduler => (Value.PID, IO ()) -> IO ()
+push p = scheduler do #queue <>= [p]
 
-freshPID :: M Value.PID
+pop :: WithScheduler => IO (Maybe (Value.PID, IO ()))
+pop = do
+  queue <- scheduler do use #queue
+  case queue of
+    [] -> pure Nothing
+    p:ps -> do
+      scheduler do #queue .= ps
+      pure (Just p)
+
+freshPID :: WithScheduler => IO Value.PID
 freshPID = do
-  pid <- #gen <<+= 1
+  pid <- scheduler do #gen <<+= 1
   pure (Value.MkPID pid)
 
-spawn :: M () -> M Value.PID
+self :: WithScheduler => IO Value.PID
+self = scheduler do use #current
+
+spawn :: WithScheduler => IO () -> IO Value.PID
 spawn action = do
   pid <- freshPID
-  push pid (do action; switch)
+  push (pid, do action; switch)
   pure pid
 
-yield :: M ()
+yield :: WithScheduler => IO ()
 yield = do
-  fuel <- #fuel <-= 1
-  when (fuel == 0) do
-    shiftT \next -> do
-      pid <- use #current
-      push pid (lift (next ()))
+  fuel <- scheduler do #fuel <-= 1
+  when (fuel <= 0) do
+    control0 ?schedulerPromptTag \next -> do
+      pid <- scheduler do use #current
+      push (pid, next (pure ()))
       switch
 
-switch :: M ()
+switch :: WithScheduler => IO ()
 switch = do
-  use #queue >>= \case
-    [] -> pure ()
-    (pid, task):tasks -> do
-      #queue .= tasks
-      #fuel .= _FUEL
-      #current .= pid
-      task
+  pop >>= \case
+    Nothing -> pure ()
+    Just (pid, task) -> do
+      scheduler do
+        #fuel .= _FUEL
+        #current .= pid
+      prompt ?schedulerPromptTag task
+
 
 binOp :: Syntax.BinOp -> (Value -> Value -> Value)
 binOp = \case
@@ -99,9 +113,9 @@ binOp = \case
       _ -> throw (BinOp_BadArgs (Syntax.:-))
 
 type Env = Map Syntax.Var Value
-type FunEnv = Map Syntax.FunId ([Value] -> M Value)
+type FunEnv = Map Syntax.FunId ([Value] -> IO Value)
 
-funDecl :: FunEnv -> Syntax.FunDecl -> ([Value] -> M Value)
+funDecl :: WithScheduler => FunEnv -> Syntax.FunDecl -> ([Value] -> IO Value)
 funDecl funs decl =
   \args -> do
     yield
@@ -125,7 +139,7 @@ funDecl funs decl =
         Nothing -> Nothing
     matchClause _ _ _ = error "Denote.tryClause: impossible!!"
 
-expr :: (?funs :: FunEnv) => Syntax.Expr -> (Env -> M (Value, Env))
+expr :: (WithScheduler, ?funs :: FunEnv) => Syntax.Expr -> (Env -> IO (Value, Env))
 expr = \case
   Syntax.Integer i -> runStateT do
     pure (Value.Integer i)
@@ -164,7 +178,7 @@ expr = \case
       Value.Fun funid -> StateT (apply funid args)
       value -> throw (BadFunction value)
 
-apply :: (?funs :: FunEnv) => Syntax.FunId -> [Syntax.Expr] -> (Env -> M (Value, Env))
+apply :: (WithScheduler, ?funs :: FunEnv) => Syntax.FunId -> [Syntax.Expr] -> (Env -> IO (Value, Env))
 apply funid args = runStateT do
   when (funid.arity /= length args) do
     throw (BadArity funid (length args))
@@ -199,18 +213,20 @@ match (Syntax.PatVar var) val =
         | Value.same val val' -> Just env
         | otherwise -> Nothing
 
-exprs :: (?funs :: FunEnv) => Syntax.Exprs -> (Env -> M (Value, Env))
+exprs :: (WithScheduler, ?funs :: FunEnv) => Syntax.Exprs -> (Env -> IO (Value, Env))
 exprs [] = nonEmptyError "Denote.exprs"
 exprs (e : es) = runStateT do
   v <- StateT (expr e)
   foldlM (\_ e -> StateT (expr e)) v es
 
-module_ :: Syntax.Module -> IO Value
-module_ mod = runM do
+module_ :: Syntax.Module -> IO ()
+module_ mod = withScheduler do
   let funs = Map.fromList [(d.funid, funDecl funs d) | d <- mod.decls] 
    in case funs Map.!? ("main" Syntax.:/ 0) of
         Nothing -> throw NoEntryPoint
-        Just main -> main []
+        Just main -> do
+          main []
+          pure ()
 
 bifs :: Set Syntax.FunId
 bifs = Set.fromList
@@ -224,14 +240,14 @@ bifs = Set.fromList
 isBif :: Syntax.FunId -> Bool
 isBif = (`Set.member` bifs)
 
-bif :: (?funs :: FunEnv) => Syntax.FunId -> ([Value] -> M Value)
+bif :: (WithScheduler, ?funs :: FunEnv) => Syntax.FunId -> ([Value] -> IO Value)
 bif funid args = do
   yield
   body funid args
   where
     body = \case
       "self/0" -> \[] -> do
-        pid <- use #current
+        pid <- self
         pure (Value.PID pid)
       "spawn/1" -> \[Value.Fun funid] -> do
         pid <- spawn (do resolveFunction funid []; pure ())
@@ -252,7 +268,7 @@ bif funid args = do
             throw (NoFunctionClauseMatching "timer:sleep/1" [value])
       funid -> throw (UnknownBiF funid)
 
-resolveFunction :: (?funs :: FunEnv) => Syntax.FunId -> ([Value] -> M Value)
+resolveFunction :: (WithScheduler, ?funs :: FunEnv) => Syntax.FunId -> ([Value] -> IO Value)
 resolveFunction funid | isBif funid = bif funid
 resolveFunction funid | Just f <- ?funs Map.!? funid = f
 resolveFunction funid = throw (UndefinedFunction funid)

@@ -47,6 +47,8 @@ extra-source-files:
 library:
   source-dirs: src
   dependencies:
+    - ghc-prim
+
     - containers
 
     - mtl
