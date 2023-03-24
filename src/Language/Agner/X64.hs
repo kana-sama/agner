@@ -449,7 +449,9 @@ compileInstr = \case
       tell [Set (mkVarName var) (WORD_SIZE * varN)]
 
     tell [Label (mkFunBody funid)]
-  SM.YIELD -> do
+
+  SM.YIELD funid -> do
+    movq (Static (mkFunMetaOpt "name_a" funid)) rdi
     callq (runtime RuntimeYield)
 
   SM.FUNCTION_END funid -> do
@@ -461,6 +463,7 @@ compileInstr = \case
     tell [Label (mkFunMeta funid)]
     tell [Meta  (mkFunMetaOpt "arity" funid ++ ": .quad " ++ show funid.arity)]
     tell [Meta  (mkFunMetaOpt "name" funid ++ ": .asciz " ++ show (Prettier.string Prettier.funId funid))]
+    tell [Meta  (mkFunMetaOpt "name_a" funid ++ ": .asciz " ++ show (Prettier.string Prettier.funIdA funid))]
 
   SM.CLAUSE funid clauseN vars -> do
     tell [Label (mkFunClause funid (Just clauseN))]

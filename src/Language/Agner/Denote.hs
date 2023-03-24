@@ -4,14 +4,16 @@ import Language.Agner.Prelude
 
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import Data.IORef (IORef, newIORef, atomicModifyIORef')
+import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef, modifyIORef')
 
 import Control.Monad.IO.Cont (PromptTag, newPromptTag, prompt, control0)
 import Control.Concurrent (threadDelay)
 
+import Language.Agner.Syntax (FunId)
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
 import Language.Agner.Value qualified as Value
+import Language.Agner.Prettier qualified as Prettier
 import Language.Agner.BiF qualified as BiF
 
 data Ex
@@ -35,16 +37,23 @@ data SchedulerState = MkSchedulerState
   , gen :: Integer
   } deriving stock (Generic)
 
-type WithScheduler = (?schedulerState :: IORef SchedulerState, ?schedulerPromptTag :: PromptTag ())
+data YLog = MkYLog{id :: Int, pid :: Integer, name :: String, fuel :: Int}
+
+type WithScheduler =
+  ( ?state :: IORef SchedulerState
+  , ?promptTag :: PromptTag ()
+  , ?yLogs :: Maybe (IORef (Int, [YLog]))
+  )
 
 scheduler :: (State SchedulerState a) -> (WithScheduler => IO a)
-scheduler action = atomicModifyIORef' ?schedulerState \s ->
+scheduler action = atomicModifyIORef' ?state \s ->
   let (s', a) = runState action s in (a, s')
 
-withScheduler :: (WithScheduler => IO ()) -> IO ()
-withScheduler action = do
-  schedulerState <- newIORef initialSchedulerState; let ?schedulerState = schedulerState
-  schedulerPromptTag <- newPromptTag; let ?schedulerPromptTag = schedulerPromptTag
+withScheduler :: Maybe (IORef (Int, [YLog])) -> (WithScheduler => IO ()) -> IO ()
+withScheduler yLogs action = do
+  state <- newIORef initialSchedulerState; let ?state = state
+  promptTag <- newPromptTag; let ?promptTag = promptTag
+  let ?yLogs = yLogs
   do spawn action; switch
   where
     initialSchedulerState = MkSchedulerState
@@ -82,11 +91,23 @@ spawn action = do
   push (pid, do action; switch)
   pure pid
 
-yield :: WithScheduler => IO ()
-yield = do
+ylog :: WithScheduler => FunId -> IO ()
+ylog funid =
+  case ?yLogs of
+    Nothing -> pure ()
+    Just ref -> do
+      pid <- (.unPID) <$> self
+      let name = Prettier.string Prettier.funIdA funid
+      fuel <- scheduler do use #fuel
+      modifyIORef' ref \(id, logs) -> (id+1, MkYLog{id, pid, name, fuel}:logs)
+
+yield :: WithScheduler => FunId -> IO ()
+yield funid = do
+  ylog funid
+
   fuel <- scheduler do #fuel <-= 1
   when (fuel <= 0) do
-    control0 ?schedulerPromptTag \next -> do
+    control0 ?promptTag \next -> do
       pid <- scheduler do use #current
       push (pid, next (pure ()))
       switch
@@ -99,7 +120,7 @@ switch = do
       scheduler do
         #fuel .= _FUEL
         #current .= pid
-      prompt ?schedulerPromptTag task
+      prompt ?promptTag task
 
 
 binOp :: Syntax.BinOp -> (Value -> Value -> Value)
@@ -117,7 +138,9 @@ type Env = Map Syntax.Var Value
 type FunEnv = Map Syntax.FunId ([Value] -> IO Value)
 
 funDecl :: WithScheduler => FunEnv -> Syntax.FunDecl -> ([Value] -> IO Value)
-funDecl funs decl = goClauses decl.clauses
+funDecl funs decl args = do
+  yield decl.funid
+  goClauses decl.clauses args
   where
     goClauses [] =
       \values -> throw (NoFunctionClauseMatching decl.funid values)
@@ -217,24 +240,13 @@ exprs (e : es) = runStateT do
   v <- StateT (expr e)
   foldlM (\_ e -> StateT (expr e)) v es
 
-module_ :: Syntax.Module -> IO ()
-module_ mod = withScheduler do
-  let funs = Map.fromList [(d.funid, funDecl funs d) | d <- mod.decls]
-  case funs Map.!? ("main" Syntax.:/ 0) of
-    Nothing -> throw NoEntryPoint
-    Just main -> do
-      main []
-      pure ()
-
 bif :: (WithScheduler, ?funs :: FunEnv) => BiF.BiF -> ([Value] -> IO Value)
-bif b args = do
-  yield
-  BiF.runSpec alg (BiF.spec b args)
+bif b args = BiF.runSpec alg (BiF.spec b args)
   where
     alg = \case
       BiF.RunIO io k -> k <$> io
       BiF.Spawn funid k -> k <$> spawn (void (resolveFunction funid []))
-      BiF.Yield k -> k <$ yield
+      BiF.Yield funid k -> k <$ yield funid
       BiF.Self k -> k <$> self
       BiF.Error e -> throw (Custom e)
 
@@ -242,3 +254,21 @@ resolveFunction :: (WithScheduler, ?funs :: FunEnv) => Syntax.FunId -> ([Value] 
 resolveFunction funid | Just b <- BiF.parse funid = bif b
 resolveFunction funid | Just f <- ?funs Map.!? funid = f
 resolveFunction funid = throw (UndefinedFunction funid)
+
+module_ :: WithScheduler => Syntax.Module -> IO ()
+module_ mod = do
+  let funs = Map.fromList [(d.funid, funDecl funs d) | d <- mod.decls]
+  case funs Map.!? ("main" Syntax.:/ 0) of
+    Nothing -> throw NoEntryPoint
+    Just main -> do
+      main []
+      pure ()
+
+denoteWithYLogs :: (WithScheduler => IO ()) -> IO [YLog]
+denoteWithYLogs action = do
+  yLogs <- newIORef (1, [])
+  withScheduler (Just yLogs) action
+  reverse . snd <$> readIORef yLogs
+
+denote :: (WithScheduler => IO ()) -> IO ()
+denote = withScheduler Nothing

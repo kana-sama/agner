@@ -3,7 +3,7 @@
 # include "value.h"
 
 void _runtime__start(value_t entry);
-void _runtime__yield();
+void _runtime__yield(char*);
 
 value_t _runtime__alloc_tuple(int64_t size);
 void _runtime__fill_tuple(value_t value, int64_t size, value_t* values);

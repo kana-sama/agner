@@ -56,7 +56,7 @@ data Instr
   | DYN_CALL{arity :: Int}
   
   | FUNCTION{funid :: FunId, vars :: [Syntax.Var]}
-  | YIELD
+  | YIELD{funid :: FunId}
   | CLAUSE{funid :: FunId, clauseIndex :: Int, vars :: [Syntax.Var]}
   | FAIL_CLAUSE{funid :: FunId, clauseIndex :: Int}
   | FUNCTION_END{funid :: FunId}
@@ -118,7 +118,7 @@ compileFunDecl :: Syntax.FunDecl -> Prog
 compileFunDecl funDecl =
   concat
     [ [FUNCTION funDecl.funid (Set.toList (Syntax.funDeclVars funDecl))]
-    , [YIELD]
+    , [YIELD funDecl.funid]
     , foldMap ((uncurry . uncurry) compileFunClause) (zipWithLast (zip funDecl.clauses [0..]))
     , [FAIL_CLAUSE funDecl.funid (length funDecl.clauses)]
     , [FUNCTION_END funDecl.funid]

@@ -8,10 +8,9 @@
 # include <stdbool.h>
 # include <setjmp.h>
 
+# include "options.h"
 # include "process.h"
 # include "tasks_queue.h"
-
-# define AVAILABLE_FUEL 10
 
 scheduler_t* scheduler_new() {
   scheduler_t* scheduler = malloc(sizeof(struct scheduler_t));
@@ -43,7 +42,7 @@ void scheduler_switch(scheduler_t* scheduler) {
   scheduler->current = tasks_queue_dequeue(scheduler->queue);
 
   if (scheduler->current) {
-    scheduler->fuel = AVAILABLE_FUEL;
+    scheduler->fuel = options.fuel;
     longjmp(*scheduler->current->context, 1);
   } else {
     longjmp(*scheduler->exit, 1);

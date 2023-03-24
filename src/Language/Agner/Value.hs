@@ -6,7 +6,7 @@ import Data.List (intercalate)
 
 import Language.Agner.Syntax qualified as Syntax
 
-newtype PID = MkPID Integer
+newtype PID = MkPID{unPID :: Integer}
   deriving stock (Show, Eq)
   deriving newtype (ToJSON)
 

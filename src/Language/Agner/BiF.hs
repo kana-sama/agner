@@ -1,4 +1,4 @@
-module Language.Agner.BiF (BiF(..), parse, SpecF(..), Spec, runSpec, spec) where
+module Language.Agner.BiF (BiF(..), toFunId, parse, SpecF(..), Spec, runSpec, spec) where
 
 import Prelude hiding (error)
 import Prelude qualified
@@ -19,6 +19,14 @@ data BiF
   | BiF__erlang__self__0
   deriving stock Show
 
+toFunId :: BiF -> FunId
+toFunId = \case
+  BiF__agner__print__1 -> "agner:print/1"
+  BiF__timer__sleep__1 -> "timer:sleep/1"
+  BiF__erlang__error__1 -> "erlang:error/1"
+  BiF__erlang__spawn__1 -> "erlang:spawn/1"
+  BiF__erlang__self__0 -> "erlang:self/0"
+
 parse :: FunId -> Maybe BiF
 parse = \case
   "self/0" -> Just BiF__erlang__self__0
@@ -35,7 +43,7 @@ parse = \case
 data SpecF next
   = forall a. RunIO (IO a) (a -> next)
   | Spawn FunId (PID -> next)
-  | Yield next
+  | Yield FunId next
   | Self (PID -> next)
   | Error Value
 
@@ -43,7 +51,7 @@ instance Functor SpecF where
   fmap f = \case
     RunIO io k -> RunIO io (f . k)
     Spawn action k -> Spawn action (f . k)
-    Yield k -> Yield (f k)
+    Yield funid k -> Yield funid (f k)
     Self k -> Self (f . k)
     Error v -> Error v
 
@@ -55,8 +63,8 @@ runIO io = liftF (RunIO io id)
 spawn :: FunId -> Spec PID
 spawn action = liftF (Spawn action id)
 
-yield :: Spec ()
-yield = liftF (Yield ())
+yield :: FunId -> Spec ()
+yield f = liftF (Yield f ())
 
 self :: Spec PID
 self = liftF (Self id)
@@ -67,25 +75,25 @@ error v = liftF (Error v)
 
 spec :: BiF -> ([Value] -> Spec Value)
 spec BiF__agner__print__1 [value] = do
-  yield
+  yield (toFunId BiF__agner__print__1)
   runIO do putStrLn (Value.encode value)
   pure (Value.Atom "ok")
 spec BiF__timer__sleep__1 [Value.Integer duration] = do
-  yield
+  yield (toFunId BiF__timer__sleep__1)
   runIO do threadDelay (fromInteger duration * 1000)
   pure (Value.Atom "ok")
 spec BiF__timer__sleep__1 [Value.Atom "infinity"] = do
-  yield
+  yield (toFunId BiF__timer__sleep__1)
   forever do
     runIO do threadDelay (1000 * 1000)
 spec BiF__erlang__error__1 [value] = do
-  yield
+  yield (toFunId BiF__erlang__error__1)
   error value
 spec BiF__erlang__spawn__1 [Value.Fun funid] = do
-  yield
+  yield (toFunId BiF__erlang__spawn__1)
   Value.PID <$> spawn funid
 spec BiF__erlang__self__0 [] = do
-  yield
+  yield (toFunId BiF__erlang__self__0)
   Value.PID <$> self
 spec bif args = do
   Prelude.error ("Invalid bif call: " ++ show bif ++ " with " ++ show args)

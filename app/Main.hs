@@ -1,14 +1,18 @@
+{-# LANGUAGE OverloadedLists #-}
+
 import Named
 
 import Data.Bits (shiftR, Bits ((.&.)))
 import Data.Aeson (encodeFile)
 import Data.IORef (newIORef, readIORef)
+import Data.ByteString.Lazy qualified as ByteString
+import Data.Csv qualified as CSV
 
 import System.Process.Typed (runProcess, shell, proc)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Exit (ExitCode(..), exitFailure)
 import System.FilePath ((</>), (<.>), stripExtension)
-import System.Environment (getArgs)
+import System.Environment (getArgs, setEnv)
 import System.Info (os)
 
 import Control.Exception (evaluate, try, Exception (displayException), SomeException)
@@ -68,7 +72,8 @@ runtime = rt <$> sources
   where
     rt f = "." </> "runtime" </> f <.> "c"
     sources =
-      [ "value"
+      [ "options"
+      , "value"
       , "throw"
       , "heap"
       , "process"
@@ -148,6 +153,14 @@ pretty source = do
     Left ex -> do putStrLn (displayException ex); exitFailure
   Prettier.io Prettier.module_ source
 
+instance CSV.ToNamedRecord Denote.YLog where
+  toNamedRecord ylog = CSV.namedRecord
+    [ "id" CSV..= ylog.id
+    , "pid" CSV..= ylog.pid
+    , "function" CSV..= ylog.name
+    , "fuel" CSV..= ylog.fuel
+    ]
+
 example :: X64.Target -> IO ()
 example target = do
   -- parse
@@ -169,7 +182,11 @@ example target = do
 
   -- eval
   putStrLn "denote:"
-  run @Denote.Ex (Denote.module_ source)
+  run @Denote.Ex do
+    ylogs <- Denote.denoteWithYLogs (Denote.module_ source)
+    let csv = CSV.encodeByName ["id", "pid", "function", "fuel"] ylogs
+    ByteString.writeFile "log_denote.csv" csv
+    pure ()
 
   -- compile to SM
   let sm = SM.compileModule source
@@ -191,6 +208,8 @@ example target = do
         ! param #output outputPath
 
     putStrLn "x64:"
+    setEnv "ARTS_FUEL" "10"
+    setEnv "ARTS_YLOG" "log_x64.csv"
     runProcess (shell outputPath) >>= \case
       ExitFailure (-11) -> putStrLn "сегфолт"
       ExitFailure i -> putStrLn ("ExitCode = " ++ show i)

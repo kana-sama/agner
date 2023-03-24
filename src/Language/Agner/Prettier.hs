@@ -39,9 +39,12 @@ keyword :: D -> D
 keyword = annotate bold
 
 funId :: FunId -> D
-funId funid =
-  let ns = pretty case funid.ns of Just ns -> ns ++ ":"; Nothing -> mempty
-   in ns <> pretty funid.name
+funId f =
+  let ns = pretty case f.ns of Just ns -> ns ++ ":"; Nothing -> mempty
+   in ns <> pretty f.name
+
+funIdA :: FunId -> D
+funIdA f = funId f <> "/" <> pretty f.arity
 
 var :: WithVarStyles => Var -> D
 var v = annotate (?varStyle v) (pretty v)
@@ -50,7 +53,7 @@ expr :: WithVarStyles => Expr -> D
 expr = \case
   Integer i -> pretty i
   Atom a -> pretty a
-  Fun f -> keyword "fun" <+> funId f <> "/" <> pretty f.arity
+  Fun f -> keyword "fun" <+> funIdA f
   List es -> brackets (hsep (punctuate comma (expr <$> es)))
   Nil -> "[]"
   Cons a b -> brackets (expr a <+> "|" <+> expr b)

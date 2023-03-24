@@ -13,3 +13,4 @@ adbg/src/debug.json
 example
 memory.png
 *.dSYM
+log_*.csv

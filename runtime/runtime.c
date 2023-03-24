@@ -7,30 +7,49 @@
 # include <string.h>
 
 # include "tags.h"
+# include "options.h"
 # include "value.h"
 # include "throw.h"
 # include "heap.h"
 # include "scheduler.h"
 
-struct timespec rt_start, rt_end;
 value_t _runtime__calling_context[10];
 scheduler_t* scheduler;
+FILE* ylog;
 
 void _runtime__start(value_t entry) {
-  clock_gettime(CLOCK_MONOTONIC_RAW, &rt_start);
-  if ((entry & TAG_MASK) != FUN_TAG) _THROW_badfun(entry);
+  read_env_options();
 
+  if (options.ylog) {
+    ylog = fopen(options.ylog, "w");
+    fprintf(ylog, "id,pid,function,fuel\n");
+  }
+
+  struct timespec rt_start, rt_end;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &rt_start);
+
+  if ((entry & TAG_MASK) != FUN_TAG) _THROW_badfun(entry);
   scheduler = scheduler_new();
   scheduler_run(scheduler, (action_t)entry);
   scheduler_free(scheduler);
 
   clock_gettime(CLOCK_MONOTONIC_RAW, &rt_end);
-  uint64_t total_time = (rt_end.tv_sec - rt_start.tv_sec) * 1000 + (rt_end.tv_nsec - rt_start.tv_nsec) / 1000000;
-  printf("total time: %lldms\n"
-         "   gc time: %lldms\n", total_time, gc_time());
+
+  if (ylog) fclose(ylog);
+  
+  if (options.stat) {
+    uint64_t total_time = (rt_end.tv_sec - rt_start.tv_sec) * 1000 + (rt_end.tv_nsec - rt_start.tv_nsec) / 1000000;
+    printf("total time: %lldms\n"
+           "   gc time: %lldms\n", total_time, gc_time());
+  }
 }
 
-void _runtime__yield() {
+void _runtime__yield(char* name) {
+  if (options.ylog) {
+    static int64_t log_line_id = 0; log_line_id++;
+    fprintf(ylog, "%lld,%lld,%s,%lld\n", log_line_id, scheduler->current->pid, name, scheduler->fuel);
+  }
+
   scheduler_yield(scheduler);
 }
 
@@ -99,7 +118,7 @@ value_t* _runtime__match_cons(value_t value) {
 
 // _runtime__calling_context[0] should be "ok" atom
 value_t _agner__print(value_t value) {
-  _runtime__yield();
+  _runtime__yield("agner:print/1");
   
   print_value(value);
   printf("\n");
@@ -108,7 +127,7 @@ value_t _agner__print(value_t value) {
 }
 
 value_t _global__error(value_t value) {
-  _runtime__yield();
+  _runtime__yield("erlang:error/1");
 
   printf("** exception error: ");
   print_value(value);
@@ -120,7 +139,7 @@ value_t _global__error(value_t value) {
 // _runtime__calling_context[1] should be "infinity" atom
 static fun_meta_t _timer__sleep__meta = {.arity = 1, .name = "timer:sleep"};
 value_t _timer__sleep(value_t duration) {
-  _runtime__yield();
+  _runtime__yield("timer:sleep/1");
 
   switch (duration & TAG_MASK) {
     case NUMBER_TAG: {
@@ -149,7 +168,7 @@ value_t _timer__sleep(value_t duration) {
 }
 
 value_t _global__spawn(value_t value) {
-  _runtime__yield();
+  _runtime__yield("erlang:spawn/1");
 
   if ((value & TAG_MASK) != FUN_TAG) _THROW_badfun(value);
   action_t action = (action_t)value;
@@ -158,7 +177,7 @@ value_t _global__spawn(value_t value) {
 }
 
 value_t _global__self() {
-  _runtime__yield();
+  _runtime__yield("erlang:self/0");
 
   return scheduler->current->pid << TAG_SIZE | PID_TAG;
 }
