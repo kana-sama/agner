@@ -18,7 +18,9 @@ typedef struct process_t {
   char*         stack_beg;
   value_t*      vstack;
   jmp_buf*      context;
+  bool          is_alive;
 } process_t;
 
 process_t* process_new();
-void process_free(process_t* process);
+void       process_free(process_t* process);
+process_t* process_lookup(PID_t pid);

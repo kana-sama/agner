@@ -72,12 +72,12 @@ runtime = rt <$> sources
   where
     rt f = "." </> "runtime" </> f <.> "c"
     sources =
-      [ "options"
+      [ "list"
+      , "options"
       , "value"
       , "throw"
       , "heap"
       , "process"
-      , "tasks_queue"
       , "scheduler"
       , "runtime"
       ]
