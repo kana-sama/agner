@@ -117,3 +117,19 @@ boxed_value_t* cast_to_boxed(value_t value) {
   if ((value & TAG_MASK) != BOX_TAG) return NULL;
   return (boxed_value_t*)(value ^ BOX_TAG);
 }
+
+void dump_value(value_t value) {
+  printf("%lld", value);
+  
+  boxed_value_t* ref = cast_to_boxed(value);
+  if (ref) {
+    printf("[");
+    int64_t size = boxed_value_size(ref);
+    for (int64_t i = 0; i < size; i++) {
+      printf("%llx ", ((int64_t*)ref)[i]);
+    }
+    printf("]");
+  }
+
+  printf("\n");
+}

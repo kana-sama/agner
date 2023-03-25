@@ -15,8 +15,8 @@ uint64_t gc_time() { return gc_time_; }
 static void append_children(list_t* queue, boxed_value_t* ref) {
   boxed_value_children_t children = boxed_value_children(ref);
   for (int64_t i = 0; i < children.count; i++) {
-    boxed_value_t* child = cast_to_boxed(children.values[i]);
-    if (child) list_append(queue, child);
+    boxed_value_t* child = cast_to_boxed(children.values[i]); if (!child) continue;
+    list_append(queue, child);
   }
 }
 
@@ -34,8 +34,7 @@ heap_t* collect_garbage(
   list_t* queue = list_new();
 
   for (int i = 0; i < stack_size; i++) {
-    boxed_value_t* ref = cast_to_boxed(stack[i]);
-    if (!ref) continue;;
+    boxed_value_t* ref = cast_to_boxed(stack[i]); if (!ref) continue;;
 
     if (ref->super.gc_offset == 0) {
       ref->super.gc_offset = offset;
@@ -59,11 +58,9 @@ heap_t* collect_garbage(
 
   for (int i = 0; i < stack_size; i++) {
     value_t value = stack[i];
-    if ((value & TAG_MASK) == BOX_TAG) {
-      boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
-      stack[i] = (value_t)(new_heap->mem + ref->super.gc_offset) | BOX_TAG;
-      list_append(queue, ref);
-    }
+    boxed_value_t* ref = cast_to_boxed(stack[i]); if (!ref) continue;
+    stack[i] = (value_t)(new_heap->mem + ref->super.gc_offset) | BOX_TAG;
+    list_append(queue, ref);
   }
 
   while (!list_null(queue)) {
@@ -123,3 +120,18 @@ void* allocate(heap_t** heap, value_t* stack, value_t* stack_head, int64_t size)
   return target;
 }
 
+value_t copy_to_heap(value_t value, heap_t** heap, value_t* stack, value_t* stack_head) {
+  boxed_value_t* ref = cast_to_boxed(value);
+  if (ref == NULL) return value;
+
+  int64_t size = boxed_value_size(ref);
+  void* dst = allocate(heap, stack, stack_head, size);
+  memcpy(dst, ref, size * sizeof(value_t));
+
+  boxed_value_children_t children = boxed_value_children(ref);
+  for (int i = 0; i < children.count; i++) {
+    children.values[i] = copy_to_heap(children.values[i], heap, stack, stack_head);
+  }
+
+  return (value_t)(dst) | BOX_TAG;
+}

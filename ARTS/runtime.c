@@ -53,18 +53,13 @@ void _runtime__yield(char* name) {
   scheduler_yield(scheduler);
 }
 
-static
-value_t* current_vstack_head() {
-  value_t* stack_head;
-  asm("movq %%r12, %0" : "=rm"(stack_head));
-  return stack_head;
-}
-
 value_t _runtime__alloc_tuple(int64_t size) {
+  process_save_vstack_head(scheduler->current);
+
   boxed_tuple_t* tuple = allocate(
     &scheduler->current->heap,
     scheduler->current->vstack,
-    current_vstack_head(),
+    scheduler->current->vstack_head,
     sizeof(boxed_tuple_t)/WORD_SIZE + size
   );
   tuple->super.header = TUPLE_HEADER;
@@ -88,10 +83,12 @@ value_t* _runtime__match_tuple(value_t value, int64_t size) {
 }
 
 value_t _runtime__alloc_cons() {
+  process_save_vstack_head(scheduler->current);
+
   boxed_cons_t* cons = allocate(
     &scheduler->current->heap,
     scheduler->current->vstack,
-    current_vstack_head(),
+    scheduler->current->vstack_head,
     sizeof(boxed_cons_t)/WORD_SIZE
   );
   cons->super.header = CONS_HEADER;
@@ -206,6 +203,9 @@ value_t _global__self() {
 value_t _erlang__send(value_t target, value_t msg) {
   if ((target & TAG_MASK) != PID_TAG) _THROW_badarg_send(target, msg);
   PID_t pid = target >> TAG_SIZE;
+
+  process_save_vstack_head(scheduler->current);
   process_send(pid, msg);
+
   return msg;
 }
