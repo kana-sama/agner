@@ -129,9 +129,23 @@ makeList cons nil ([], Just rest) = rest
 makeList cons nil ([], Nothing) = nil
 makeList cons nil (e:es, rest) = cons e (makeList cons nil (es, rest))
 
+receive :: Parser [(Pat, Exprs)]
+receive = do
+  symbol "receive"
+  cases <- case_ `sepBy1` symbol ";"
+  symbol "end"
+  pure cases
+  where
+    case_ = do
+      p <- pat
+      symbol "->"
+      es <- exprs
+      pure (p, es)
+
 term :: Parser Expr
 term = choice
   [ Fun <$> fun
+  , Receive <$> receive
   , uncurry Match <$> try match
   , uncurry (Apply SimpleCall) <$> try apply
   , uncurry DynApply <$> try dynApply
@@ -149,7 +163,8 @@ expr = makeExprParser term operatorTable
     operatorTable :: [[Operator Parser Expr]]
     operatorTable =
       [ [ binary "+" (\a b -> BinOp a (:+) b)
-        , binary "-" (\a b -> BinOp a (:-) b) ] ]
+        , binary "-" (\a b -> BinOp a (:-) b) ]
+      , [ binary "!" Send ] ]
 
     binary :: String -> (Expr -> Expr -> Expr) -> Operator Parser Expr
     binary name f = InfixL (f <$ symbol name)

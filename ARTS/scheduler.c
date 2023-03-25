@@ -92,18 +92,22 @@ PID_t scheduler_spawn(scheduler_t* scheduler, action_t action) {
   return process->pid;
 }
 
+void scheduler_next(scheduler_t* scheduler) {
+  list_append(scheduler->queue, scheduler->current);
+
+  if (setjmp(*scheduler->current->context) == 0) {
+    scheduler_switch(scheduler);
+  }
+
+  scheduler_collect(scheduler);
+}
+
 void scheduler_yield(scheduler_t* scheduler) {
   scheduler->fuel -= 1;
 
   if (scheduler->fuel <= 0) {
-    list_append(scheduler->queue, scheduler->current);
-
-    if (setjmp(*scheduler->current->context) == 0) {
-      scheduler_switch(scheduler);
-    }
+    scheduler_next(scheduler);
   }
-
-  scheduler_collect(scheduler);
 }
 
 void scheduler_run(scheduler_t* scheduler, action_t action) {

@@ -23,4 +23,5 @@ resolveTailCalls MkModule{decls} = MkModule{decls = [go_decl d | d <- decls]}
     go_expr :: (?funid :: FunId) => Expr -> Expr
     go_expr = \case
       Apply _ funid args | ?funid == funid -> Apply TailCall funid args
+      Receive cases -> Receive [(p, go_body es) | (p, es) <- cases]
       expr -> expr

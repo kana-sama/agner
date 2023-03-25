@@ -34,7 +34,16 @@ typedef union boxed_value_t {
   boxed_cons_t  cons;
 } boxed_value_t;
 
+typedef struct boxed_value_children_t {
+  value_t* values;
+  int64_t count;
+} boxed_value_children_t;
+
 fun_meta_t* get_fun_meta(value_t fun);
 bool is_list(value_t value);
 void print_value(value_t value);
 void print_value_trancated(value_t value);
+int64_t boxed_value_size(boxed_value_t*);
+boxed_value_children_t boxed_value_children(boxed_value_t*);
+
+boxed_value_t* cast_to_boxed(value_t);

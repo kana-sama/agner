@@ -7,6 +7,7 @@
 
 # include "value.h"
 # include "heap.h"
+# include "mailbox.h"
 
 typedef int64_t PID_t;
 typedef void (*action_t)();
@@ -17,10 +18,13 @@ typedef struct process_t {
   char*         stack;
   char*         stack_beg;
   value_t*      vstack;
+  mailbox_t*    mailbox;
   jmp_buf*      context;
   bool          is_alive;
 } process_t;
 
 process_t* process_new();
-void       process_free(process_t* process);
-process_t* process_lookup(PID_t pid);
+void       process_free(process_t*);
+process_t* process_lookup(PID_t);
+void       process_send(PID_t, value_t);
+

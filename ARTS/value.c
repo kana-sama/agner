@@ -88,3 +88,32 @@ void print_value(value_t value) {
 void print_value_trancated(value_t value) {
   print_value_(value, true);
 }
+
+int64_t boxed_value_size(boxed_value_t* ref) {
+  switch (ref->super.header) {
+    case TUPLE_HEADER:
+      return sizeof(boxed_tuple_t)/sizeof(value_t) + ref->tuple.size;
+    case CONS_HEADER:
+      return sizeof(boxed_cons_t)/sizeof(value_t);
+    default:
+      printf("Unknown boxed value header: %lld\n", ref->super.header);
+      exit(-1);
+  }
+}
+
+boxed_value_children_t boxed_value_children(boxed_value_t* ref) {
+  switch (ref->super.header) {
+    case TUPLE_HEADER:
+      return (boxed_value_children_t){.values=ref->tuple.values, .count=ref->tuple.size};
+    case CONS_HEADER:
+      return (boxed_value_children_t){.values=(value_t*)&ref->cons.values, .count=2};
+    default:
+      printf("Unknown boxed value header: %lld\n", ref->super.header);
+      exit(-1);
+  }
+}
+
+boxed_value_t* cast_to_boxed(value_t value) {
+  if ((value & TAG_MASK) != BOX_TAG) return NULL;
+  return (boxed_value_t*)(value ^ BOX_TAG);
+}

@@ -11,7 +11,7 @@ import Control.Concurrent (threadDelay)
 
 import Language.Agner.Syntax (FunId)
 import Language.Agner.Syntax qualified as Syntax
-import Language.Agner.Value (Value)
+import Language.Agner.Value (Value, PID)
 import Language.Agner.Value qualified as Value
 import Language.Agner.Prettier qualified as Prettier
 import Language.Agner.BiF qualified as BiF
@@ -30,12 +30,21 @@ data Ex
   deriving stock (Show)
   deriving anyclass (Exception)
 
+data Process = MkProcess
+  { pid :: PID
+  , body :: IO ()
+  , mailbox :: [Value]
+  } deriving stock (Generic)
+
 data SchedulerState = MkSchedulerState
-  { queue :: [(Value.PID, IO ())]
+  { queue :: [Process]
+  , current :: ~Process
   , fuel :: Int
-  , current :: Value.PID
   , gen :: Integer
   } deriving stock (Generic)
+
+type Env = Map Syntax.Var Value
+type FunEnv = Map Syntax.FunId ([Value] -> IO Value)
 
 data YLog = MkYLog{id :: Int, pid :: Integer, name :: String, fuel :: Int}
 
@@ -59,16 +68,16 @@ withScheduler yLogs action = do
     initialSchedulerState = MkSchedulerState
       { queue = []
       , fuel = 0
-      , current = Value.MkPID (-1)
+      , current = undefined
       , gen = 0
       }
 
 _FUEL = 10
 
-push :: WithScheduler => (Value.PID, IO ()) -> IO ()
+push :: WithScheduler => Process -> IO ()
 push p = scheduler do #queue <>= [p]
 
-pop :: WithScheduler => IO (Maybe (Value.PID, IO ()))
+pop :: WithScheduler => IO (Maybe Process)
 pop = do
   queue <- scheduler do use #queue
   case queue of
@@ -83,12 +92,12 @@ freshPID = do
   pure (Value.MkPID pid)
 
 self :: WithScheduler => IO Value.PID
-self = scheduler do use #current
+self = scheduler do use (#current . #pid)
 
 spawn :: WithScheduler => IO () -> IO Value.PID
 spawn action = do
   pid <- freshPID
-  push (pid, do action; switch)
+  push MkProcess{pid, body = do action; switch, mailbox = []}
   pure pid
 
 ylog :: WithScheduler => FunId -> IO ()
@@ -104,24 +113,32 @@ ylog funid =
 yield :: WithScheduler => FunId -> IO ()
 yield funid = do
   ylog funid
-
   fuel <- scheduler do #fuel <-= 1
   when (fuel <= 0) do
     control0 ?promptTag \next -> do
-      pid <- scheduler do use #current
-      push (pid, next (pure ()))
+      current <- scheduler do use #current
+      push current{body = next (pure ())}
       switch
+
+yieldForce :: WithScheduler => FunId -> IO ()
+yieldForce funid = do
+  scheduler do #fuel .= 1
+  yield funid
 
 switch :: WithScheduler => IO ()
 switch = do
   pop >>= \case
     Nothing -> pure ()
-    Just (pid, task) -> do
+    Just process -> do
       scheduler do
         #fuel .= _FUEL
-        #current .= pid
-      prompt ?promptTag task
+        #current .= process
+      prompt ?promptTag process.body
 
+send :: WithScheduler => PID -> Value -> IO ()
+send pid value = scheduler do
+  #current . filtered (\p -> p.pid == pid) . #mailbox <>= [value]
+  #queue . each . filtered (\p -> p.pid == pid) . #mailbox <>= [value]
 
 binOp :: Syntax.BinOp -> (Value -> Value -> Value)
 binOp = \case
@@ -133,9 +150,6 @@ binOp = \case
     case (a, b) of
       (Value.Integer a, Value.Integer b) -> Value.Integer (a - b)
       _ -> throw (BinOp_BadArgs (Syntax.:-))
-
-type Env = Map Syntax.Var Value
-type FunEnv = Map Syntax.FunId ([Value] -> IO Value)
 
 funDecl :: WithScheduler => FunEnv -> Syntax.FunDecl -> ([Value] -> IO Value)
 funDecl funs decl args = do
@@ -198,6 +212,28 @@ expr = \case
     StateT (expr e) >>= \case
       Value.Fun funid -> StateT (apply funid args)
       value -> throw (BadFunction value)
+  Syntax.Send a b ->
+    apply "erlang:send/2" [a, b]
+  Syntax.Receive cases -> receive cases
+
+receive :: (WithScheduler, ?funs :: FunEnv) => [(Syntax.Pat, Syntax.Exprs)] -> (Env -> IO (Value, Env))
+receive cases env = do
+  msgs <- scheduler do use (#current . #mailbox)
+  go msgs [] cases env
+  where
+    go (msg:msgs) not_matched ((p, es):cases) env =
+      case match p msg env of
+        Nothing -> go (msg:msgs) not_matched cases env
+        Just env -> do
+          scheduler do #current . #mailbox .= reverse not_matched ++ msgs
+          exprs es env
+    go (msg:msgs) not_matched [] env =
+      go msgs (msg:not_matched) cases env
+    go [] _ _ env = do
+      yieldForce "receive/0"
+      receive cases env
+
+  
 
 apply :: (WithScheduler, ?funs :: FunEnv) => Syntax.FunId -> [Syntax.Expr] -> (Env -> IO (Value, Env))
 apply funid args = runStateT do
@@ -248,6 +284,7 @@ bif b args = BiF.runSpec alg (BiF.spec b args)
       BiF.Spawn funid k -> k <$> spawn (void (resolveFunction funid []))
       BiF.Yield funid k -> k <$ yield funid
       BiF.Self k -> k <$> self
+      BiF.Send pid value k -> k <$ send pid value
       BiF.Error e -> throw (Custom e)
 
 resolveFunction :: (WithScheduler, ?funs :: FunEnv) => Syntax.FunId -> ([Value] -> IO Value)

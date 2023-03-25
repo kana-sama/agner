@@ -112,6 +112,27 @@ value_t* _runtime__match_cons(value_t value) {
   return (value_t*)(&ref->cons.values);
 }
 
+void _runtime__receive_pick() {
+  while (true) {
+    mailbox_pick(scheduler->current->mailbox);
+    if (mailbox_picked(scheduler->current->mailbox)) {
+      break;
+    } else {
+      mailbox_unpick(scheduler->current->mailbox);
+      scheduler_next(scheduler);
+    }
+  }
+}
+
+value_t _runtime__receive_picked() {
+  return *mailbox_picked(scheduler->current->mailbox);
+}
+
+void _runtime__receive_success() {
+  mailbox_drop_picked(scheduler->current->mailbox);
+  mailbox_unpick(scheduler->current->mailbox);
+}
+
 
 // // BiFs
 
@@ -180,4 +201,11 @@ value_t _global__self() {
   _runtime__yield("erlang:self/0");
 
   return scheduler->current->pid << TAG_SIZE | PID_TAG;
+}
+
+value_t _erlang__send(value_t target, value_t msg) {
+  if ((target & TAG_MASK) != PID_TAG) _THROW_badarg_send(target, msg);
+  PID_t pid = target >> TAG_SIZE;
+  process_send(pid, msg);
+  return msg;
 }

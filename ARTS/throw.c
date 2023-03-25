@@ -19,20 +19,23 @@ static char* format_args(int64_t n) {
   }
 }
 
-extern void _THROW_badarity(value_t fun, int64_t args) {
+_Noreturn
+void _THROW_badarity(value_t fun, int64_t args) {
   fun_meta_t* meta = get_fun_meta(fun);
   printf("** exception error: %s/%lld called with %s\n", meta->name, meta->arity, format_args(args));
   exit(-1);
 }
 
-extern void _THROW_badfun(value_t value) {
+_Noreturn
+void _THROW_badfun(value_t value) {
   printf("** exception error: bad function ");
   print_value_trancated(value);
   printf("\n");
   exit(-1);
 }
 
-extern void _THROW_function_clause(fun_meta_t* meta, value_t* args) {
+_Noreturn
+void _THROW_function_clause(fun_meta_t* meta, value_t* args) {
   printf("** exception error: no function clause matching %s(", meta->name);
 
   for (int i = 0; i < meta->arity; i++) {
@@ -44,16 +47,26 @@ extern void _THROW_function_clause(fun_meta_t* meta, value_t* args) {
   exit(-1);
 }
 
-extern void _THROW_badmatch(value_t value) {
+_Noreturn
+void _THROW_badmatch(value_t value) {
   printf("** exception error: no match of right hand side value ");
   print_value_trancated(value);
   printf("\n");
   exit(-1);
 }
 
-extern void _THROW_badarith(value_t l, value_t r, char* op) {
+_Noreturn
+void _THROW_badarith(value_t l, value_t r, char* op) {
   printf("** exception error: an error occurred when evaluating an arithmetic expression\n");
   printf("     in operator  %s/2\n", op);
   printf("        called as "); print_value_trancated(l); printf(" %s ", op); print_value_trancated(r); printf("\n");
+  exit(-1); 
+}
+
+_Noreturn
+void _THROW_badarg_send(value_t l, value_t r) {
+  printf("** exception error: bad argument\n");
+  printf("     in operator  !/2\n");
+  printf("        called as "); print_value_trancated(l); printf(" ! "); print_value_trancated(r); printf("\n");
   exit(-1); 
 }

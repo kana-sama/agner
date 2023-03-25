@@ -56,6 +56,12 @@ checkVariables module_ = do
       Match p e -> do
         modify (Set.union (patVars p))
         expr e
+      Send e1 e2 -> expr e1 *> expr e2
+      Receive cases -> for_ cases \(p, es) -> do
+        state <- get
+        modify (Set.union (patVars p))
+        for_ es expr
+        put state
 
 checkFunctions :: Module -> Except Error ()
 checkFunctions module_ = flip evalStateT Set.empty do
@@ -81,6 +87,8 @@ checkFunctions module_ = flip evalStateT Set.empty do
       DynApply e es -> for_ (e:es) expr
       Var v -> pure ()
       Match p e -> expr e
+      Send e1 e2 -> expr e1 *> expr e2
+      Receive cases -> (traverse_ . traverse_ . traverse_) expr cases
 
     check f | Just _ <- BiF.parse f = pure ()
     check f = do

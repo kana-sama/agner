@@ -103,3 +103,12 @@ int64_t list_size(list_t* list) {
 
   return size;
 }
+
+void list_foreach(list_t* list, void(*action)(void*)) {
+  node_t* node = list->beg;
+
+  while (node) {
+    action(node->head);
+    node = node->tail;
+  }
+};

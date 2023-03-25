@@ -2,6 +2,8 @@
 
 import Named
 
+import Paths_agner (getDataFileName)
+
 import Data.Bits (shiftR, Bits ((.&.)))
 import Data.Aeson (encodeFile)
 import Data.IORef (newIORef, readIORef)
@@ -67,16 +69,17 @@ getOutput source Nothing =
     Nothing -> error "unknown extension"
     Just path -> path
 
-runtime :: [FilePath]
-runtime = rt <$> sources
+runtime :: IO [FilePath]
+runtime = traverse (getDataFileName . rt) sources
   where
-    rt f = "." </> "runtime" </> f <.> "c"
+    rt f = "." </> "ARTS" </> f <.> "c"
     sources =
       [ "list"
       , "options"
       , "value"
       , "throw"
       , "heap"
+      , "mailbox"
       , "process"
       , "scheduler"
       , "runtime"
@@ -128,6 +131,7 @@ compile (Arg target) (Arg sourcePath) (Arg output) = do
         let outputPath = output
 
         writeFile sourcePath gas
+        runtime <- runtime
         gcc ! param #target target
             ! param #source sourcePath
             ! param #runtime runtime
@@ -202,6 +206,7 @@ example target = do
     let outputPath = path </> "temp"
 
     writeFile sourcePath gas
+    runtime <- runtime
     gcc ! param #target target
         ! param #source sourcePath
         ! param #runtime runtime

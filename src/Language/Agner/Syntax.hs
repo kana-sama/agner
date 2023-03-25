@@ -67,6 +67,8 @@ data Expr
   | Match Pat Expr
   | Apply CallTailness FunId [Expr]
   | DynApply Expr [Expr]
+  | Send Expr Expr
+  | Receive [(Pat, Exprs)]
   deriving stock (Show)
 
 viewList :: Expr -> Maybe [Expr]
@@ -141,6 +143,8 @@ exprVars = \case
   Match p e -> patVars p `Set.union` exprVars e
   Apply _ _ es -> foldMap exprVars es
   DynApply _ es -> foldMap exprVars es
+  Send a b -> exprVars a `Set.union` exprVars b
+  Receive cases -> Set.unions [patVars p `Set.union` exprsVars e | (p, e) <- cases]
 
 exprsVars :: Exprs -> Set Var
 exprsVars = foldMap exprVars
@@ -155,4 +159,3 @@ funDeclVars decl =
 
 moduleVars :: Module -> Set Var
 moduleVars mod = foldMap funDeclVars mod.decls
-

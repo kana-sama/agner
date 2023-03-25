@@ -12,8 +12,10 @@ typedef struct heap_t {
   int64_t  size;
 } heap_t;
 
+uint64_t gc_time();
+
 heap_t*  heap_new(int64_t size);
 void     heap_free(heap_t* heap);
 heap_t*  collect_garbage(heap_t* heap, value_t* stack, value_t* stack_head);
 void*    allocate(heap_t** heap, value_t* stack, value_t* stack_head, int64_t size);
-uint64_t gc_time();
+

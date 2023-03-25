@@ -18,29 +18,11 @@ import Language.Agner.Syntax (BinOp)
 import Language.Agner.BiF qualified as BiF
 
 
--- data Ex
---   = EmptyStack
---   | AlreadyHalted
---   | PositionIsOutOfProg
---   | NoMatch Syntax.Pat Value
---   | UnboundVariable Syntax.Var
---   | UndefinedFuncton FunId
---   | DenoteEx Denote.Ex
---   | NoFunctionClauseMatching FunId [Value]
---   | NoEntryPoint
---   | BadFunction Value
---   | BadArity FunId Int
---   deriving stock (Show)
-
--- instance Exception Ex where
---   fromException e
---     | Just e <- fromException @Denote.Ex e = Just (DenoteEx e)
---     | SomeException (e :: e) <- e, Just Refl <- eqT @e @Ex = Just e
---     | otherwise = Nothing
-
-data OnMatchFail = Throw | NextClause FunId (Maybe Int)
+data OnMatchFail = Throw | NextClause FunId (Maybe Int) | JumpTo Label
   deriving stock (Generic, Show)
   deriving anyclass (ToJSON)
+
+type Label = String
 
 data Instr
   = PUSH_I Integer
@@ -63,6 +45,13 @@ data Instr
   | LEAVE FunId
   | RET
 
+  | GOTO Label
+  | LABEL Label
+
+  | RECEIVE_PICK
+  | RECEIVE_PICKED
+  | RECEIVE_SUCCESS
+
   | LOAD Syntax.Var
   | MATCH_I Integer OnMatchFail
   | MATCH_VAR Syntax.Var OnMatchFail
@@ -76,405 +65,471 @@ data Instr
 
 type Prog = [Instr]
 
-compileExpr :: Syntax.Expr -> Prog
+type M = StateT Int (Writer Prog)
+
+label :: String -> M Label
+label template = do
+  uid <- state \s -> (s, s + 1)
+  pure (template ++ "." ++ show uid)
+
+compileExpr :: Syntax.Expr -> M ()
 compileExpr = \case
-  Syntax.Integer i ->
-    [PUSH_I i]
-  Syntax.Atom a ->
-    [PUSH_ATOM a]
-  Syntax.Fun f ->
-    [PUSH_FUN f]
-  Syntax.Tuple es ->
-    foldMap compileExpr es ++ [PUSH_TUPLE (length es)]
-  Syntax.Nil ->
-    [PUSH_NIL]
-  Syntax.Cons a b ->
-    compileExpr a ++ compileExpr b ++ [PUSH_CONS]
-  Syntax.BinOp a op b ->
-    compileExpr a ++ compileExpr b ++ [BINOP op]
-  Syntax.Var v ->
-    [LOAD v]
-  Syntax.Match p e ->
-    compileExpr e ++ [DUP] ++ compilePat Throw p
-  Syntax.Apply tailness f args -> 
-    foldMap compileExpr args ++ [CALL f tailness]
-  Syntax.DynApply f args ->
-    compileExpr f ++ foldMap compileExpr args ++ [DYN_CALL (length args)]
+  Syntax.Integer i -> do
+    tell [PUSH_I i]
+  Syntax.Atom a -> do
+    tell [PUSH_ATOM a]
+  Syntax.Fun f -> do
+    tell [PUSH_FUN f]
+  Syntax.Tuple es -> do
+    for_ es compileExpr
+    tell [PUSH_TUPLE (length es)]
+  Syntax.Nil -> do
+    tell [PUSH_NIL]
+  Syntax.Cons a b -> do
+    compileExpr a
+    compileExpr b
+    tell [PUSH_CONS]
+  Syntax.BinOp a op b -> do
+    compileExpr a
+    compileExpr b
+    tell [BINOP op]
+  Syntax.Var v -> do
+    tell [LOAD v]
+  Syntax.Match p e -> do
+    compileExpr e
+    tell [DUP]
+    compilePat Throw p
+  Syntax.Apply tailness f args -> do
+    for_ args compileExpr
+    tell [CALL f tailness]
+  Syntax.DynApply f args -> do
+    compileExpr f
+    for_ args compileExpr
+    tell [DYN_CALL (length args)]
+  Syntax.Send a b -> do
+    compileExpr a
+    compileExpr b
+    tell [CALL "erlang:send/2" Syntax.SimpleCall]
+  Syntax.Receive cases -> mdo
+    peek <- label "receive_peek"; tell [LABEL peek]
+    tell [RECEIVE_PICK]
+    for_ cases \(p, es) -> mdo
+      tell [RECEIVE_PICKED]
+      compilePat (JumpTo next_case) p
+      tell [RECEIVE_SUCCESS]
+      compileExprs es
+      tell [GOTO success]
+      next_case <- label "receive_next_case"; tell [LABEL next_case]
+    tell [GOTO peek]
+    success <- label "receive_success"; tell [LABEL success]
 
-compilePat :: OnMatchFail -> Syntax.Pat -> Prog
+compilePat :: OnMatchFail -> Syntax.Pat -> M ()
 compilePat onMatchFail = \case
-  Syntax.PatVar var -> [MATCH_VAR var onMatchFail]
-  Syntax.PatInteger i -> [MATCH_I i onMatchFail]
-  Syntax.PatWildcard -> [DROP]
-  Syntax.PatAtom a -> [MATCH_ATOM a onMatchFail]
-  Syntax.PatTuple ps -> [MATCH_TUPLE (length ps) onMatchFail] ++ foldMap (compilePat onMatchFail) ps
-  Syntax.PatNil -> [MATCH_NIL onMatchFail]
-  Syntax.PatCons a b -> [MATCH_CONS onMatchFail] ++ compilePat onMatchFail a ++ compilePat onMatchFail b
+  Syntax.PatVar var -> do
+    tell [MATCH_VAR var onMatchFail]
+  Syntax.PatInteger i -> do
+    tell [MATCH_I i onMatchFail]
+  Syntax.PatWildcard -> do
+    tell [DROP]
+  Syntax.PatAtom a -> do
+    tell [MATCH_ATOM a onMatchFail]
+  Syntax.PatTuple ps -> do
+    tell [MATCH_TUPLE (length ps) onMatchFail]
+    for_ ps (compilePat onMatchFail)
+  Syntax.PatNil -> do
+    tell [MATCH_NIL onMatchFail]
+  Syntax.PatCons a b -> do
+    tell [MATCH_CONS onMatchFail]
+    compilePat onMatchFail a
+    compilePat onMatchFail b
 
-compileExprs :: Syntax.Exprs -> Prog
-compileExprs exprs = List.intercalate [DROP] [compileExpr e | e <- exprs]
+zipWithLast :: [a] -> [(a, Bool)]
+zipWithLast xs = reverse (zip (reverse xs) ([True] ++ repeat False))
 
-compileFunDecl :: Syntax.FunDecl -> Prog
-compileFunDecl funDecl =
-  concat
-    [ [FUNCTION funDecl.funid (Set.toList (Syntax.funDeclVars funDecl))]
-    , [YIELD funDecl.funid]
-    , foldMap ((uncurry . uncurry) compileFunClause) (zipWithLast (zip funDecl.clauses [0..]))
-    , [FAIL_CLAUSE funDecl.funid (length funDecl.clauses)]
-    , [FUNCTION_END funDecl.funid]
-    ]
-  where
-    zipWithLast :: [a] -> [(a, Bool)]
-    zipWithLast xs = reverse (zip (reverse xs) ([True] ++ repeat False))
+compileExprs :: Syntax.Exprs -> M ()
+compileExprs exprs = do
+  for_ (zipWithLast exprs) \(e, last) -> do
+    compileExpr e
+    unless last do tell [DROP]
 
--- args are in original order on stack
-compileFunClause :: Syntax.FunClause -> Int -> Bool -> Prog
-compileFunClause clause ix isLast =
-  concat
-    [ [CLAUSE clause.funid ix (Set.toList (Syntax.funClauseVars clause))]
-    , foldMap (compilePat (NextClause clause.funid (if isLast then Nothing else Just (ix + 1)))) clause.pats
-    , compileExprs clause.body
-    , [LEAVE clause.funid]
-    , [RET]
-    ]
+compileFunDecl :: Syntax.FunDecl -> M ()
+compileFunDecl funDecl = do
+  tell [FUNCTION funDecl.funid (Set.toList (Syntax.funDeclVars funDecl))]
+  tell [YIELD funDecl.funid]
+  for_ (zipWithLast (zip funDecl.clauses [0..])) \((clause, ix), last) -> do
+    compileFunClause clause ix last
+  tell [FAIL_CLAUSE funDecl.funid (length funDecl.clauses)]
+  tell [FUNCTION_END funDecl.funid]
+
+-- -- args are in original order on stack
+compileFunClause :: Syntax.FunClause -> Int -> Bool -> M ()
+compileFunClause clause ix isLast = do
+  tell [CLAUSE clause.funid ix (Set.toList (Syntax.funClauseVars clause))]
+  for_ clause.pats \pat -> do
+    let onFail = NextClause clause.funid (if isLast then Nothing else Just (ix + 1))
+    compilePat onFail pat
+  compileExprs clause.body
+  tell [LEAVE clause.funid]
+  tell [RET]
 
 compileModule :: Syntax.Module -> Prog
-compileModule mod =
-  foldMap compileFunDecl mod.decls
+compileModule mod = (execWriter . flip evalStateT 0) do
+  for_ mod.decls \decl -> do
+    compileFunDecl decl
 
--- _FUEL = 10
+-- data Ex
+--   = EmptyStack
+--   | AlreadyHalted
+--   | PositionIsOutOfProg
+--   | NoMatch Syntax.Pat Value
+--   | UnboundVariable Syntax.Var
+--   | UndefinedFuncton FunId
+--   | DenoteEx Denote.Ex
+--   | NoFunctionClauseMatching FunId [Value]
+--   | NoEntryPoint
+--   | BadFunction Value
+--   | BadArity FunId Int
+--   deriving stock (Show)
 
--- data Frame = MkFrame
---   { stack :: [Value]
---   , mem :: Map Syntax.Var Value
---   , ret :: Int
---   }
---   deriving stock (Generic)
---   deriving anyclass (ToJSON)
+-- instance Exception Ex where
+--   fromException e
+--     | Just e <- fromException @Denote.Ex e = Just (DenoteEx e)
+--     | SomeException (e :: e) <- e, Just Refl <- eqT @e @Ex = Just e
+--     | otherwise = Nothing
 
--- data Process = MkProcess
---   { pid :: PID
---   , pos :: Int
---   , stack :: [Value]
---   , mem :: Map Syntax.Var Value
---   , frames :: [Frame]
---   }
---   deriving stock (Generic)
---   deriving anyclass (ToJSON)
+-- -- _FUEL = 10
 
--- data Cfg = MkCfg
---   { current :: Process
---   , prog :: Prog
---   , halted :: Bool
---   , queue :: [Process]
---   , gen :: Integer
---   , fuel :: Int
---   }
---   deriving stock (Generic)
---   deriving anyclass (ToJSON)
+-- -- data Frame = MkFrame
+-- --   { stack :: [Value]
+-- --   , mem :: Map Syntax.Var Value
+-- --   , ret :: Int
+-- --   }
+-- --   deriving stock (Generic)
+-- --   deriving anyclass (ToJSON)
 
--- type M = StateT Cfg IO
+-- -- data Process = MkProcess
+-- --   { pid :: PID
+-- --   , pos :: Int
+-- --   , stack :: [Value]
+-- --   , mem :: Map Syntax.Var Value
+-- --   , frames :: [Frame]
+-- --   }
+-- --   deriving stock (Generic)
+-- --   deriving anyclass (ToJSON)
 
--- push :: Value -> M ()
--- push v = #current . #stack %= (v:)
+-- -- data Cfg = MkCfg
+-- --   { current :: Process
+-- --   , prog :: Prog
+-- --   , halted :: Bool
+-- --   , queue :: [Process]
+-- --   , gen :: Integer
+-- --   , fuel :: Int
+-- --   }
+-- --   deriving stock (Generic)
+-- --   deriving anyclass (ToJSON)
 
--- pop :: M Value
--- pop = zoom (#current . #stack) do
---   state \case
---     [] -> throw EmptyStack
---     v:stack -> (v, stack)
+-- -- type M = StateT Cfg IO
 
--- continue :: M ()
--- continue = #current . #pos += 1
+-- -- push :: Value -> M ()
+-- -- push v = #current . #stack %= (v:)
 
--- self :: M PID
--- self = use (#current . #pid)
+-- -- pop :: M Value
+-- -- pop = zoom (#current . #stack) do
+-- --   state \case
+-- --     [] -> throw EmptyStack
+-- --     v:stack -> (v, stack)
 
--- yield :: M ()
--- yield = do
---   fuel <- #fuel <<-= 1
---   when (fuel <= 0) do
---     process <- use #current
---     #queue <>= [process]
---     switch
+-- -- continue :: M ()
+-- -- continue = #current . #pos += 1
 
--- spawn :: (?funs :: FunEnv) => FunId -> M PID
--- spawn funid = do
---   pid <- Value.MkPID <$> (#gen <<+= 1)
---   process <- mkProcess pid
---   #queue <>= [process]
---   pure pid
---   where
---     mkProcess pid = do
---       pos <- case ?funs Map.!? funid of
---         Nothing -> throw (UndefinedFuncton funid)
---         Just pos -> pure pos
---       pure MkProcess
---         { pid, pos
---         , stack = []
---         , mem = Map.empty
---         , frames = []
---         }
+-- -- self :: M PID
+-- -- self = use (#current . #pid)
 
--- switch :: M ()
--- switch =
---   use #queue >>= \case
---     [] -> #halted .= True
---     process:queue -> do
---       #fuel .= _FUEL
---       #queue .= queue
---       #current .= process
+-- -- yield :: M ()
+-- -- yield = do
+-- --   fuel <- #fuel <<-= 1
+-- --   when (fuel <= 0) do
+-- --     process <- use #current
+-- --     #queue <>= [process]
+-- --     switch
 
--- currentInstr :: Cfg -> Instr
--- currentInstr cfg
---   | cfg.current.pos >= length cfg.prog = throw PositionIsOutOfProg
---   | otherwise = cfg.prog !! cfg.current.pos
+-- -- spawn :: (?funs :: FunEnv) => FunId -> M PID
+-- -- spawn funid = do
+-- --   pid <- Value.MkPID <$> (#gen <<+= 1)
+-- --   process <- mkProcess pid
+-- --   #queue <>= [process]
+-- --   pure pid
+-- --   where
+-- --     mkProcess pid = do
+-- --       pos <- case ?funs Map.!? funid of
+-- --         Nothing -> throw (UndefinedFuncton funid)
+-- --         Just pos -> pure pos
+-- --       pure MkProcess
+-- --         { pid, pos
+-- --         , stack = []
+-- --         , mem = Map.empty
+-- --         , frames = []
+-- --         }
 
--- skipForNextClause :: M ()
--- skipForNextClause = do
---   instr <- gets currentInstr
---   case instr of
---     CLAUSE{} -> pure ()
---     FAIL_CLAUSE{} -> pure ()
---     _ -> continue *> skipForNextClause
+-- -- switch :: M ()
+-- -- switch =
+-- --   use #queue >>= \case
+-- --     [] -> #halted .= True
+-- --     process:queue -> do
+-- --       #fuel .= _FUEL
+-- --       #queue .= queue
+-- --       #current .= process
 
--- type FunEnv = Map FunId Int
+-- -- currentInstr :: Cfg -> Instr
+-- -- currentInstr cfg
+-- --   | cfg.current.pos >= length cfg.prog = throw PositionIsOutOfProg
+-- --   | otherwise = cfg.prog !! cfg.current.pos
 
--- leave :: M ()
--- leave = do
---   frames <- use (#current . #frames)
---   case frames of
---     [] -> pure ()
---     frame:frames -> do
---       #current . #frames .= frames
---       #current . #stack .= frame.stack
---       #current . #mem .= frame.mem
+-- -- skipForNextClause :: M ()
+-- -- skipForNextClause = do
+-- --   instr <- gets currentInstr
+-- --   case instr of
+-- --     CLAUSE{} -> pure ()
+-- --     FAIL_CLAUSE{} -> pure ()
+-- --     _ -> continue *> skipForNextClause
 
--- instr :: (?funs :: FunEnv) => Instr -> (Cfg -> IO Cfg)
--- instr (PUSH_I i) = execStateT do
---   push (Value.Integer i)
---   continue
--- instr (PUSH_ATOM a) = execStateT do
---   push (Value.Atom a)
---   continue
--- instr (PUSH_FUN f) = execStateT do
---   push (Value.Fun f)
---   continue
--- instr (PUSH_TUPLE size) = execStateT do
---   vs <- reverse <$> replicateM size pop
---   push (Value.Tuple vs)
---   continue
--- instr PUSH_NIL = execStateT do
---   push Value.Nil
---   continue
--- instr PUSH_CONS = execStateT do
---   b <- pop
---   a <- pop
---   push (Value.Cons a b)
---   continue
--- instr (BINOP op) = execStateT do
---   b <- pop
---   a <- pop
---   push ((Denote.binOp op) a b)
---   continue
--- instr DROP = execStateT do
---   void pop
---   continue
--- instr DUP = execStateT do
---   a <- pop
---   push a
---   push a
---   continue
+-- -- type FunEnv = Map FunId Int
 
--- instr (CALL f _) | Just b <- BiF.parse f = execStateT do
---   args <- replicateM f.arity pop
---   result <- BiF.runSpec alg (BiF.spec b args)
---   push result
---   continue
---   where
---     alg :: BiF.SpecF a -> StateT Cfg IO a
---     alg = \case
---       BiF.RunIO io k -> k <$> liftIO io
---       BiF.Spawn funid k -> k <$> spawn funid
---       BiF.Yield k -> k <$ yield
---       BiF.Self k -> k <$> self
---       BiF.Error e -> throw (DenoteEx (Denote.Custom e))
+-- -- leave :: M ()
+-- -- leave = do
+-- --   frames <- use (#current . #frames)
+-- --   case frames of
+-- --     [] -> pure ()
+-- --     frame:frames -> do
+-- --       #current . #frames .= frames
+-- --       #current . #stack .= frame.stack
+-- --       #current . #mem .= frame.mem
 
--- -- TODO: do not allocate more frames
--- instr (CALL f _) = execStateT do
---   ret <- use (#current . #pos)
---   args <- replicateM f.arity pop
---   stack <- #current . #stack <<.= reverse args
---   mem <- #current . #mem <<.= Map.empty
---   #current . #frames %= (MkFrame{stack, mem, ret} :)
---   case ?funs Map.!? f of
---     Nothing -> throw (UndefinedFuncton f)
---     Just pos -> #current . #pos .= pos
+-- -- instr :: (?funs :: FunEnv) => Instr -> (Cfg -> IO Cfg)
+-- -- instr (PUSH_I i) = execStateT do
+-- --   push (Value.Integer i)
+-- --   continue
+-- -- instr (PUSH_ATOM a) = execStateT do
+-- --   push (Value.Atom a)
+-- --   continue
+-- -- instr (PUSH_FUN f) = execStateT do
+-- --   push (Value.Fun f)
+-- --   continue
+-- -- instr (PUSH_TUPLE size) = execStateT do
+-- --   vs <- reverse <$> replicateM size pop
+-- --   push (Value.Tuple vs)
+-- --   continue
+-- -- instr PUSH_NIL = execStateT do
+-- --   push Value.Nil
+-- --   continue
+-- -- instr PUSH_CONS = execStateT do
+-- --   b <- pop
+-- --   a <- pop
+-- --   push (Value.Cons a b)
+-- --   continue
+-- -- instr (BINOP op) = execStateT do
+-- --   b <- pop
+-- --   a <- pop
+-- --   push ((Denote.binOp op) a b)
+-- --   continue
+-- -- instr DROP = execStateT do
+-- --   void pop
+-- --   continue
+-- -- instr DUP = execStateT do
+-- --   a <- pop
+-- --   push a
+-- --   push a
+-- --   continue
 
--- instr (DYN_CALL arity) = execStateT do
---   ret <- use (#current . #pos)
---   args <- replicateM arity pop
---   f <- pop >>= \case
---     Value.Fun f -> pure f
---     value -> throw (BadFunction value)
---   when (f.arity /= arity) do
---     throw (BadArity f arity)
---   stack <- #current . #stack <<.= reverse args
---   mem <- #current . #mem <<.= Map.empty
---   #current . #frames %= (MkFrame{stack, mem, ret} :)
---   case ?funs Map.!? f of
---     Nothing -> throw (UndefinedFuncton f)
---     Just pos -> #current . #pos .= pos
+-- -- instr (CALL f _) | Just b <- BiF.parse f = execStateT do
+-- --   args <- replicateM f.arity pop
+-- --   result <- BiF.runSpec alg (BiF.spec b args)
+-- --   push result
+-- --   continue
+-- --   where
+-- --     alg :: BiF.SpecF a -> StateT Cfg IO a
+-- --     alg = \case
+-- --       BiF.RunIO io k -> k <$> liftIO io
+-- --       BiF.Spawn funid k -> k <$> spawn funid
+-- --       BiF.Yield k -> k <$ yield
+-- --       BiF.Self k -> k <$> self
+-- --       BiF.Error e -> throw (DenoteEx (Denote.Custom e))
 
--- instr (FUNCTION _ _) = execStateT do
---   continue
+-- -- -- TODO: do not allocate more frames
+-- -- instr (CALL f _) = execStateT do
+-- --   ret <- use (#current . #pos)
+-- --   args <- replicateM f.arity pop
+-- --   stack <- #current . #stack <<.= reverse args
+-- --   mem <- #current . #mem <<.= Map.empty
+-- --   #current . #frames %= (MkFrame{stack, mem, ret} :)
+-- --   case ?funs Map.!? f of
+-- --     Nothing -> throw (UndefinedFuncton f)
+-- --     Just pos -> #current . #pos .= pos
 
--- instr YIELD = execStateT do
---   yield
---   continue
+-- -- instr (DYN_CALL arity) = execStateT do
+-- --   ret <- use (#current . #pos)
+-- --   args <- replicateM arity pop
+-- --   f <- pop >>= \case
+-- --     Value.Fun f -> pure f
+-- --     value -> throw (BadFunction value)
+-- --   when (f.arity /= arity) do
+-- --     throw (BadArity f arity)
+-- --   stack <- #current . #stack <<.= reverse args
+-- --   mem <- #current . #mem <<.= Map.empty
+-- --   #current . #frames %= (MkFrame{stack, mem, ret} :)
+-- --   case ?funs Map.!? f of
+-- --     Nothing -> throw (UndefinedFuncton f)
+-- --     Just pos -> #current . #pos .= pos
 
--- instr (FUNCTION_END _) = execStateT do
---   continue
+-- -- instr (FUNCTION _ _) = execStateT do
+-- --   continue
 
--- instr (CLAUSE _ _ _) = execStateT do
---   stack <- use (#current . #stack)
---   #current . #frames %= (MkFrame{stack, mem = Map.empty, ret = 0} :)
---   continue
+-- -- instr YIELD = execStateT do
+-- --   yield
+-- --   continue
 
--- instr (FAIL_CLAUSE f _) = execStateT do
---   vals <- reverse <$> replicateM f.arity pop
---   throw (NoFunctionClauseMatching f vals)
+-- -- instr (FUNCTION_END _) = execStateT do
+-- --   continue
 
--- instr (LEAVE _) = execStateT do
---   result <- pop
---   leave
---   push result
---   continue
+-- -- instr (CLAUSE _ _ _) = execStateT do
+-- --   stack <- use (#current . #stack)
+-- --   #current . #frames %= (MkFrame{stack, mem = Map.empty, ret = 0} :)
+-- --   continue
 
--- instr RET = execStateT do
---   use (#current . #frames) >>= \case
---     [] -> switch
---     frame:_ -> do
---       result <- pop
---       leave
---       push result
---       #current . #pos .= frame.ret
---       continue
+-- -- instr (FAIL_CLAUSE f _) = execStateT do
+-- --   vals <- reverse <$> replicateM f.arity pop
+-- --   throw (NoFunctionClauseMatching f vals)
 
--- instr (LOAD var) = execStateT do
---   mem <- use (#current . #mem)
---   case mem Map.!? var of
---     Nothing -> throw (UnboundVariable var)
---     Just val -> do
---       push val
---       continue
+-- -- instr (LEAVE _) = execStateT do
+-- --   result <- pop
+-- --   leave
+-- --   push result
+-- --   continue
 
--- instr (MATCH_I i onMatchFail) = execStateT do
---   value <- pop
---   if Value.same (Value.Integer i) value
---     then continue
---     else case onMatchFail of
---            Throw -> throw (NoMatch (Syntax.PatInteger i) value)
---            NextClause{} -> leave *> skipForNextClause
+-- -- instr RET = execStateT do
+-- --   use (#current . #frames) >>= \case
+-- --     [] -> switch
+-- --     frame:_ -> do
+-- --       result <- pop
+-- --       leave
+-- --       push result
+-- --       #current . #pos .= frame.ret
+-- --       continue
 
--- instr (MATCH_VAR var onMatchFail) = execStateT do
---   val <- pop
---   mem <- use (#current . #mem)
---   case mem Map.!? var of
---     Nothing -> do
---       #current . #mem %= Map.insert var val
---       continue
---     Just val'
---       | Value.same val val' -> continue
---       | otherwise ->
---         case onMatchFail of
---           Throw -> throw (NoMatch (Syntax.PatVar var) val)
---           NextClause{} -> leave *> skipForNextClause
+-- -- instr (LOAD var) = execStateT do
+-- --   mem <- use (#current . #mem)
+-- --   case mem Map.!? var of
+-- --     Nothing -> throw (UnboundVariable var)
+-- --     Just val -> do
+-- --       push val
+-- --       continue
 
--- instr (MATCH_ATOM a onMatchFail) = execStateT do
---   value <- pop
---   if Value.same (Value.Atom a) value
---     then continue
---     else case onMatchFail of
---           Throw -> throw (NoMatch (Syntax.PatAtom a) value)
---           NextClause{} -> leave *> skipForNextClause
+-- -- instr (MATCH_I i onMatchFail) = execStateT do
+-- --   value <- pop
+-- --   if Value.same (Value.Integer i) value
+-- --     then continue
+-- --     else case onMatchFail of
+-- --            Throw -> throw (NoMatch (Syntax.PatInteger i) value)
+-- --            NextClause{} -> leave *> skipForNextClause
 
--- instr (MATCH_TUPLE size onMatchFail) = execStateT do
---   values <- pop >>= \case
---     Value.Tuple vs -> pure vs
---     value -> throw (NoMatch (Syntax.PatTuple (replicate size Syntax.PatWildcard)) value)
---   for_ (reverse values) push
---   continue
+-- -- instr (MATCH_VAR var onMatchFail) = execStateT do
+-- --   val <- pop
+-- --   mem <- use (#current . #mem)
+-- --   case mem Map.!? var of
+-- --     Nothing -> do
+-- --       #current . #mem %= Map.insert var val
+-- --       continue
+-- --     Just val'
+-- --       | Value.same val val' -> continue
+-- --       | otherwise ->
+-- --         case onMatchFail of
+-- --           Throw -> throw (NoMatch (Syntax.PatVar var) val)
+-- --           NextClause{} -> leave *> skipForNextClause
 
--- instr (MATCH_NIL onMatchFail) = execStateT do
---   value <- pop
---   if Value.same Value.Nil value
---     then continue
---     else case onMatchFail of
---           Throw -> throw (NoMatch Syntax.PatNil value)
---           NextClause{} -> leave *> skipForNextClause
+-- -- instr (MATCH_ATOM a onMatchFail) = execStateT do
+-- --   value <- pop
+-- --   if Value.same (Value.Atom a) value
+-- --     then continue
+-- --     else case onMatchFail of
+-- --           Throw -> throw (NoMatch (Syntax.PatAtom a) value)
+-- --           NextClause{} -> leave *> skipForNextClause
 
--- instr (MATCH_CONS onMatchFail) = execStateT do
---   pop >>= \case
---     Value.Cons a b -> do
---       push b
---       push a
---       continue
---     value ->
---       case onMatchFail of
---         Throw -> throw (NoMatch (Syntax.PatCons Syntax.PatWildcard Syntax.PatWildcard) value)
---         NextClause{} -> leave *> skipForNextClause
+-- -- instr (MATCH_TUPLE size onMatchFail) = execStateT do
+-- --   values <- pop >>= \case
+-- --     Value.Tuple vs -> pure vs
+-- --     value -> throw (NoMatch (Syntax.PatTuple (replicate size Syntax.PatWildcard)) value)
+-- --   for_ (reverse values) push
+-- --   continue
 
--- step :: (?funs :: FunEnv) => Cfg -> IO Cfg
--- step cfg
---   | cfg.halted = throw AlreadyHalted
---   | otherwise = instr (currentInstr cfg) cfg
+-- -- instr (MATCH_NIL onMatchFail) = execStateT do
+-- --   value <- pop
+-- --   if Value.same Value.Nil value
+-- --     then continue
+-- --     else case onMatchFail of
+-- --           Throw -> throw (NoMatch Syntax.PatNil value)
+-- --           NextClause{} -> leave *> skipForNextClause
 
--- buildCfg :: Prog -> Int -> Cfg
--- buildCfg prog entry =
---   MkCfg
---     { prog
---     , current = MkProcess
---         { pid = Value.MkPID 0
---         , pos = entry
---         , stack = []
---         , mem = Map.empty
---         , frames = []
---         }
---     , halted = False
---     , gen = 1
---     , fuel = _FUEL
---     , queue = []
---     }
+-- -- instr (MATCH_CONS onMatchFail) = execStateT do
+-- --   pop >>= \case
+-- --     Value.Cons a b -> do
+-- --       push b
+-- --       push a
+-- --       continue
+-- --     value ->
+-- --       case onMatchFail of
+-- --         Throw -> throw (NoMatch (Syntax.PatCons Syntax.PatWildcard Syntax.PatWildcard) value)
+-- --         NextClause{} -> leave *> skipForNextClause
 
--- run :: Prog -> IO ()
--- run = runWithDebug Nothing
+-- -- step :: (?funs :: FunEnv) => Cfg -> IO Cfg
+-- -- step cfg
+-- --   | cfg.halted = throw AlreadyHalted
+-- --   | otherwise = instr (currentInstr cfg) cfg
 
--- runWithDebug :: Maybe (IORef [Cfg]) -> Prog -> IO ()
--- runWithDebug debug prog = do
---   let ?funs = funs
---   go (buildCfg prog entryPoint)
---   pure ()
---   where
---     funs :: FunEnv
---     funs = Map.fromList [(f, i) | (FUNCTION f _, i) <- zip prog [0..]]
+-- -- buildCfg :: Prog -> Int -> Cfg
+-- -- buildCfg prog entry =
+-- --   MkCfg
+-- --     { prog
+-- --     , current = MkProcess
+-- --         { pid = Value.MkPID 0
+-- --         , pos = entry
+-- --         , stack = []
+-- --         , mem = Map.empty
+-- --         , frames = []
+-- --         }
+-- --     , halted = False
+-- --     , gen = 1
+-- --     , fuel = _FUEL
+-- --     , queue = []
+-- --     }
 
---     entryPoint :: Int
---     entryPoint =
---       case funs Map.!? ("main" Syntax.:/ 0) of
---         Nothing -> throw NoEntryPoint
---         Just pos -> pos
+-- -- run :: Prog -> IO ()
+-- -- run = runWithDebug Nothing
 
---     pushDebug cfg =
---       case debug of
---         Nothing -> pure ()
---         Just ref -> modifyIORef' ref (cfg :)
+-- -- runWithDebug :: Maybe (IORef [Cfg]) -> Prog -> IO ()
+-- -- runWithDebug debug prog = do
+-- --   let ?funs = funs
+-- --   go (buildCfg prog entryPoint)
+-- --   pure ()
+-- --   where
+-- --     funs :: FunEnv
+-- --     funs = Map.fromList [(f, i) | (FUNCTION f _, i) <- zip prog [0..]]
 
---     go :: (?funs :: FunEnv) => Cfg -> IO Cfg
---     go cfg
---       | cfg.halted = do
---         pushDebug cfg
---         pure cfg
---       | otherwise = do
---         pushDebug cfg
---         step cfg >>= go
+-- --     entryPoint :: Int
+-- --     entryPoint =
+-- --       case funs Map.!? ("main" Syntax.:/ 0) of
+-- --         Nothing -> throw NoEntryPoint
+-- --         Just pos -> pos
+
+-- --     pushDebug cfg =
+-- --       case debug of
+-- --         Nothing -> pure ()
+-- --         Just ref -> modifyIORef' ref (cfg :)
+
+-- --     go :: (?funs :: FunEnv) => Cfg -> IO Cfg
+-- --     go cfg
+-- --       | cfg.halted = do
+-- --         pushDebug cfg
+-- --         pure cfg
+-- --       | otherwise = do
+-- --         pushDebug cfg
+-- --         step cfg >>= go

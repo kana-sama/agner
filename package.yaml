@@ -42,7 +42,11 @@ dependencies:
   - aeson
 
 extra-source-files:
-  - runtime/tags.h
+  - ARTS/tags.h
+
+data-files:
+  - ARTS/*.c
+  - ARTS/*.h
 
 library:
   source-dirs: src

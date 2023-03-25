@@ -58,12 +58,20 @@ expr = \case
   Nil -> "[]"
   Cons a b -> brackets (expr a <+> "|" <+> expr b)
   Tuple es -> braces (hsep (punctuate comma (expr <$> es)))
-  BinOp l op r -> expr l <+> binop op <+> expr r
+  BinOp l op r -> parens (expr l <+> binop op <+> expr r)
   Var v -> var v
   Match p e -> pat p <+> "=" <+> expr e
   Apply _ f es -> funId f <> parens (listOf expr es)
   DynApply (Var v) es -> var v <> parens (listOf expr es)
   DynApply e es -> parens (expr e) <> parens (listOf expr es)
+  Send l r -> parens (expr l <+> "!" <+> expr r)
+  Receive cases ->
+    let case_ (p, es) = pat p <+> "->" <+> nest 2 (line' <> exprs es)
+        cases' = vcat (punctuate "; " (case_ <$> cases))
+     in "receive" <+> vsep [nest 2 (line' <> cases'), "end"]
+
+exprs :: WithVarStyles => Exprs -> D
+exprs es = vcat (punctuate ", " (expr <$> es))
 
 pat :: WithVarStyles => Pat -> D
 pat = \case
@@ -86,7 +94,7 @@ clause :: FunClause -> D
 clause c = do
   withVarStyles (Set.toList (funClauseVars c)) do
     funId c.funid <> parens (listOf pat c.pats) <+> "->" <+>
-      nest 2 (group (line' <> vcat (punctuate ", " (expr <$> c.body))))
+      nest 2 (group (line' <> exprs c.body))
 
 decl :: FunDecl -> D
 decl d = vsep (punctuate ";" (clause <$> d.clauses)) <> "."

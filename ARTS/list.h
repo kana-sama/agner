@@ -21,3 +21,4 @@ void    list_prepend(list_t*, void*);
 void*   list_shift(list_t*);
 void    list_remove(list_t*, void*);
 int64_t list_size(list_t*);
+void    list_foreach(list_t*, void(*)(void*));

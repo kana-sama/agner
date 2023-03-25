@@ -1,4 +1,4 @@
-# include "../../../runtime/tags.h"
+# include "../../../ARTS/tags.h"
 
 module Language.Agner.X64 (Ex(..), Prog, Target(..), prettyProg, compile) where
 
@@ -42,6 +42,8 @@ data RuntimeName
   | RuntimeAllocTuple | RuntimeFillTuple | RuntimeMatchTuple
   | RuntimeAllocCons  | RuntimeFillCons  | RuntimeMatchCons
 
+  | RuntimeReceivePick | RuntimeReceivePicked | RuntimeReceiveSuccess
+
   | ThrowBadArith
   | ThrowBadFun
   | ThrowBadArity
@@ -60,10 +62,8 @@ runtimeName :: RuntimeName -> String
 runtimeName = \case
   RuntimeCallingContext -> "_runtime__calling_context"
 
-
   RuntimeStart -> "_runtime__start"
   RuntimeYield -> "_runtime__yield"
-
 
   RuntimeAllocTuple -> "_runtime__alloc_tuple"
   RuntimeFillTuple -> "_runtime__fill_tuple"
@@ -73,6 +73,9 @@ runtimeName = \case
   RuntimeFillCons -> "_runtime__fill_cons"
   RuntimeMatchCons -> "_runtime__match_cons"
 
+  RuntimeReceivePick -> "_runtime__receive_pick"
+  RuntimeReceivePicked -> "_runtime__receive_picked"
+  RuntimeReceiveSuccess -> "_runtime__receive_success"
 
   ThrowBadArith -> "_THROW_badarith"
   ThrowBadFun -> "_THROW_badfun"
@@ -93,6 +96,7 @@ bifs =
   , "error/1"       ~> "_global__error" // []
   , "spawn/1"       ~> "_global__spawn" // []
   , "self/0"        ~> "_global__self"  // []
+  , "erlang:send/2" ~> "_erlang__send"  // []
   ]
   where
     a ~> b = (a, b)
@@ -193,6 +197,9 @@ mkLabel :: WithTarget => String -> Label
 mkLabel name = case ?target of
   Linux -> name
   MacOS -> "_" ++ name
+
+mkSMLabel :: WithTarget => SM.Label -> Label
+mkSMLabel lbl = mkLabel ("_sm_." ++ lbl)
 
 mkFunName :: WithTarget => Syntax.FunId -> Label
 mkFunName (Syntax.MkFunId ns f arity) = mkLabel (ns' ++ "." ++ f ++ "." ++ show arity)
@@ -492,6 +499,23 @@ compileInstr = \case
   SM.RET -> do
     retq
 
+
+  SM.LABEL lbl -> do
+    tell [Label (mkSMLabel lbl)]
+
+  SM.GOTO lbl -> do
+    jmp (Lbl (mkSMLabel lbl))
+
+
+  SM.RECEIVE_PICK -> do
+    callq (runtime RuntimeReceivePick)
+  SM.RECEIVE_PICKED -> do
+    callq (runtime RuntimeReceivePicked)
+    movq rax =<< _alloc
+  SM.RECEIVE_SUCCESS -> do
+    callq (runtime RuntimeReceiveSuccess)
+
+
   SM.LOAD var -> mdo
     movq (mkVarOp var) rax
     movq rax =<< _alloc
@@ -501,12 +525,7 @@ compileInstr = \case
     movq value rax
     cmpq (encodeInteger i) rax
     je (Lbl when_equal)
-
-    when_not_equal <- _label "match_i.when_not_equal"
-    case onFail of
-      SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
-      SM.NextClause funid clauseN -> do
-        jmp (Lbl (mkFunClause funid clauseN))
+    matchFailure value onFail
 
     when_equal <- _label "match_i.when_equal"
     pure ()
@@ -517,11 +536,7 @@ compileInstr = \case
     atom' <- _atom atom
     cmpq atom' rax
     je (Lbl when_equal)
-
-    when_not_equal <- _label "match_i.when_not_equal"
-    case onFail of
-      SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
-      SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
+    matchFailure value onFail
 
     when_equal <- _label "match_i.when_equal"
     pure ()
@@ -543,11 +558,7 @@ compileInstr = \case
       movq (mkVarOp var) rax
       cmpq rax value
       je (Lbl done)
-
-      when_not_equal <- _label "match_var.when_not_equal"
-      case onFail of
-        SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
-        SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
+      matchFailure value onFail
 
     done <- _label "match_var.done"
     pure ()
@@ -559,10 +570,7 @@ compileInstr = \case
     callq (runtime RuntimeMatchTuple)
     cmpq 0 rax
     jne (Lbl unpack_tuple)
-
-    case onFail of
-      SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
-      SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
+    matchFailure value onFail
 
     unpack_tuple <- _label "match_tuple.unpack_tuple"
     movq rax rbx
@@ -575,10 +583,7 @@ compileInstr = \case
     movq value rax
     cmpq NIL_TAG rax
     je (Lbl when_equal)
-
-    case onFail of
-      SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
-      SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
+    matchFailure value onFail
 
     when_equal <- _label "match_nil.when_equal"
     pure ()
@@ -589,16 +594,19 @@ compileInstr = \case
     callq (runtime RuntimeMatchCons)
     cmpq 0 rax
     jne (Lbl unpack_cons)
-
-    case onFail of
-      SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
-      SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
+    matchFailure value onFail
 
     unpack_cons <- _label "match_cons.unpack_cons"
     movq (MemReg (1 * WORD_SIZE) RAX) rbx
     movq rbx =<< _alloc
     movq (MemReg (0 * WORD_SIZE) RAX) rbx
     movq rbx =<< _alloc
+
+matchFailure :: WithTarget => Operand -> SM.OnMatchFail -> M ()
+matchFailure value = \case
+  SM.Throw -> do movq value rdi; callq (runtime ThrowBadMatch)
+  SM.NextClause funid clauseN -> jmp (Lbl (mkFunClause funid clauseN))
+  SM.JumpTo lbl -> jmp (Lbl (mkSMLabel lbl))
 
 compileProg :: WithTarget => SM.Prog -> M ()
 compileProg prog = do
