@@ -69,7 +69,3 @@ void process_send(PID_t pid, value_t message) {
   value_t message_copy = copy_to_heap(message, &process->heap, process->vstack, process->vstack_head);
   mailbox_push(process->mailbox, message_copy);
 }
-
-void process_save_vstack_head(process_t* process) {
-  asm("movq %%r12, %0" : "=rm"(process->vstack_head));
-}

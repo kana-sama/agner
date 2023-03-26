@@ -83,6 +83,7 @@ runtime = traverse (getDataFileName . rt) sources
       , "process"
       , "scheduler"
       , "runtime"
+      , "bifs"
       ]
 
 compile ::  

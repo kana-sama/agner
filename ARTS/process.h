@@ -28,5 +28,3 @@ process_t* process_new();
 void       process_free(process_t*);
 process_t* process_lookup(PID_t);
 void       process_send(PID_t, value_t);
-void       process_save_vstack_head(process_t*);
-

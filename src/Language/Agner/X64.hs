@@ -38,6 +38,7 @@ data RuntimeName
 
   | RuntimeStart
   | RuntimeYield
+  | RuntimeSaveVStack
 
   | RuntimeAllocTuple | RuntimeFillTuple | RuntimeMatchTuple
   | RuntimeAllocCons  | RuntimeFillCons  | RuntimeMatchCons
@@ -64,6 +65,7 @@ runtimeName = \case
 
   RuntimeStart -> "_runtime__start"
   RuntimeYield -> "_runtime__yield"
+  RuntimeSaveVStack -> "_runtime__save_vstack"
 
   RuntimeAllocTuple -> "_runtime__alloc_tuple"
   RuntimeFillTuple -> "_runtime__fill_tuple"
@@ -93,9 +95,9 @@ bifs :: [(Syntax.FunId, (String, [Syntax.Atom]))]
 bifs =
   [ "agner:print/1" ~> "_agner__print"  // ["ok"]
   , "timer:sleep/1" ~> "_timer__sleep"  // ["ok", "infinite"]
-  , "error/1"       ~> "_global__error" // []
-  , "spawn/1"       ~> "_global__spawn" // []
-  , "self/0"        ~> "_global__self"  // []
+  , "error/1"       ~> "_erlang__error" // []
+  , "spawn/1"       ~> "_erlang__spawn" // []
+  , "self/0"        ~> "_erlang__self"  // []
   , "erlang:send/2" ~> "_erlang__send"  // []
   ]
   where
@@ -455,6 +457,9 @@ compileInstr = \case
     for_ (zip vars [funid.arity ..]) \(var, varN) -> do
       tell [Set (mkVarName var) (WORD_SIZE * varN)]
 
+    movq (Reg valuesStackReg) rdi
+    callq (runtime RuntimeSaveVStack)
+
     tell [Label (mkFunBody funid)]
 
   SM.YIELD funid -> do
@@ -490,11 +495,16 @@ compileInstr = \case
 
   SM.LEAVE _ -> do
     s <- _pop
-    movq s rax
+    movq s rbx
 
     -- epilogue
     movq (Reg stackFrameReg) (Reg valuesStackReg)
     popq (Reg stackFrameReg)
+
+    movq (Reg valuesStackReg) rdi
+    callq (runtime RuntimeSaveVStack)
+
+    movq rbx rax
 
   SM.RET -> do
     retq
