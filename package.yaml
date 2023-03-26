@@ -33,6 +33,7 @@ default-extensions:
   - ViewPatterns
   - GeneralizedNewtypeDeriving
   - NoFieldSelectors
+  - TupleSections
 
 ghc-options:
   - -Wincomplete-patterns

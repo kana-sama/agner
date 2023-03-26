@@ -5,6 +5,44 @@
 # include "tags.h"
 # include "value.h"
 
+static char control_char_alias(int64_t c) {
+  if (c == '\n') return 'n';
+  if (c == '\r') return 'r';
+  if (c == '\t') return 't';
+  if (c == '\v') return 'v';
+  if (c == '\b') return 'b';
+  if (c == '\f') return 'f';
+  if (c == '\e') return 'e';
+  return 0;
+}
+
+static bool printable_latin1(value_t value) {
+  if ((value & TAG_MASK) != NUMBER_TAG) return false;
+  int64_t c = value >> TAG_SIZE;
+
+  if (c >= 32 && c <= 126) return true;
+  if (c >= 160 && c < 255) return true;
+  if (control_char_alias(c)) return true;
+
+  return false;
+}
+
+static bool printable_latin1_list(value_t value) {
+  if (value == NIL_TAG) return true;
+
+  boxed_value_t* ref = cast_to_boxed_value(value);
+  if (ref->super.header != CONS_HEADER) return false;
+  if (!ref->cons.is_list) return false;
+
+  while (ref) {
+    if (!printable_latin1(ref->cons.values.head)) return false;
+    if (ref->cons.values.tail == NIL_TAG) break;
+    ref = cast_to_boxed_value(ref->cons.values.tail);
+  }
+
+  return true;
+}
+
 fun_meta_t* get_fun_meta(value_t fun) {
   int64_t fun_size = *((int64_t*)fun - 1);
   return ((void*)fun + fun_size);
@@ -18,29 +56,59 @@ bool is_list(value_t value) {
   return ref->cons.is_list;
 }
 
+void print_string(boxed_value_t* ref) {
+  printf("\"");
+  while (ref) {
+    int c = ref->cons.values.head >> TAG_SIZE;
+    if (c == '"')
+      printf("\\\"");
+    else if (c == '\\')
+      printf("\\\\");
+    else if (control_char_alias(c))
+      printf("\\%c", control_char_alias(c));
+    else
+      printf("%lc", c);
+    if (ref->cons.values.tail == NIL_TAG) break;
+    ref = cast_to_boxed_value(ref->cons.values.tail);
+  }
+  printf("\"");
+}
+
+void print_list(boxed_value_t* ref) {
+  printf("[");
+  value_t value = (value_t)ref | BOX_TAG;
+  while (value != NIL_TAG) {
+    boxed_cons_t* cons = (boxed_cons_t*)(value ^ BOX_TAG);
+    print_value(cons->values.head);
+    if (cons->values.tail != NIL_TAG) printf(",");
+    value = cons->values.tail;
+  }
+  printf("]");
+}
+
+void print_cons(boxed_value_t* ref) {
+  printf("[");
+  print_value(ref->cons.values.head);
+  printf("|");
+  print_value(ref->cons.values.tail);
+  printf("]");
+}
+
 void print_value_(value_t value, bool trancated) {
   switch (value & TAG_MASK) {
-    case NUMBER_TAG: {
-      printf("%lld", value >> TAG_SIZE);
-      break;
-    }
-    case ATOM_TAG: {
-      printf("%s", (char*) value);
-      break;
-    }
+    case NUMBER_TAG:
+      printf("%lld", value >> TAG_SIZE); break;
+    case ATOM_TAG:
+      printf("%s", (char*) value); break;
     case FUN_TAG: {
       fun_meta_t* meta = get_fun_meta(value);
       printf("fun %s/%lld", meta->name, meta->arity);
       break;
     }
-    case NIL_TAG: {
-      printf("[]");
-      break;
-    }
-    case PID_TAG: {
-      printf("<%lld>", value >> TAG_SIZE);
-      break;
-    }
+    case NIL_TAG:
+      printf("[]"); break;
+    case PID_TAG:
+      printf("<%lld>", value >> TAG_SIZE); break;
     case BOX_TAG: {
       boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
       
@@ -55,23 +123,14 @@ void print_value_(value_t value, bool trancated) {
           break;
         }
         case CONS_HEADER: {
-          printf("[");
-          if (trancated) {
-            printf("...");
-          } else if (ref->cons.is_list == 1) {
-            value_t value = (value_t)ref | BOX_TAG;
-            while (value != NIL_TAG) {
-              boxed_cons_t* cons = (boxed_cons_t*)(value ^ BOX_TAG);
-              print_value_(cons->values.head, trancated);
-              if (cons->values.tail != NIL_TAG) printf(",");
-              value = cons->values.tail;
-            }
-          } else {
-            print_value_(ref->cons.values.head, trancated);
-            printf("|");
-            print_value_(ref->cons.values.tail, trancated);
-          }
-          printf("]");
+          if (printable_latin1_list(value))
+            print_string(cast_to_boxed_value(value));
+          else if (trancated)
+            printf("[...]");
+          else if (ref->cons.is_list)
+            print_list(ref);
+          else
+            print_cons(ref);
           break;
         }
       }
@@ -113,7 +172,7 @@ boxed_value_children_t boxed_value_children(boxed_value_t* ref) {
   }
 }
 
-boxed_value_t* cast_to_boxed(value_t value) {
+boxed_value_t* cast_to_boxed_value(value_t value) {
   if ((value & TAG_MASK) != BOX_TAG) return NULL;
   return (boxed_value_t*)(value ^ BOX_TAG);
 }
@@ -121,7 +180,7 @@ boxed_value_t* cast_to_boxed(value_t value) {
 void dump_value(value_t value) {
   printf("%lld", value);
   
-  boxed_value_t* ref = cast_to_boxed(value);
+  boxed_value_t* ref = cast_to_boxed_value(value);
   if (ref) {
     printf("[");
     int64_t size = boxed_value_size(ref);

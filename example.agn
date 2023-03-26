@@ -1,25 +1,3 @@
-calc() -> calc(0).
-calc(Acc) ->
-  receive
-    {add, X} -> calc(Acc + X);
-    {sub, X} -> calc(Acc - X);
-    {get, To} -> To ! {result, Acc}, calc(Acc);
-    done -> agner:print({done_with, Acc})
-  end.
-
-new_calc() -> spawn(fun calc/0).
-kill_calc(Calc) -> Calc ! done.
-add(Calc, N) -> Calc ! {add, N}.
-sub(Calc, N) -> Calc ! {sub, N}.
-get(Calc) ->
-  Calc ! {get, self()}, 
-  receive {result, X} -> X end.
-
 main() ->
-  Calc = new_calc(),
-  add(Calc, 10),
-  sub(Calc, 3),
-  agner:print(get(Calc)),
-  add(Calc, 5),
-  agner:print(get(Calc)),
-  kill_calc(Calc).
+  agner:print([$h, $e, $l, $l, $o, $\n, $\\, $"]),
+  agner:print("hello\n\\\"").

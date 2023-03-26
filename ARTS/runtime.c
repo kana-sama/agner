@@ -21,7 +21,7 @@ void _runtime__start(value_t entry) {
 
   if (options.ylog) {
     ylog = fopen(options.ylog, "w");
-    fprintf(ylog, "id,pid,function,fuel\n");
+    fprintf(ylog, "id,pid,function,fuel,vstack_size\n");
   }
 
   struct timespec rt_start, rt_end;
@@ -46,7 +46,13 @@ void _runtime__start(value_t entry) {
 void _runtime__yield(char* name) {
   if (options.ylog) {
     static int64_t log_line_id = 0; log_line_id++;
-    fprintf(ylog, "%lld,%lld,%s,%lld\n", log_line_id, scheduler->current->pid, name, scheduler->fuel);
+    fprintf(ylog, "%lld,%lld,%s,%lld,%lld\n",
+      log_line_id,
+      scheduler->current->pid,
+      name,
+      scheduler->fuel,
+      (int64_t)(scheduler->current->vstack_head - scheduler->current->vstack)
+    );
   }
 
   scheduler_yield(scheduler);

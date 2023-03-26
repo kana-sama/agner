@@ -3,6 +3,7 @@ module Language.Agner.Value (Value(..), PID(..), same, encode) where
 import Data.Aeson (ToJSON)
 import GHC.Generics (Generic)
 import Data.List (intercalate)
+import Data.Char qualified as Char
 
 import Language.Agner.Syntax qualified as Syntax
 
@@ -45,10 +46,17 @@ encode = \case
       , show f.arity
       ]
   Tuple vs -> "{" ++ intercalate "," [encode v | v <- vs] ++ "}"
+  List vs | all isPrintableLatin1 vs -> show [Char.chr (fromInteger i) | Integer i <- vs]
   List vs -> "[" ++ intercalate "," [encode v | v <- vs] ++ "]"
   Nil -> "[]"
   Cons a b -> "[" ++ encode a ++ "|" ++ encode b ++ "]"
   PID (MkPID x) -> "<" ++ show x ++ ">"
+
+isPrintableLatin1 :: Value -> Bool
+isPrintableLatin1 (Integer i) =
+  Char.isLatin1 c && (Char.isPrint c || Char.isControl c)
+  where c = Char.chr (fromInteger i)
+isPrintableLatin1 _ = False
 
 same :: Value -> Value -> Bool
 same = (==)

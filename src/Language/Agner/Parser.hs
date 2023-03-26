@@ -4,8 +4,8 @@ import Language.Agner.Prelude hiding (try)
 
 import Data.Char qualified as Char
 
-import Text.Megaparsec (Parsec, between, choice, runParser, eof, some, many, empty, (<|>), try, sepBy, sepBy1, optional)
-import Text.Megaparsec.Char (char, digitChar, space1, upperChar, lowerChar, alphaNumChar)
+import Text.Megaparsec (Parsec, label, satisfy, between, choice, runParser, eof, some, many, empty, (<|>), try, sepBy, sepBy1, optional, anySingle, manyTill)
+import Text.Megaparsec.Char (char, string, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
 import Control.Monad.Combinators.Expr (makeExprParser, Operator(..))
@@ -23,6 +23,9 @@ instance Exception Ex where
     ParsingException msg -> msg
 
 
+ord :: Integral a => Char -> a
+ord = fromIntegral . Char.ord
+
 sc :: Parser ()
 sc = L.space space1 (L.skipLineComment "%") empty
 
@@ -39,10 +42,20 @@ digit :: Parser Int
 digit = (\c -> Char.ord c - Char.ord '0') <$> digitChar
 
 integer :: Parser Integer
-integer = lexeme do
-  d <- digit
-  ds <- many (underscore *> digit <|> digit)
-  pure (toNumber (d:ds))
+integer = label "integer" do
+  choice
+    [ lexeme do
+        d <- digit
+        ds <- many (underscore *> digit <|> digit)
+        pure (toNumber (d:ds))
+    , lexeme do
+        char '$'
+        choice
+          [ ord '\n' <$ try (string "\\n")
+          , ord '\\' <$ try (string "\\\\")
+          , ord <$> satisfy (/= '\\')
+          ]
+    ]
   where
     toNumber :: [Int] -> Integer
     toNumber = fromIntegral . foldl (\b a -> b * 10 + a) 0
@@ -70,6 +83,7 @@ pat = choice
   , PatInteger <$> integer
   , PatTuple <$> tupleOf pat
   , makeList PatCons PatNil <$> listOf pat
+  , makeList PatCons PatNil . (, Nothing) <$> stringOf PatInteger
   ]
 
 match :: Parser (Pat, Expr)
@@ -124,6 +138,9 @@ listOf elem = brackets do
       rest <- optional (symbol "|" *> elem)
       pure (es, rest)
 
+stringOf :: (Integer -> a) -> Parser [a]
+stringOf elem = map (elem . ord) <$> (char '"' *> manyTill L.charLiteral (char '"'))
+
 makeList :: (a -> a -> a) -> a -> ([a], Maybe a) -> a
 makeList cons nil ([], Just rest) = rest
 makeList cons nil ([], Nothing) = nil
@@ -155,6 +172,7 @@ term = choice
   , Integer <$> integer
   , Tuple <$> tupleOf expr
   , makeList Cons Nil <$> listOf expr
+  , makeList Cons Nil . (, Nothing) <$> stringOf Integer
   ]
 
 expr :: Parser Expr

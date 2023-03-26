@@ -46,6 +46,6 @@ void print_value_trancated(value_t value);
 int64_t boxed_value_size(boxed_value_t*);
 boxed_value_children_t boxed_value_children(boxed_value_t*);
 
-boxed_value_t* cast_to_boxed(value_t);
+boxed_value_t* cast_to_boxed_value(value_t);
 
 void dump_value(value_t);
