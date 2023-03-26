@@ -1,4 +1,4 @@
-module Language.Agner.Value (Value(..), PID(..), same, encode) where
+module Language.Agner.Value (Value(..), PID(..), pattern List, same, encode, isPrintableLatin1) where
 
 import Data.Aeson (ToJSON)
 import GHC.Generics (Generic)
@@ -53,9 +53,11 @@ encode = \case
   PID (MkPID x) -> "<" ++ show x ++ ">"
 
 isPrintableLatin1 :: Value -> Bool
-isPrintableLatin1 (Integer i) =
-  Char.isLatin1 c && (Char.isPrint c || Char.isControl c)
-  where c = Char.chr (fromInteger i)
+isPrintableLatin1 (Integer i) = or
+  [ i >= 032 && i <= 126
+  , i >= 160 && i  < 255
+  , c `elem` ("\n\r\t\v\b\f" ++ [Char.chr 27])
+  ] where c = Char.chr (fromInteger i)
 isPrintableLatin1 _ = False
 
 same :: Value -> Value -> Bool

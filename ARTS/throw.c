@@ -64,9 +64,24 @@ void _THROW_badarith(value_t l, value_t r, char* op) {
 }
 
 _Noreturn
-void _THROW_badarg_send(value_t l, value_t r) {
+void _THROW_badarg(fun_meta_t* meta, value_t* args) {
   printf("** exception error: bad argument\n");
-  printf("     in operator  !/2\n");
-  printf("        called as "); print_value_trancated(l); printf(" ! "); print_value_trancated(r); printf("\n");
+  printf("     in function  %s/%lld\n", meta->name, meta->arity);
+  printf("        called as %s(", meta->name);
+
+  for (int i = 0; i < meta->arity; i++) {
+    print_value_trancated(args[i]);
+    if (i < meta->arity - 1) printf(", ");
+  }
+
+  printf(")\n");
+  exit(-1);
+}
+
+_Noreturn
+void _THROW_badarg_op(value_t l, value_t r, char* op) {
+  printf("** exception error: bad argument\n");
+  printf("     in operator  %s/2\n", op);
+  printf("        called as "); print_value_trancated(l); printf(" %s ", op); print_value_trancated(r); printf("\n");
   exit(-1); 
 }

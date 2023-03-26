@@ -48,6 +48,7 @@ instance Show FunId where
 data BinOp
   = (:+)
   | (:-)
+  | (:++)
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON)
 

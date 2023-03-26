@@ -1,3 +1,18 @@
+parse_format("~p" ++ Format) -> [value|parse_format(Format)];
+parse_format("~s" ++ Format) -> [string|parse_format(Format)];
+parse_format([C|Rest]) -> [{char, C}|parse_format(Rest)];
+parse_format([]) -> [].
+
+build([value|Format], [V|Values]) ->
+  agner:print(V), build(Format, Values);
+build([string|Format], [V|Values]) ->
+  agner:put_str(V), build(Format, Values);
+build([{char, C}|Format], Values) ->
+  agner:put_char(C), build(Format, Values);
+build([], []) -> ok.
+
+format(Format, Values) ->
+  build(parse_format(Format), Values).
+
 main() ->
-  agner:print([$h, $e, $l, $l, $o, $\n, $\\, $"]),
-  agner:print("hello\n\\\"").
+  format("My name is ~s and I am ~p\n", ["kana", 25]).

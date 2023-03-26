@@ -102,8 +102,8 @@ value_t _runtime__alloc_cons() {
 
 void _runtime__fill_cons(value_t value, value_t head, value_t tail) {
   boxed_cons_t* cons = (boxed_cons_t*)(value ^ BOX_TAG);
-  cons->values.head = head;
-  cons->values.tail = tail;
+  cons->head = head;
+  cons->tail = tail;
   cons->is_list = is_list(tail) ? 1 : 0;
 }
 
@@ -111,7 +111,7 @@ value_t* _runtime__match_cons(value_t value) {
   if ((value & TAG_MASK) != BOX_TAG) return 0;
   boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
   if (ref->super.header != CONS_HEADER) return 0;
-  return (value_t*)(&ref->cons.values);
+  return &ref->cons.head;
 }
 
 void _runtime__receive_pick() {

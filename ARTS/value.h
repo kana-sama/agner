@@ -18,14 +18,15 @@ typedef struct boxed_super_t {
 
 typedef struct boxed_tuple_t {
   boxed_super_t super;
-  int64_t       size;
-  value_t       values[];
+  int64_t size;
+  value_t values[];
 } boxed_tuple_t;
 
 typedef struct boxed_cons_t {
   boxed_super_t super;
-  int64_t       is_list;
-  struct { value_t head; value_t tail; } values;
+  int64_t is_list;
+  value_t head;
+  value_t tail;
 } boxed_cons_t;
 
 typedef union boxed_value_t {
@@ -47,5 +48,6 @@ int64_t boxed_value_size(boxed_value_t*);
 boxed_value_children_t boxed_value_children(boxed_value_t*);
 
 boxed_value_t* cast_to_boxed_value(value_t);
+bool printable_latin1_list(value_t);
 
 void dump_value(value_t);

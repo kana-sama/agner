@@ -27,7 +27,7 @@ static bool printable_latin1(value_t value) {
   return false;
 }
 
-static bool printable_latin1_list(value_t value) {
+bool printable_latin1_list(value_t value) {
   if (value == NIL_TAG) return true;
 
   boxed_value_t* ref = cast_to_boxed_value(value);
@@ -35,9 +35,9 @@ static bool printable_latin1_list(value_t value) {
   if (!ref->cons.is_list) return false;
 
   while (ref) {
-    if (!printable_latin1(ref->cons.values.head)) return false;
-    if (ref->cons.values.tail == NIL_TAG) break;
-    ref = cast_to_boxed_value(ref->cons.values.tail);
+    if (!printable_latin1(ref->cons.head)) return false;
+    if (ref->cons.tail == NIL_TAG) break;
+    ref = cast_to_boxed_value(ref->cons.tail);
   }
 
   return true;
@@ -56,41 +56,44 @@ bool is_list(value_t value) {
   return ref->cons.is_list;
 }
 
-void print_string(boxed_value_t* ref) {
+static void print_char(int c) {
+  if (c == '"')
+    printf("\\\"");
+  else if (c == '\\')
+    printf("\\\\");
+  else if (control_char_alias(c))
+    printf("\\%c", control_char_alias(c));
+  else
+    printf("%lc", c);
+}
+
+static void print_string(boxed_value_t* ref) {
   printf("\"");
   while (ref) {
-    int c = ref->cons.values.head >> TAG_SIZE;
-    if (c == '"')
-      printf("\\\"");
-    else if (c == '\\')
-      printf("\\\\");
-    else if (control_char_alias(c))
-      printf("\\%c", control_char_alias(c));
-    else
-      printf("%lc", c);
-    if (ref->cons.values.tail == NIL_TAG) break;
-    ref = cast_to_boxed_value(ref->cons.values.tail);
+    print_char(ref->cons.head >> TAG_SIZE);
+    if (ref->cons.tail == NIL_TAG) break;
+    ref = cast_to_boxed_value(ref->cons.tail);
   }
   printf("\"");
 }
 
-void print_list(boxed_value_t* ref) {
+static void print_list(boxed_value_t* ref) {
   printf("[");
   value_t value = (value_t)ref | BOX_TAG;
   while (value != NIL_TAG) {
     boxed_cons_t* cons = (boxed_cons_t*)(value ^ BOX_TAG);
-    print_value(cons->values.head);
-    if (cons->values.tail != NIL_TAG) printf(",");
-    value = cons->values.tail;
+    print_value(cons->head);
+    if (cons->tail != NIL_TAG) printf(",");
+    value = cons->tail;
   }
   printf("]");
 }
 
-void print_cons(boxed_value_t* ref) {
+static void print_cons(boxed_value_t* ref) {
   printf("[");
-  print_value(ref->cons.values.head);
+  print_value(ref->cons.head);
   printf("|");
-  print_value(ref->cons.values.tail);
+  print_value(ref->cons.tail);
   printf("]");
 }
 
@@ -165,7 +168,7 @@ boxed_value_children_t boxed_value_children(boxed_value_t* ref) {
     case TUPLE_HEADER:
       return (boxed_value_children_t){.values=ref->tuple.values, .count=ref->tuple.size};
     case CONS_HEADER:
-      return (boxed_value_children_t){.values=(value_t*)&ref->cons.values, .count=2};
+      return (boxed_value_children_t){.values=(value_t*)&ref->cons.head, .count=2};
     default:
       printf("Unknown boxed value header: %lld\n", ref->super.header);
       exit(-1);

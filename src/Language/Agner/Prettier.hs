@@ -34,6 +34,7 @@ binop :: BinOp -> D
 binop = \case
   (:+) -> "+"
   (:-) -> "-"
+  (:++) -> "++"
 
 keyword :: D -> D
 keyword = annotate bold

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+clear
+
 tmp_dir=$(mktemp -d)
 tmp_file="$tmp_dir/main.c"
 echo "int main() {}" > $tmp_file

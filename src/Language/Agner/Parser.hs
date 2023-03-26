@@ -4,7 +4,7 @@ import Language.Agner.Prelude hiding (try)
 
 import Data.Char qualified as Char
 
-import Text.Megaparsec (Parsec, label, satisfy, between, choice, runParser, eof, some, many, empty, (<|>), try, sepBy, sepBy1, optional, anySingle, manyTill)
+import Text.Megaparsec (Parsec, label, satisfy, between, choice, runParser, eof, oneOf, some, notFollowedBy, many, empty, (<|>), try, sepBy, sepBy1, optional, anySingle, manyTill)
 import Text.Megaparsec.Char (char, string, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
@@ -82,9 +82,18 @@ pat = choice
   , PatAtom <$> atom
   , PatInteger <$> integer
   , PatTuple <$> tupleOf pat
-  , makeList PatCons PatNil <$> listOf pat
-  , makeList PatCons PatNil . (, Nothing) <$> stringOf PatInteger
+  , listOrListPrefix
   ]
+  where
+    listOrListPrefix = do
+      a <- listOf pat <|> ((, Nothing) <$> stringOf PatInteger)
+      b <- optional do symbol "++" *> pat
+      case (a, b) of
+        ((prefix, Nothing), Just suffix) ->
+          pure (makeList PatCons suffix a)
+        (list, Nothing) ->
+          pure (makeList PatCons PatNil list)
+        _ -> empty
 
 match :: Parser (Pat, Expr)
 match = do
@@ -139,7 +148,8 @@ listOf elem = brackets do
       pure (es, rest)
 
 stringOf :: (Integer -> a) -> Parser [a]
-stringOf elem = map (elem . ord) <$> (char '"' *> manyTill L.charLiteral (char '"'))
+stringOf elem = lexeme do
+  map (elem . ord) <$> (char '"' *> manyTill L.charLiteral (char '"'))
 
 makeList :: (a -> a -> a) -> a -> ([a], Maybe a) -> a
 makeList cons nil ([], Just rest) = rest
@@ -182,10 +192,14 @@ expr = makeExprParser term operatorTable
     operatorTable =
       [ [ binary "+" (\a b -> BinOp a (:+) b)
         , binary "-" (\a b -> BinOp a (:-) b) ]
+      , [ binary "++" (\a b -> BinOp a (:++) b) ]
       , [ binary "!" Send ] ]
 
     binary :: String -> (Expr -> Expr -> Expr) -> Operator Parser Expr
-    binary name f = InfixL (f <$ symbol name)
+    binary name f = InfixL (f <$ op name)
+
+    op n = (lexeme . try) (string n <* notFollowedBy punctuationChar)
+    punctuationChar = oneOf ("+-" :: [Char])
 
 exprs :: Parser Exprs
 exprs = expr `sepBy1` symbol ","

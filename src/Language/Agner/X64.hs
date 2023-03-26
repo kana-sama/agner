@@ -50,6 +50,8 @@ data RuntimeName
   | ThrowBadArity
   | ThrowBadMatch
   | ThrowFunctionClause
+
+  | BinOp_PlusPlus
   deriving stock Eq
 
 isRuntimeVariable :: RuntimeName -> Bool
@@ -85,6 +87,8 @@ runtimeName = \case
   ThrowBadMatch -> "_THROW_badmatch"
   ThrowFunctionClause -> "_THROW_function_clause"
 
+  BinOp_PlusPlus -> "_binop__plusplus"
+
 runtime :: WithTarget => RuntimeName -> Operand
 runtime name =
   (if isRuntimeVariable name then Static else Lbl)
@@ -93,12 +97,15 @@ runtime name =
 
 bifs :: [(Syntax.FunId, (String, [Syntax.Atom]))]
 bifs =
-  [ "agner:print/1" ~> "_agner__print"  // ["ok"]
-  , "timer:sleep/1" ~> "_timer__sleep"  // ["ok", "infinite"]
-  , "error/1"       ~> "_erlang__error" // []
-  , "spawn/1"       ~> "_erlang__spawn" // []
-  , "self/0"        ~> "_erlang__self"  // []
-  , "erlang:send/2" ~> "_erlang__send"  // []
+  [ "agner:print/1"    ~> "_agner__print"    // ["ok"]
+  , "agner:println/1"  ~> "_agner__println"  // ["ok"]
+  , "agner:put_char/1" ~> "_agner__put_char" // ["ok"]
+  , "agner:put_str/1"  ~> "_agner__put_str"  // ["ok"]
+  , "timer:sleep/1"    ~> "_timer__sleep"    // ["ok", "infinite"]
+  , "error/1"          ~> "_erlang__error"   // []
+  , "spawn/1"          ~> "_erlang__spawn"   // []
+  , "self/0"           ~> "_erlang__self"    // []
+  , "erlang:send/2"    ~> "_erlang__send"    // []
   ]
   where
     a ~> b = (a, b)
@@ -258,6 +265,11 @@ compileBinOp :: WithTarget => Syntax.BinOp -> M ()
 compileBinOp = \case
   (Syntax.:+) -> integerBinOp "+" addq
   (Syntax.:-) -> integerBinOp "-" subq
+  (Syntax.:++) -> do
+    b <- _pop; movq b rsi
+    a <- _pop; movq a rdi
+    callq (runtime BinOp_PlusPlus)
+    movq rax =<< _alloc
   where
     integerBinOp name operator = do
       b <- _pop

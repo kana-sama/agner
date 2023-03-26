@@ -150,6 +150,11 @@ binOp = \case
     case (a, b) of
       (Value.Integer a, Value.Integer b) -> Value.Integer (a - b)
       _ -> throw (BinOp_BadArgs (Syntax.:-))
+  (Syntax.:++) -> \a b ->
+    case a of
+      Value.List a -> foldr Value.Cons b a
+      _ -> throw (BinOp_BadArgs (Syntax.:++))
+      
 
 funDecl :: WithScheduler => FunEnv -> Syntax.FunDecl -> ([Value] -> IO Value)
 funDecl funs decl args = do
