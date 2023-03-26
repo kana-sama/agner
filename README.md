@@ -43,6 +43,7 @@ agner pretty example.agn
 - [ ] блоки, лист-выражения, мап-выражения, бит-стринг выражения
 - [ ] parse transformations
 - [ ] мультикор
+- [ ] receive Case* after Expr -> Expr+ end
 
 # Когда будет нефиг делать:
 - [ ] типы
