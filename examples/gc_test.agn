@@ -12,4 +12,4 @@ sum([H|T], Acc) -> sum(T, Acc + H);
 sum([], Acc) -> Acc.
 
 main() ->
-  agner:print(f(100)).
+  agner:println(f(100)).

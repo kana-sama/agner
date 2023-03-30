@@ -41,6 +41,30 @@ underscore = char '_'
 digit :: Parser Int
 digit = (\c -> Char.ord c - Char.ord '0') <$> digitChar
 
+char_ :: Parser Integer
+char_ = lexeme do
+  char '$'
+  escaped <|> not_escaped
+  where
+    not_escaped = ord <$> satisfy (/= '\\')
+    octal = do
+      a <- octalDigit
+      b <- octalDigit
+      c <- octalDigit
+      pure (a*8*8 + b*8 + c)
+    octalDigit = (\c -> ord c - ord '0') <$> oneOf ['0'..'7']
+    escaped = char '\\' *> choice
+      [ octal
+      , string "n"  $> ord '\n'
+      , string "r"  $> ord '\r'
+      , string "t"  $> ord '\t'
+      , string "v"  $> ord '\v'
+      , string "b"  $> ord '\b'
+      , string "f"  $> ord '\f'
+      , string "e"  $> 27
+      , string "\\" $> ord '\\'
+      ]
+
 integer :: Parser Integer
 integer = label "integer" do
   choice
@@ -48,13 +72,7 @@ integer = label "integer" do
         d <- digit
         ds <- many (underscore *> digit <|> digit)
         pure (toNumber (d:ds))
-    , lexeme do
-        char '$'
-        choice
-          [ ord '\n' <$ try (string "\\n")
-          , ord '\\' <$ try (string "\\\\")
-          , ord <$> satisfy (/= '\\')
-          ]
+    , char_
     ]
   where
     toNumber :: [Int] -> Integer
@@ -190,28 +208,41 @@ expr = makeExprParser term operatorTable
   where
     operatorTable :: [[Operator Parser Expr]]
     operatorTable =
-      [ [ binary "+" (\a b -> BinOp a (:+) b)
-        , binary "-" (\a b -> BinOp a (:-) b) ]
-      , [ binary "++" (\a b -> BinOp a (:++) b) ]
-      , [ binary "!" Send ] ]
+      [ [ binary "+"  do binop (:+)
+        , binary "-"  do binop (:-)
+        ]
+      , [ binary "++" do binop (:++)
+        ]
+      , [ binary "=<" do binop (:=<)
+        , binary ">=" do binop (:>=)
+        ]
+      , [ binary "!" Send
+        ]
+      ]
+
+    binop op a b = BinOp a op b
 
     binary :: String -> (Expr -> Expr -> Expr) -> Operator Parser Expr
     binary name f = InfixL (f <$ op name)
 
     op n = (lexeme . try) (string n <* notFollowedBy punctuationChar)
-    punctuationChar = oneOf ("+-" :: [Char])
+    punctuationChar = oneOf ("+->" :: [Char])
 
 exprs :: Parser Exprs
 exprs = expr `sepBy1` symbol ","
+
+guardSeq :: Parser [Expr]
+guardSeq = expr `sepBy1` symbol ","
 
 funClause :: Parser FunClause
 funClause = do
   name <- atom
   pats <- parens (pat `sepBy` symbol ",")
+  guards <- fromMaybe [] <$> optional (symbol "when" *> guardSeq)
   symbol "->"
   body <- exprs
   let funid = MkFunId Nothing name (length pats)
-  pure MkFunClause{funid, pats, body}
+  pure MkFunClause{funid, pats, guards, body}
 
 funDecl :: Parser FunDecl
 funDecl = do

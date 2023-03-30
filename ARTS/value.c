@@ -17,7 +17,7 @@ static char control_char_alias(int64_t c) {
 }
 
 static bool printable_latin1(value_t value) {
-  if ((value & TAG_MASK) != NUMBER_TAG) return false;
+  if ((value & TAG_MASK) != INTEGER_TAG) return false;
   int64_t c = value >> TAG_SIZE;
 
   if (c >= 32 && c <= 126) return true;
@@ -99,7 +99,7 @@ static void print_cons(boxed_value_t* ref) {
 
 void print_value_(value_t value, bool trancated) {
   switch (value & TAG_MASK) {
-    case NUMBER_TAG:
+    case INTEGER_TAG:
       printf("%lld", value >> TAG_SIZE); break;
     case ATOM_TAG:
       printf("%s", (char*) value); break;

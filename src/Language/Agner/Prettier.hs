@@ -30,11 +30,9 @@ withVarStyles vars k = do
       , [bgColor c <> italicized <> underlined | c <- colors]
       ]
 
+-- (:++) -> "++"
 binop :: BinOp -> D
-binop = \case
-  (:+) -> "+"
-  (:-) -> "-"
-  (:++) -> "++"
+binop = pretty . drop 2 . init . show
 
 keyword :: D -> D
 keyword = annotate bold
@@ -91,10 +89,17 @@ listOf p xs = hsep (punctuate comma (p <$> xs))
 linesOf :: (a -> D) -> [a] -> D
 linesOf p xs = vsep (punctuate comma (p <$> xs))
 
+guardSeq :: WithVarStyles => [Expr] -> D
+guardSeq = listOf expr
+
 clause :: FunClause -> D
 clause c = do
   withVarStyles (Set.toList (funClauseVars c)) do
-    funId c.funid <> parens (listOf pat c.pats) <+> "->" <+>
+    let guards =
+          case c.guards of
+            [] -> mempty
+            es@(_:_) -> " when" <+> guardSeq es
+    funId c.funid <> parens (listOf pat c.pats) <> guards <+> "->" <+>
       nest 2 (group (line' <> exprs c.body))
 
 decl :: FunDecl -> D

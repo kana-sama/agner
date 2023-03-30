@@ -49,6 +49,8 @@ data BinOp
   = (:+)
   | (:-)
   | (:++)
+  | (:>=)
+  | (:=<)
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON)
 
@@ -109,6 +111,7 @@ type Exprs = [Expr]
 data FunClause = MkFunClause
   { funid :: FunId
   , pats :: [Pat]
+  , guards :: [Expr]
   , body :: Exprs
   }
 

@@ -52,6 +52,8 @@ data RuntimeName
   | ThrowFunctionClause
 
   | BinOp_PlusPlus
+  | BinOp_GTE
+  | BinOp_LTE
   deriving stock Eq
 
 isRuntimeVariable :: RuntimeName -> Bool
@@ -88,6 +90,8 @@ runtimeName = \case
   ThrowFunctionClause -> "_THROW_function_clause"
 
   BinOp_PlusPlus -> "_binop__plusplus"
+  BinOp_GTE -> "_binop__gte"
+  BinOp_LTE -> "_binop__lte"
 
 runtime :: WithTarget => RuntimeName -> Operand
 runtime name =
@@ -97,15 +101,26 @@ runtime name =
 
 bifs :: [(Syntax.FunId, (String, [Syntax.Atom]))]
 bifs =
-  [ "agner:print/1"    ~> "_agner__print"    // ["ok"]
-  , "agner:println/1"  ~> "_agner__println"  // ["ok"]
-  , "agner:put_char/1" ~> "_agner__put_char" // ["ok"]
-  , "agner:put_str/1"  ~> "_agner__put_str"  // ["ok"]
-  , "timer:sleep/1"    ~> "_timer__sleep"    // ["ok", "infinite"]
-  , "error/1"          ~> "_erlang__error"   // []
-  , "spawn/1"          ~> "_erlang__spawn"   // []
-  , "self/0"           ~> "_erlang__self"    // []
-  , "erlang:send/2"    ~> "_erlang__send"    // []
+  [ "agner:print/1"            ~> "_agner__print"               // ["ok"]
+  , "agner:println/1"          ~> "_agner__println"             // ["ok"]
+  , "agner:put_char/1"         ~> "_agner__put_char"            // ["ok"]
+  , "agner:put_str/1"          ~> "_agner__put_str"             // ["ok"]
+  , "timer:sleep/1"            ~> "_timer__sleep"               // ["ok", "infinite"]
+  , "error/1"                  ~> "_erlang__error"              // []
+  , "spawn/1"                  ~> "_erlang__spawn"              // []
+  , "self/0"                   ~> "_erlang__self"               // []
+  , "erlang:send/2"            ~> "_erlang__send"               // []
+  , "erlang:is_atom/1"         ~> "_erlang__is_atom__1"         // ["true", "false"]
+  , "erlang:is_list/1"         ~> "_erlang__is_list__1"         // ["true", "false"]
+  , "erlang:is_integer/1"      ~> "_erlang__is_integer__1"      // ["true", "false"]
+  , "erlang:is_tuple/1"        ~> "_erlang__is_tuple__1"        // ["true", "false"]
+  , "erlang:is_function/1"     ~> "_erlang__is_function__1"     // ["true", "false"]
+  , "erlang:is_pid/1"          ~> "_erlang__is_pid__1"          // ["true", "false"]
+  , "erlang:atom_to_list/1"    ~> "_erlang__atom_to_list__1"    // []
+  , "erlang:integer_to_list/1" ~> "_erlang__integer_to_list__1" // []
+  , "erlang:tuple_to_list/1"   ~> "_erlang__tuple_to_list__1"   // []
+  , "erlang:fun_to_list/1"     ~> "_erlang__fun_to_list__1"     // []
+  , "erlang:pid_to_list/1"     ~> "_erlang__pid_to_list__1"     // []
   ]
   where
     a ~> b = (a, b)
@@ -270,6 +285,20 @@ compileBinOp = \case
     a <- _pop; movq a rdi
     callq (runtime BinOp_PlusPlus)
     movq rax =<< _alloc
+  (Syntax.:>=) -> do
+    b <- _pop; movq b rsi
+    a <- _pop; movq a rdi
+    _true  <- _atom  "true"; movq _true  rdx
+    _false <- _atom "false"; movq _false rcx
+    callq (runtime BinOp_GTE)
+    movq rax =<< _alloc
+  (Syntax.:=<) -> do
+    b <- _pop; movq b rsi
+    a <- _pop; movq a rdi
+    _true  <- _atom  "true"; movq _true  rdx
+    _false <- _atom "false"; movq _false rcx
+    callq (runtime BinOp_LTE)
+    movq rax =<< _alloc
   where
     integerBinOp name operator = do
       b <- _pop
@@ -282,15 +311,15 @@ compileBinOp = \case
             movq op rdx
             callq (runtime ThrowBadArith)
 
-      _assertTag NUMBER_TAG a throw
-      _assertTag NUMBER_TAG b throw
+      _assertTag INTEGER_TAG a throw
+      _assertTag INTEGER_TAG b throw
       
       movq a rax
       operator b rax
       movq rax =<< _alloc
 
 encodeInteger :: Integer -> Operand
-encodeInteger i = Imm (i `shiftL` TAG_SIZE .|. NUMBER_TAG)
+encodeInteger i = Imm (i `shiftL` TAG_SIZE .|. INTEGER_TAG)
 
 compileInstr :: WithTarget => SM.Instr -> M ()
 compileInstr = \case

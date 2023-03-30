@@ -37,6 +37,7 @@ checkVariables module_ = do
   for_ module_.decls \decl -> do
     for_ decl.clauses \clause -> do
       flip evalStateT (foldMap patVars clause.pats) do
+        for_ clause.guards expr
         for_ clause.body expr
   where
     expr = \case
@@ -69,6 +70,7 @@ checkFunctions module_ = flip evalStateT Set.empty do
     modify (Set.insert decl.funid)
   for_ module_.decls \decl ->
     for_ decl.clauses \clause -> do
+      for_ clause.guards expr
       for_ clause.body expr
   where
     expr = \case

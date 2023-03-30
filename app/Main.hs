@@ -176,22 +176,22 @@ example target = do
   putStrLn ""
 
   -- lint
-  case Linter.check source of
-    Nothing -> pure ()
-    Just error -> do
-      putStrLn ("** linter error: " ++ Linter.prettyError error)
-      exitFailure
+  -- case Linter.check source of
+  --   Nothing -> pure ()
+  --   Just error -> do
+  --     putStrLn ("** linter error: " ++ Linter.prettyError error)
+  --     exitFailure
 
   -- optimize
   source <- pure (Optimizer.optimize source)
 
   -- eval
   putStrLn "denote:"
-  run @Denote.Ex do
-    ylogs <- Denote.denoteWithYLogs (Denote.module_ source)
-    let csv = CSV.encodeByName ["id", "pid", "function", "fuel"] ylogs
-    ByteString.writeFile "log_denote.csv" csv
-    pure ()
+  -- run @Denote.Ex do
+  --   ylogs <- Denote.denoteWithYLogs (Denote.module_ source)
+  --   let csv = CSV.encodeByName ["id", "pid", "function", "fuel"] ylogs
+  --   ByteString.writeFile "log_denote.csv" csv
+  --   pure ()
 
   -- compile to SM
   let sm = SM.compileModule source

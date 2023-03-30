@@ -165,9 +165,12 @@ compileFunDecl funDecl = do
 compileFunClause :: Syntax.FunClause -> Int -> Bool -> M ()
 compileFunClause clause ix isLast = do
   tell [CLAUSE clause.funid ix (Set.toList (Syntax.funClauseVars clause))]
+  let onFail = NextClause clause.funid (if isLast then Nothing else Just (ix + 1))
   for_ clause.pats \pat -> do
-    let onFail = NextClause clause.funid (if isLast then Nothing else Just (ix + 1))
     compilePat onFail pat
+  for_ clause.guards \guard -> do
+    compileExpr guard
+    tell [MATCH_ATOM "true" onFail]
   compileExprs clause.body
   tell [LEAVE clause.funid]
   tell [RET]

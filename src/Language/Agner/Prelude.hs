@@ -10,6 +10,8 @@ import Data.Void as X (Void)
 import Data.Generics.Labels as X ()
 import Data.String as X (IsString(..))
 import Data.Traversable as X (for)
+import Data.Maybe as X (fromMaybe)
+import Data.Functor as X (($>))
 
 import Debug.Trace as X
 

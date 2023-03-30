@@ -1,6 +1,7 @@
 # include "bifs.h"
 
 # include <stdio.h>
+# include <string.h>
 # include <time.h>
 
 # include "value.h"
@@ -35,7 +36,7 @@ value_t _agner__put_char(value_t value) {
   _runtime__yield("agner:put_char/1");
 
   value_t args[1] = { value };
-  if ((value & TAG_MASK) != NUMBER_TAG) _THROW_badarg(&_agner__put_char__meta, args);
+  if ((value & TAG_MASK) != INTEGER_TAG) _THROW_badarg(&_agner__put_char__meta, args);
   printf("%lc", (int)value >> TAG_SIZE);
   return _runtime__calling_context[0];
 }
@@ -76,7 +77,7 @@ value_t _timer__sleep(value_t duration) {
   _runtime__yield("timer:sleep/1");
 
   switch (duration & TAG_MASK) {
-    case NUMBER_TAG: {
+    case INTEGER_TAG: {
       struct timespec ts;
       int64_t msec = duration >> TAG_SIZE;
       int res;
@@ -123,6 +124,201 @@ value_t _erlang__send(value_t target, value_t msg) {
   return msg;
 }
 
+// _runtime__calling_context[0] should be "true" atom
+// _runtime__calling_context[1] should be "false" atom
+value_t _erlang__is_atom__1(value_t value) {
+  value_t _true  = _runtime__calling_context[0];
+  value_t _false = _runtime__calling_context[1];
+  
+  if ((value & TAG_MASK) == ATOM_TAG)
+    return _true;
+  else
+    return _false;
+}
+
+// _runtime__calling_context[0] should be "true" atom
+// _runtime__calling_context[1] should be "false" atom
+value_t _erlang__is_list__1(value_t value) {
+  value_t _true  = _runtime__calling_context[0];
+  value_t _false = _runtime__calling_context[1];
+
+  if (value == NIL_TAG) return _true;
+
+  boxed_value_t* ref = cast_to_boxed_value(value);
+  if (ref && ref->super.header == CONS_HEADER) return _true;
+
+  return _false;
+}
+
+// _runtime__calling_context[0] should be "true" atom
+// _runtime__calling_context[1] should be "false" atom
+value_t _erlang__is_integer__1(value_t value) {
+  value_t _true  = _runtime__calling_context[0];
+  value_t _false = _runtime__calling_context[1];
+
+  if ((value & TAG_MASK) == INTEGER_TAG)
+    return _true;
+  else
+    return _false;
+}
+
+// _runtime__calling_context[0] should be "true" atom
+// _runtime__calling_context[1] should be "false" atom
+value_t _erlang__is_tuple__1(value_t value) {
+  value_t _true  = _runtime__calling_context[0];
+  value_t _false = _runtime__calling_context[1];
+
+  boxed_value_t* ref = cast_to_boxed_value(value);
+  if (ref && ref->super.header == TUPLE_HEADER)
+    return _true;
+  else
+    return _false;
+}
+
+// _runtime__calling_context[0] should be "true" atom
+// _runtime__calling_context[1] should be "false" atom
+value_t _erlang__is_function__1(value_t value) {
+  value_t _true  = _runtime__calling_context[0];
+  value_t _false = _runtime__calling_context[1];
+
+  if ((value & TAG_MASK) == FUN_TAG)
+    return _true;
+  else
+    return _false;
+}
+
+// _runtime__calling_context[0] should be "true" atom
+// _runtime__calling_context[1] should be "false" atom
+value_t _erlang__is_pid__1(value_t value) {
+  value_t _true  = _runtime__calling_context[0];
+  value_t _false = _runtime__calling_context[1];
+
+  if ((value & TAG_MASK) == PID_TAG)
+    return _true;
+  else
+    return _false;
+}
+
+
+static fun_meta_t _erlang__atom_to_list__1__meta = {.arity = 1, .name = "erlang:atom_to_list"};
+value_t _erlang__atom_to_list__1(value_t value) {
+  if ((value & TAG_MASK) != ATOM_TAG) {
+    value_t args[1] = {value};
+    _THROW_badarg(&_erlang__atom_to_list__1__meta, args);
+  }
+
+  char* name = (char*)value;
+  char* name_end = name + strlen(name);
+  value_t list = NIL_TAG;
+  for (char* c = name + strlen(name) - 1; c >= name; c--) {
+    value_t new_list = _runtime__alloc_cons();
+    boxed_cons_t* cons = &cast_to_boxed_value(new_list)->cons;
+    cons->is_list = 1;
+    cons->head = (int64_t)(*c) << TAG_SIZE | INTEGER_TAG;
+    cons->tail = list;
+    list = new_list;
+  }
+
+  return list;
+}
+
+static fun_meta_t _erlang__integer_to_list__1__meta = {.arity = 1, .name = "erlang:integer_to_list"};
+value_t _erlang__integer_to_list__1(value_t value) {
+  if ((value & TAG_MASK) != INTEGER_TAG) {
+    value_t args[1] = {value};
+    _THROW_badarg(&_erlang__integer_to_list__1__meta, args);
+  }
+
+  char* str;
+  asprintf(&str, "%lld", value >> TAG_SIZE);
+
+  value_t list = NIL_TAG;
+  for (int i = strlen(str) - 1; i >= 0; i--) {
+    value_t new_list = _runtime__alloc_cons();
+    boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
+    new_list_ref->cons.is_list = 1;
+    new_list_ref->cons.head = str[i] << TAG_SIZE | INTEGER_TAG;
+    new_list_ref->cons.tail = list;
+    list = new_list;
+  }
+
+  free(str);
+
+  return list;
+}
+
+static fun_meta_t _erlang__tuple_to_list__1__meta = {.arity = 1, .name = "erlang:tuple_to_list"};
+value_t _erlang__tuple_to_list__1(value_t value) {
+  boxed_value_t* ref = cast_to_boxed_value(value);
+  if (!ref || ref->super.header != TUPLE_HEADER) {
+    value_t args[1] = {value};
+    _THROW_badarg(&_erlang__tuple_to_list__1__meta, args);
+  }
+
+  value_t list = NIL_TAG;
+  for (value_t *v = ref->tuple.values + ref->tuple.size - 1; v >= ref->tuple.values; v -= 1) {
+    value_t new_list = _runtime__alloc_cons();
+    boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
+    new_list_ref->cons.is_list = 1;
+    new_list_ref->cons.head = *v;
+    new_list_ref->cons.tail = list;
+    list = new_list;
+  }
+  return list;
+}
+
+static fun_meta_t _erlang__fun_to_list__1__meta = {.arity = 1, .name = "erlang:fun_to_list"};
+value_t _erlang__fun_to_list__1(value_t value) {
+  if ((value & TAG_MASK) != FUN_TAG) {
+    value_t args[1] = {value};
+    _THROW_badarg(&_erlang__fun_to_list__1__meta, args);
+  }
+
+  fun_meta_t* meta = get_fun_meta(value);
+  char* str;
+  asprintf(&str, "fun %s/%lld", meta->name, meta->arity);
+
+  value_t list = NIL_TAG;
+  for (int i = strlen(str) - 1; i >= 0; i--) {
+    value_t new_list = _runtime__alloc_cons();
+    boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
+    new_list_ref->cons.is_list = 1;
+    new_list_ref->cons.head = str[i] << TAG_SIZE | INTEGER_TAG;
+    new_list_ref->cons.tail = list;
+    list = new_list;
+  }
+
+  free(str);
+
+  return list;
+}
+
+static fun_meta_t _erlang__pid_to_list__1__meta = {.arity = 1, .name = "erlang:pid_to_list"};
+value_t _erlang__pid_to_list__1(value_t value) {
+  if ((value & TAG_MASK) != PID_TAG) {
+    value_t args[1] = {value};
+    _THROW_badarg(&_erlang__pid_to_list__1__meta, args);
+  }
+
+  char* str;
+  asprintf(&str, "<%lld>", value >> TAG_SIZE);
+
+  value_t list = NIL_TAG;
+  for (int i = strlen(str) - 1; i >= 0; i--) {
+    value_t new_list = _runtime__alloc_cons();
+    boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
+    new_list_ref->cons.is_list = 1;
+    new_list_ref->cons.head = str[i] << TAG_SIZE | INTEGER_TAG;
+    new_list_ref->cons.tail = list;
+    list = new_list;
+  }
+
+  free(str);
+
+  return list;
+}
+
+
 value_t _binop__plusplus(value_t l, value_t r) {
   if (!(is_list(l))) _THROW_badarg_op(l, r, "++");
 
@@ -150,4 +346,12 @@ value_t _binop__plusplus(value_t l, value_t r) {
   }
 
   return new;
+}
+
+value_t _binop__gte(value_t l, value_t r, value_t _true, value_t _false) {
+  return l >= r ? _true : _false;
+}
+
+value_t _binop__lte(value_t l, value_t r, value_t _true, value_t _false) {
+  return l <= r ? _true : _false;
 }
