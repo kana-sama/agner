@@ -21,6 +21,7 @@ import GHC.Generics (Generic)
 
 import Text.Show.Unicode (ushow)
 
+import Language.Agner.Syntax (FunId)
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Value (Value)
 import Language.Agner.Value qualified as Value
@@ -39,6 +40,7 @@ data RuntimeName
   | RuntimeStart
   | RuntimeYield
   | RuntimeSaveVStack
+  | RuntimePrintValue
 
   | RuntimeAllocTuple | RuntimeFillTuple | RuntimeMatchTuple
   | RuntimeAllocCons  | RuntimeFillCons  | RuntimeMatchCons
@@ -70,6 +72,7 @@ runtimeName = \case
   RuntimeStart -> "_runtime__start"
   RuntimeYield -> "_runtime__yield"
   RuntimeSaveVStack -> "_runtime__save_vstack"
+  RuntimePrintValue -> "_runtime__print_value"
 
   RuntimeAllocTuple -> "_runtime__alloc_tuple"
   RuntimeFillTuple -> "_runtime__fill_tuple"
@@ -99,7 +102,7 @@ runtime name =
     (mkLabel (runtimeName name))
 
 
-bifs :: [(Syntax.FunId, (String, [Syntax.Atom]))]
+bifs :: [(FunId, (String, [Syntax.Atom]))]
 bifs =
   [ "agner:print/1"            ~> "_agner__print"               // ["ok"]
   , "agner:println/1"          ~> "_agner__println"             // ["ok"]
@@ -130,9 +133,11 @@ type M = StateT CompileState (Writer Prog)
 data CompileState = MkCompileState
   { requiredStackSize :: Int
   , stack :: Zipper Operand
+  , saved, saved_max :: Int
   , uuid :: Int
   , strings :: Map Label String
   , atoms :: Map Label Syntax.Atom
+  , current :: Maybe FunId
   } deriving stock (Generic)
 
 data Target = Linux | MacOS
@@ -146,9 +151,11 @@ execM = execWriter . flip runStateT emptyState
       MkCompileState
         { requiredStackSize = 0
         , stack = Zipper.empty
+        , saved = 0, saved_max = 0
         , uuid = 0
         , strings = Map.empty
         , atoms = Map.empty
+        , current = Nothing
         }
 
 _uuid :: M Int
@@ -202,8 +209,14 @@ _pop = #stack %%= Zipper.prev
 
 -- Names
 
-mkStackSizeName :: WithTarget => Syntax.FunId -> Label
+mkStackSizeName :: WithTarget => FunId -> Label
 mkStackSizeName funid = mkFunName funid ++ ".stack_size"
+
+mkSavedName :: WithTarget => FunId -> Label
+mkSavedName funid = mkFunName funid ++ ".saved"
+
+mkSavedOp :: WithTarget => FunId -> Int -> Operand
+mkSavedOp funid i = MemRegL ("(" ++ mkSavedName funid ++ " + " ++ show (i * WORD_SIZE) ++ ")") stackFrameReg
 
 mkVarName :: Syntax.Var -> Label
 mkVarName var = "." ++ var
@@ -225,24 +238,24 @@ mkLabel name = case ?target of
 mkSMLabel :: WithTarget => SM.Label -> Label
 mkSMLabel lbl = mkLabel ("_sm_." ++ lbl)
 
-mkFunName :: WithTarget => Syntax.FunId -> Label
+mkFunName :: WithTarget => FunId -> Label
 mkFunName (Syntax.MkFunId ns f arity) = mkLabel (ns' ++ "." ++ f ++ "." ++ show arity)
   where ns' = case ns of Nothing -> "main"; Just ns -> ns
 
-mkFunBody :: WithTarget => Syntax.FunId -> Label
+mkFunBody :: WithTarget => FunId -> Label
 mkFunBody f = mkFunName f ++ ".body"
 
-mkFunEnd :: WithTarget => Syntax.FunId -> Label
+mkFunEnd :: WithTarget => FunId -> Label
 mkFunEnd f = mkFunName f ++ ".end"
 
-mkFunClause :: WithTarget => Syntax.FunId -> Maybe Int -> Label
+mkFunClause :: WithTarget => FunId -> Maybe Int -> Label
 mkFunClause f Nothing = mkFunName f ++ ".clause_fail"
 mkFunClause f (Just i) = mkFunName f ++ ".clause" ++ show i
 
-mkFunMeta :: WithTarget => Syntax.FunId -> Label
+mkFunMeta :: WithTarget => FunId -> Label
 mkFunMeta f = mkFunName f ++ ".meta"
 
-mkFunMetaOpt :: WithTarget => String -> Syntax.FunId -> Label
+mkFunMetaOpt :: WithTarget => String -> FunId -> Label
 mkFunMetaOpt opt f = mkFunMeta f ++ "." ++ opt
 
 entryPointName :: WithTarget => Label
@@ -483,6 +496,9 @@ compileInstr = \case
     let bookedStackForVars = funid.arity + length vars
     #requiredStackSize .= bookedStackForVars * WORD_SIZE
     #stack .= mkSymbolStack bookedStackForVars
+    #saved .= 0
+    #saved_max .= 0
+    #current ?= funid
 
     for_ (zip [0..funid.arity - 1] regsForArguments) \(argN, reg) -> do
       _set (mkArgName argN) (WORD_SIZE * argN)
@@ -508,7 +524,9 @@ compileInstr = \case
     callq (runtime RuntimeYield)
 
   SM.FUNCTION_END funid -> do
-    _set (mkStackSizeName funid) =<< use #requiredStackSize
+    saved <- use #saved_max
+    _set (mkSavedName funid) =<< use #requiredStackSize
+    _set (mkStackSizeName funid) =<< uses #requiredStackSize (+ saved * WORD_SIZE)
 
     tell [Meta (".align " ++ show WORD_SIZE)]
     tell [Label (mkFunEnd funid)]
@@ -565,6 +583,26 @@ compileInstr = \case
     movq rax =<< _alloc
   SM.RECEIVE_SUCCESS -> do
     callq (runtime RuntimeReceiveSuccess)
+
+
+  SM.SAVE vars -> do
+    current <- uses #current fromJust
+
+    for_ vars \var -> do
+      saved <- #saved <<+= 1
+      movq (mkVarOp var) rax
+      movq rax (mkSavedOp current saved)
+
+    saved <- use #saved
+    #saved_max %= max saved
+
+  SM.RESTORE vars -> do
+    current <- uses #current fromJust
+
+    for_ (reverse vars) \var -> do
+      saved <- #saved <-= 1
+      movq (mkSavedOp current saved) rax
+      movq rax (mkVarOp var)
 
 
   SM.LOAD var -> mdo

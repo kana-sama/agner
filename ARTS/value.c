@@ -99,6 +99,8 @@ static void print_cons(boxed_value_t* ref) {
 
 void print_value_(value_t value, bool trancated) {
   switch (value & TAG_MASK) {
+    case UNBOUND_TAG:
+      printf("[UNBOUND]"); break;
     case INTEGER_TAG:
       printf("%lld", value >> TAG_SIZE); break;
     case ATOM_TAG:

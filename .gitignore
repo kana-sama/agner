@@ -16,3 +16,4 @@ memory.png
 log_*.csv
 
 examples/*.o
+a.out

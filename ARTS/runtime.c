@@ -62,6 +62,11 @@ void _runtime__save_vstack(value_t* vstack_head) {
   scheduler->current->vstack_head = vstack_head;
 }
 
+void _runtime__print_value(value_t value) {
+  print_value(value);
+  puts("");
+}
+
 value_t _runtime__alloc_tuple(int64_t size) {
   boxed_tuple_t* tuple = allocate(
     &scheduler->current->heap,
