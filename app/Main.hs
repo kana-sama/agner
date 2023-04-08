@@ -27,7 +27,6 @@ import Language.Agner.SM qualified as SM
 import Language.Agner.X64 qualified as X64
 import Language.Agner.Parser qualified as Parser
 import Language.Agner.Prettier qualified as Prettier
-import Language.Agner.Linter qualified as Linter
 import Language.Agner.Optimizer qualified as Optimizer
 
 data Command
@@ -84,6 +83,7 @@ runtime = traverse (getDataFileName . rt) sources
       , "scheduler"
       , "runtime"
       , "bifs"
+      , "operators"
       ]
 
 compile ::  
@@ -94,7 +94,6 @@ compile ::
 compile (Arg target) (Arg sourcePath) (Arg output) = do
   sourceCode <- readFile     sourcePath
   source     <- parse        sourceCode
-  source     <- lint         source
   source     <- optimize     source
   sm         <- compileToSM  source
   x64        <- compileToX64 sm
@@ -105,14 +104,6 @@ compile (Arg target) (Arg sourcePath) (Arg output) = do
       try @Parser.Ex (evaluate (Parser.parse Parser.module_ source)) >>= \case
         Right source -> pure source
         Left ex -> do putStrLn (displayException ex); exitFailure
-
-    lint :: Syntax.Module -> IO Syntax.Module
-    lint module_ =
-      case Linter.check module_ of
-        Nothing -> pure module_
-        Just error -> do
-          putStrLn ("** linter error: " ++ Linter.prettyError error)
-          exitFailure
 
     optimize :: Syntax.Module -> IO Syntax.Module
     optimize module_ = pure (Optimizer.optimize module_)
@@ -158,13 +149,13 @@ pretty source = do
     Left ex -> do putStrLn (displayException ex); exitFailure
   Prettier.io Prettier.module_ source
 
-instance CSV.ToNamedRecord Denote.YLog where
-  toNamedRecord ylog = CSV.namedRecord
-    [ "id" CSV..= ylog.id
-    , "pid" CSV..= ylog.pid
-    , "function" CSV..= ylog.name
-    , "fuel" CSV..= ylog.fuel
-    ]
+-- instance CSV.ToNamedRecord Denote.YLog where
+--   toNamedRecord ylog = CSV.namedRecord
+--     [ "id" CSV..= ylog.id
+--     , "pid" CSV..= ylog.pid
+--     , "function" CSV..= ylog.name
+--     , "fuel" CSV..= ylog.fuel
+--     ]
 
 example :: X64.Target -> IO ()
 example target = do
@@ -174,13 +165,6 @@ example target = do
     Left ex -> do putStrLn (displayException ex); exitFailure
   Prettier.io Prettier.module_ source
   putStrLn ""
-
-  -- lint
-  -- case Linter.check source of
-  --   Nothing -> pure ()
-  --   Just error -> do
-  --     putStrLn ("** linter error: " ++ Linter.prettyError error)
-  --     exitFailure
 
   -- optimize
   source <- pure (Optimizer.optimize source)

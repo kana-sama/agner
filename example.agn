@@ -1,9 +1,3 @@
-f() ->
-  agner:println(receive
-    {A, 1} -> {first, A};
-    {2, A} -> {second, A};
-    Other  -> {other, Other}
-  end).
 
 main() ->
-  spawn(fun f/0) ! {2, 3}.
+  agner:println(- - -43).

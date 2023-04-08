@@ -32,6 +32,7 @@ data Instr
   | PUSH_NIL
   | PUSH_CONS
   | BINOP Syntax.BinOp
+  | UNOP Syntax.UnOp
   | DROP
   | DUP
   | CALL{funid :: FunId, tailness :: Syntax.CallTailness}
@@ -96,6 +97,9 @@ compileExpr = \case
     compileExpr a
     compileExpr b
     tell [BINOP op]
+  Syntax.UnOp op a -> do
+    compileExpr a
+    tell [UNOP op]
   Syntax.Var v -> do
     tell [LOAD v]
   Syntax.Match p e -> do

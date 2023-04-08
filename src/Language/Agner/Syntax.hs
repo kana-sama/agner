@@ -48,10 +48,21 @@ instance Show FunId where
 data BinOp
   = (:+)
   | (:-)
+  | (:*)
+  | Div
+  | Rem
+
   | (:++)
   | (:>=)
   | (:=<)
   deriving stock (Show, Generic)
+  deriving anyclass (ToJSON)
+
+data UnOp
+  = (:+!)
+  | (:-!)
+  | BNot
+  deriving stock (Generic, Show)
   deriving anyclass (ToJSON)
 
 data CallTailness = SimpleCall | TailCall
@@ -66,6 +77,7 @@ data Expr
   | Nil
   | Cons Expr Expr
   | BinOp Expr BinOp Expr
+  | UnOp UnOp Expr
   | Var Var
   | Match Pat Expr
   | Apply CallTailness FunId [Expr]
@@ -143,6 +155,7 @@ exprVars = \case
   Nil -> Set.empty
   Cons a b -> exprVars a `Set.union` exprVars b
   BinOp a _ b -> exprVars a `Set.union` exprVars b
+  UnOp op a -> exprVars a
   Var v -> Set.singleton v
   Match p e -> patVars p `Set.union` exprVars e
   Apply _ _ es -> foldMap exprVars es

@@ -53,6 +53,16 @@ data RuntimeName
   | ThrowBadMatch
   | ThrowFunctionClause
 
+  | UnOp_Plus
+  | UnOp_Minus
+  | UnOp_BNot
+
+  | BinOp_Plus
+  | BinOp_Minus
+  | BinOp_Times
+  | BinOp_Div
+  | BinOp_Rem
+
   | BinOp_PlusPlus
   | BinOp_GTE
   | BinOp_LTE
@@ -91,6 +101,16 @@ runtimeName = \case
   ThrowBadArity -> "_THROW_badarity"
   ThrowBadMatch -> "_THROW_badmatch"
   ThrowFunctionClause -> "_THROW_function_clause"
+
+  UnOp_Plus -> "_unop__plus"
+  UnOp_Minus -> "_unop__minus"
+  UnOp_BNot -> "_unop__bnot"
+
+  BinOp_Plus -> "_binop__plus"
+  BinOp_Minus -> "_binop__minus"
+  BinOp_Times -> "_binop__times"
+  BinOp_Div -> "_binop__div"
+  BinOp_Rem -> "_binop__rem"
 
   BinOp_PlusPlus -> "_binop__plusplus"
   BinOp_GTE -> "_binop__gte"
@@ -289,15 +309,26 @@ _popTag tag onFail = do
   _assertTag tag op (onFail op)
   pure op
 
+compileUnOp :: WithTarget => Syntax.UnOp -> M ()
+compileUnOp = \case
+  (Syntax.:+!) -> unop UnOp_Plus
+  (Syntax.:-!) -> unop UnOp_Minus
+  Syntax.BNot -> unop UnOp_BNot
+  where
+    unop op = do
+      a <- _pop; movq a rdi
+      callq (runtime op)
+      movq rax =<< _alloc
+
 compileBinOp :: WithTarget => Syntax.BinOp -> M ()
 compileBinOp = \case
-  (Syntax.:+) -> integerBinOp "+" addq
-  (Syntax.:-) -> integerBinOp "-" subq
-  (Syntax.:++) -> do
-    b <- _pop; movq b rsi
-    a <- _pop; movq a rdi
-    callq (runtime BinOp_PlusPlus)
-    movq rax =<< _alloc
+  (Syntax.:+) -> binop BinOp_Plus
+  (Syntax.:-) -> binop BinOp_Minus
+  (Syntax.:*) -> binop BinOp_Times
+  (Syntax.Div) -> binop BinOp_Div
+  (Syntax.Rem) -> binop BinOp_Rem
+
+  (Syntax.:++) -> binop BinOp_PlusPlus
   (Syntax.:>=) -> do
     b <- _pop; movq b rsi
     a <- _pop; movq a rdi
@@ -313,22 +344,10 @@ compileBinOp = \case
     callq (runtime BinOp_LTE)
     movq rax =<< _alloc
   where
-    integerBinOp name operator = do
-      b <- _pop
-      a <- _pop
-
-      let throw = do
-            movq a rdi
-            movq b rsi
-            op <- _string name
-            movq op rdx
-            callq (runtime ThrowBadArith)
-
-      _assertTag INTEGER_TAG a throw
-      _assertTag INTEGER_TAG b throw
-      
-      movq a rax
-      operator b rax
+    binop op = do
+      b <- _pop; movq b rsi
+      a <- _pop; movq a rdi
+      callq (runtime op)
       movq rax =<< _alloc
 
 encodeInteger :: Integer -> Operand
@@ -383,6 +402,9 @@ compileInstr = \case
     popq rsi
     popq rdx
     callq (runtime RuntimeFillCons)
+
+  SM.UNOP op -> do
+    compileUnOp op
 
   SM.BINOP op -> do
     compileBinOp op

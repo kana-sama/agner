@@ -5,6 +5,7 @@
 # include "scheduler.h"
 
 scheduler_t* scheduler;
+value_t _runtime__calling_context[10];
 
 void _runtime__start(value_t entry);
 void _runtime__yield(char*);

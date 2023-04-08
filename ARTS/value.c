@@ -197,3 +197,9 @@ void dump_value(value_t value) {
 
   printf("\n");
 }
+
+
+bool    is_number     (value_t value) { return is_integer(value);                 }
+bool    is_integer    (value_t value) { return (value & TAG_MASK) == INTEGER_TAG; }
+int64_t decode_integer(value_t value) { return value >> TAG_SIZE;                 }
+value_t encode_integer(int64_t value) { return (value << TAG_SIZE) | INTEGER_TAG; }

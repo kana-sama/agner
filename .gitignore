@@ -17,3 +17,5 @@ log_*.csv
 
 examples/*.o
 a.out
+
+.DS_Store

@@ -10,8 +10,6 @@
 # include "throw.h"
 # include "scheduler.h"
 
-value_t _runtime__calling_context[10];
-
 // _runtime__calling_context[0] should be "ok" atom
 value_t _agner__print(value_t value) {
   _runtime__yield("agner:print/1");
@@ -118,7 +116,7 @@ value_t _erlang__self() {
 }
 
 value_t _erlang__send(value_t target, value_t msg) {
-  if ((target & TAG_MASK) != PID_TAG) _THROW_badarg_op(target, msg, "!");
+  if ((target & TAG_MASK) != PID_TAG) _THROW_badarg_binop(target, msg, "!");
   PID_t pid = target >> TAG_SIZE;
   process_send(pid, msg);
   return msg;
@@ -316,42 +314,4 @@ value_t _erlang__pid_to_list__1(value_t value) {
   free(str);
 
   return list;
-}
-
-
-value_t _binop__plusplus(value_t l, value_t r) {
-  if (!(is_list(l))) _THROW_badarg_op(l, r, "++");
-
-  int64_t result_is_list = is_list(r);
-  
-  // case []
-  if (l == NIL_TAG) return r;
-
-  // case [H|T]
-  value_t new = _runtime__alloc_cons();
-  boxed_value_t* ref = cast_to_boxed_value(l);
-  boxed_value_t* cur = cast_to_boxed_value(new);
-
-  while (true) {
-    cur->cons.head = ref->cons.head;
-    cur->cons.is_list = result_is_list;
-    if (ref->cons.tail == NIL_TAG) {
-      cur->cons.tail = r;
-      break;
-    } else {
-      cur->cons.tail = _runtime__alloc_cons();
-      cur = cast_to_boxed_value(cur->cons.tail);
-      ref = cast_to_boxed_value(ref->cons.tail);
-    }
-  }
-
-  return new;
-}
-
-value_t _binop__gte(value_t l, value_t r, value_t _true, value_t _false) {
-  return l >= r ? _true : _false;
-}
-
-value_t _binop__lte(value_t l, value_t r, value_t _true, value_t _false) {
-  return l <= r ? _true : _false;
 }

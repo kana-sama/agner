@@ -12,4 +12,4 @@
 # define BOX_TAG     0b111
 
 # define TUPLE_HEADER 0x01
-# define CONS_HEADER 0x02
+# define CONS_HEADER  0x02

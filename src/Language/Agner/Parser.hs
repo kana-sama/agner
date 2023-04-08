@@ -98,11 +98,19 @@ pat = choice
   [ PatVar <$> try variable
   , PatWildcard <$ symbol "_"
   , PatAtom <$> atom
-  , PatInteger <$> integer
+  , PatInteger <$> patInteger
   , PatTuple <$> tupleOf pat
   , listOrListPrefix
   ]
   where
+    patInteger = lexeme do
+      choice
+        [ integer
+        , parens patInteger
+        , lexeme (char '+' <* notFollowedBy (char '+')) *> patInteger
+        , lexeme (char '-' <* notFollowedBy (char '-')) *> patInteger <&> negate
+        ]
+
     listOrListPrefix = do
       a <- listOf pat <|> ((, Nothing) <$> stringOf PatInteger)
       b <- optional do symbol "++" *> pat
@@ -207,20 +215,38 @@ expr :: Parser Expr
 expr = makeExprParser term operatorTable
   where
     operatorTable :: [[Operator Parser Expr]]
-    operatorTable =
-      [ [ binary "+"  do binop (:+)
-        , binary "-"  do binop (:-)
-        ]
-      , [ binary "++" do binop (:++)
-        ]
-      , [ binary "=<" do binop (:=<)
-        , binary ">=" do binop (:>=)
-        ]
-      , [ binary "!" Send
-        ]
+    operatorTable = concat
+      [ replicate 64
+          [ unary  "+"    do unop (:+!)
+          , unary  "-"    do unop (:-!)
+          , unary  "bnot" do unop BNot
+          ]
+      , pure
+          [ binary "*"   do binop (:*)
+          , binary "div" do binop Div
+          , binary "rem" do binop Rem
+          ]
+      , pure 
+          [ binary "+"  do binop (:+)
+          , binary "-"  do binop (:-)
+          ]
+      , pure
+          [ binary "++" do binop (:++)
+          ]
+      , pure
+          [ binary "=<" do binop (:=<)
+          , binary ">=" do binop (:>=)
+          ]
+      , pure
+          [ binary "!" Send
+          ]
       ]
 
+    unop op a = UnOp op a
     binop op a b = BinOp a op b
+
+    unary :: String -> (Expr -> Expr) -> Operator Parser Expr
+    unary name f = Prefix (f <$ op name)
 
     binary :: String -> (Expr -> Expr -> Expr) -> Operator Parser Expr
     binary name f = InfixL (f <$ op name)

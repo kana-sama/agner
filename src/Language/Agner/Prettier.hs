@@ -32,7 +32,15 @@ withVarStyles vars k = do
 
 -- (:++) -> "++"
 binop :: BinOp -> D
-binop = pretty . drop 2 . init . show
+binop Div = "div"
+binop Rem = "rem"
+binop op = (pretty . drop 2 . init . show) op
+
+unop :: UnOp -> D
+unop = \case
+  (:+!) -> "+"
+  (:-!) -> "-"
+  BNot  -> "bnot"
 
 keyword :: D -> D
 keyword = annotate bold
@@ -57,6 +65,7 @@ expr = \case
   Nil -> "[]"
   Cons a b -> brackets (expr a <+> "|" <+> expr b)
   Tuple es -> braces (hsep (punctuate comma (expr <$> es)))
+  UnOp op l -> unop op <> parens (expr l)
   BinOp l op r -> parens (expr l <+> binop op <+> expr r)
   Var v -> var v
   Match p e -> pat p <+> "=" <+> expr e

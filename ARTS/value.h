@@ -51,3 +51,8 @@ boxed_value_t* cast_to_boxed_value(value_t);
 bool printable_latin1_list(value_t);
 
 void dump_value(value_t);
+
+bool is_number(value_t);
+bool is_integer(value_t);
+int64_t decode_integer(value_t);
+value_t encode_integer(int64_t);

@@ -2,8 +2,6 @@
 
 # include "value.h"
 
-value_t _runtime__calling_context[10];
-
 value_t _agner__print(value_t);
 value_t _agner__println(value_t);
 value_t _agner__put_char(value_t);
@@ -28,8 +26,3 @@ value_t _erlang__integer_to_list__1(value_t);
 value_t _erlang__tuple_to_list__1(value_t);
 value_t _erlang__fun_to_list__1(value_t);
 value_t _erlang__pid_to_list__1(value_t);
-
-
-value_t _binop__plusplus(value_t, value_t);
-value_t _binop__gte(value_t, value_t, value_t, value_t);
-value_t _binop__lte(value_t, value_t, value_t, value_t);
