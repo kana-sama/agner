@@ -9,26 +9,23 @@
 # include "tags.h"
 # include "throw.h"
 # include "scheduler.h"
+# include "shared_atoms.h"
 
-// _runtime__calling_context[0] should be "ok" atom
 value_t _agner__print(value_t value) {
-  _runtime__yield("agner:print/1");
-  
+  _runtime__yield("agner:print/1");  
   print_value(value);
-  return _runtime__calling_context[0];
+  return shared_atom_ok();
 }
 
-// _runtime__calling_context[0] should be "ok" atom
 value_t _agner__println(value_t value) {
   _runtime__yield("agner:println/1");
   
   print_value(value);
   printf("\n");
   fflush(stdout);
-  return _runtime__calling_context[0];
+  return shared_atom_ok();
 }
 
-// _runtime__calling_context[0] should be "ok" atom
 static fun_meta_t _agner__put_char__meta = {.arity = 1, .name = "agner:put_char"};
 value_t _agner__put_char(value_t value) {
   _runtime__yield("agner:put_char/1");
@@ -36,10 +33,9 @@ value_t _agner__put_char(value_t value) {
   value_t args[1] = { value };
   if ((value & TAG_MASK) != INTEGER_TAG) _THROW_badarg(&_agner__put_char__meta, args);
   printf("%lc", (int)value >> TAG_SIZE);
-  return _runtime__calling_context[0];
+  return shared_atom_ok();
 }
 
-// _runtime__calling_context[0] should be "ok" atom
 static fun_meta_t _agner__put_str__meta = {.arity = 1, .name = "agner:put_str"};
 value_t _agner__put_str(value_t value) {
   _runtime__yield("agner:put_str/1");
@@ -56,7 +52,7 @@ value_t _agner__put_str(value_t value) {
     }
   }
 
-  return _runtime__calling_context[0];
+  return shared_atom_ok();
 }
 
 value_t _erlang__error(value_t value) {
@@ -68,8 +64,6 @@ value_t _erlang__error(value_t value) {
   exit(-1);
 }
 
-// _runtime__calling_context[0] should be "ok" atom
-// _runtime__calling_context[1] should be "infinity" atom
 static fun_meta_t _timer__sleep__meta = {.arity = 1, .name = "timer:sleep"};
 value_t _timer__sleep(value_t duration) {
   _runtime__yield("timer:sleep/1");
@@ -84,18 +78,18 @@ value_t _timer__sleep(value_t duration) {
       ts.tv_nsec = (msec % 1000) * 1000000;
 
       do res = nanosleep(&ts, &ts); while (res);
-      return _runtime__calling_context[0];
+      return shared_atom_ok();
     }
     case ATOM_TAG: {
-      if (duration == _runtime__calling_context[1]) {
+      if (duration == shared_atom_infinity()) {
         while (true);
-        return _runtime__calling_context[0];
+        return shared_atom_ok();
       }
     }
     default: {
       value_t args[1] = {duration};
       _THROW_function_clause(&_timer__sleep__meta, args);
-      return _runtime__calling_context[0];
+      return shared_atom_ok();
     }
   }
 }
@@ -122,79 +116,49 @@ value_t _erlang__send(value_t target, value_t msg) {
   return msg;
 }
 
-// _runtime__calling_context[0] should be "true" atom
-// _runtime__calling_context[1] should be "false" atom
 value_t _erlang__is_atom__1(value_t value) {
-  value_t _true  = _runtime__calling_context[0];
-  value_t _false = _runtime__calling_context[1];
-  
   if ((value & TAG_MASK) == ATOM_TAG)
-    return _true;
+    return shared_atom_true();
   else
-    return _false;
+    return shared_atom_false();
 }
 
-// _runtime__calling_context[0] should be "true" atom
-// _runtime__calling_context[1] should be "false" atom
 value_t _erlang__is_list__1(value_t value) {
-  value_t _true  = _runtime__calling_context[0];
-  value_t _false = _runtime__calling_context[1];
-
-  if (value == NIL_TAG) return _true;
+  if (value == NIL_TAG) return shared_atom_true();
 
   boxed_value_t* ref = cast_to_boxed_value(value);
-  if (ref && ref->super.header == CONS_HEADER) return _true;
+  if (ref && ref->super.header == CONS_HEADER) return shared_atom_true();
 
-  return _false;
+  return shared_atom_false();
 }
 
-// _runtime__calling_context[0] should be "true" atom
-// _runtime__calling_context[1] should be "false" atom
 value_t _erlang__is_integer__1(value_t value) {
-  value_t _true  = _runtime__calling_context[0];
-  value_t _false = _runtime__calling_context[1];
-
   if ((value & TAG_MASK) == INTEGER_TAG)
-    return _true;
+    return shared_atom_true();
   else
-    return _false;
+    return shared_atom_false();
 }
 
-// _runtime__calling_context[0] should be "true" atom
-// _runtime__calling_context[1] should be "false" atom
 value_t _erlang__is_tuple__1(value_t value) {
-  value_t _true  = _runtime__calling_context[0];
-  value_t _false = _runtime__calling_context[1];
-
   boxed_value_t* ref = cast_to_boxed_value(value);
   if (ref && ref->super.header == TUPLE_HEADER)
-    return _true;
+    return shared_atom_true();
   else
-    return _false;
+    return shared_atom_false();
 }
 
-// _runtime__calling_context[0] should be "true" atom
-// _runtime__calling_context[1] should be "false" atom
 value_t _erlang__is_function__1(value_t value) {
-  value_t _true  = _runtime__calling_context[0];
-  value_t _false = _runtime__calling_context[1];
-
   if ((value & TAG_MASK) == FUN_TAG)
-    return _true;
+    return shared_atom_true();
   else
-    return _false;
+    return shared_atom_false();
 }
 
-// _runtime__calling_context[0] should be "true" atom
-// _runtime__calling_context[1] should be "false" atom
 value_t _erlang__is_pid__1(value_t value) {
-  value_t _true  = _runtime__calling_context[0];
-  value_t _false = _runtime__calling_context[1];
-
   if ((value & TAG_MASK) == PID_TAG)
-    return _true;
+    return shared_atom_true();
   else
-    return _false;
+    return shared_atom_false();
 }
 
 

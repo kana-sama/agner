@@ -10,6 +10,7 @@ import Data.Zipper (Zipper)
 import Data.Zipper qualified as Zipper
 import Data.List qualified as List
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Data.Bits (shiftL, (.|.))
 
 import Control.Monad.State.Strict
@@ -35,8 +36,7 @@ data Ex
 -- DSL
 
 data RuntimeName
-  = RuntimeCallingContext
-
+  = RuntimeShareAtom Syntax.Atom
   | RuntimeStart
   | RuntimeYield
   | RuntimeSaveVStack
@@ -53,32 +53,13 @@ data RuntimeName
   | ThrowBadMatch
   | ThrowFunctionClause
 
-  | UnOp_Plus
-  | UnOp_Minus
-  | UnOp_BNot
-
-  | BinOp_Plus
-  | BinOp_Minus
-  | BinOp_Times
-  | BinOp_Div
-  | BinOp_Rem
-
-  | BinOp_PlusPlus
-  | BinOp_GTE
-  | BinOp_LTE
+  | UnOp Syntax.UnOp
+  | BinOp Syntax.BinOp
   deriving stock Eq
-
-isRuntimeVariable :: RuntimeName -> Bool
-isRuntimeVariable = (`elem` variables)
-  where
-    variables =
-      [ RuntimeCallingContext
-      ]
 
 runtimeName :: RuntimeName -> String
 runtimeName = \case
-  RuntimeCallingContext -> "_runtime__calling_context"
-
+  RuntimeShareAtom atom -> "share_atom_" ++ atom
   RuntimeStart -> "_runtime__start"
   RuntimeYield -> "_runtime__yield"
   RuntimeSaveVStack -> "_runtime__save_vstack"
@@ -102,43 +83,35 @@ runtimeName = \case
   ThrowBadMatch -> "_THROW_badmatch"
   ThrowFunctionClause -> "_THROW_function_clause"
 
-  UnOp_Plus -> "_unop__plus"
-  UnOp_Minus -> "_unop__minus"
-  UnOp_BNot -> "_unop__bnot"
-
-  BinOp_Plus -> "_binop__plus"
-  BinOp_Minus -> "_binop__minus"
-  BinOp_Times -> "_binop__times"
-  BinOp_Div -> "_binop__div"
-  BinOp_Rem -> "_binop__rem"
-
-  BinOp_PlusPlus -> "_binop__plusplus"
-  BinOp_GTE -> "_binop__gte"
-  BinOp_LTE -> "_binop__lte"
+  UnOp op -> "_unop__" ++ Syntax.unOpName op
+  BinOp op -> "_binop__" ++ Syntax.binOpName op
 
 runtime :: WithTarget => RuntimeName -> Operand
-runtime name =
-  (if isRuntimeVariable name then Static else Lbl)
-    (mkLabel (runtimeName name))
+runtime name = Lbl (mkLabel (runtimeName name))
 
+data BiFSignature = MkBifSignature
+  { funid   :: FunId
+  , lbl     :: String
+  , context :: [Syntax.Atom]
+  }
 
-bifs :: [(FunId, (String, [Syntax.Atom]))]
+bifs :: [BiFSignature]
 bifs =
   [ "agner:print/1"            ~> "_agner__print"               // ["ok"]
   , "agner:println/1"          ~> "_agner__println"             // ["ok"]
   , "agner:put_char/1"         ~> "_agner__put_char"            // ["ok"]
   , "agner:put_str/1"          ~> "_agner__put_str"             // ["ok"]
-  , "timer:sleep/1"            ~> "_timer__sleep"               // ["ok", "infinite"]
+  , "timer:sleep/1"            ~> "_timer__sleep"               // ["ok", "infinity"]
   , "error/1"                  ~> "_erlang__error"              // []
   , "spawn/1"                  ~> "_erlang__spawn"              // []
   , "self/0"                   ~> "_erlang__self"               // []
   , "erlang:send/2"            ~> "_erlang__send"               // []
-  , "erlang:is_atom/1"         ~> "_erlang__is_atom__1"         // ["true", "false"]
-  , "erlang:is_list/1"         ~> "_erlang__is_list__1"         // ["true", "false"]
-  , "erlang:is_integer/1"      ~> "_erlang__is_integer__1"      // ["true", "false"]
-  , "erlang:is_tuple/1"        ~> "_erlang__is_tuple__1"        // ["true", "false"]
-  , "erlang:is_function/1"     ~> "_erlang__is_function__1"     // ["true", "false"]
-  , "erlang:is_pid/1"          ~> "_erlang__is_pid__1"          // ["true", "false"]
+  , "erlang:is_atom/1"         ~> "_erlang__is_atom__1"         // []
+  , "erlang:is_list/1"         ~> "_erlang__is_list__1"         // []
+  , "erlang:is_integer/1"      ~> "_erlang__is_integer__1"      // []
+  , "erlang:is_tuple/1"        ~> "_erlang__is_tuple__1"        // []
+  , "erlang:is_function/1"     ~> "_erlang__is_function__1"     // []
+  , "erlang:is_pid/1"          ~> "_erlang__is_pid__1"          // []
   , "erlang:atom_to_list/1"    ~> "_erlang__atom_to_list__1"    // []
   , "erlang:integer_to_list/1" ~> "_erlang__integer_to_list__1" // []
   , "erlang:tuple_to_list/1"   ~> "_erlang__tuple_to_list__1"   // []
@@ -146,8 +119,8 @@ bifs =
   , "erlang:pid_to_list/1"     ~> "_erlang__pid_to_list__1"     // []
   ]
   where
-    a ~> b = (a, b)
-    (a, b) // c = (a, (b, c))
+    funid ~> lbl = (funid, lbl)
+    (funid, lbl) // context = MkBifSignature{funid, lbl, context}
 
 type M = StateT CompileState (Writer Prog)
 data CompileState = MkCompileState
@@ -309,47 +282,6 @@ _popTag tag onFail = do
   _assertTag tag op (onFail op)
   pure op
 
-compileUnOp :: WithTarget => Syntax.UnOp -> M ()
-compileUnOp = \case
-  (Syntax.:+!) -> unop UnOp_Plus
-  (Syntax.:-!) -> unop UnOp_Minus
-  Syntax.BNot -> unop UnOp_BNot
-  where
-    unop op = do
-      a <- _pop; movq a rdi
-      callq (runtime op)
-      movq rax =<< _alloc
-
-compileBinOp :: WithTarget => Syntax.BinOp -> M ()
-compileBinOp = \case
-  (Syntax.:+) -> binop BinOp_Plus
-  (Syntax.:-) -> binop BinOp_Minus
-  (Syntax.:*) -> binop BinOp_Times
-  (Syntax.Div) -> binop BinOp_Div
-  (Syntax.Rem) -> binop BinOp_Rem
-
-  (Syntax.:++) -> binop BinOp_PlusPlus
-  (Syntax.:>=) -> do
-    b <- _pop; movq b rsi
-    a <- _pop; movq a rdi
-    _true  <- _atom  "true"; movq _true  rdx
-    _false <- _atom "false"; movq _false rcx
-    callq (runtime BinOp_GTE)
-    movq rax =<< _alloc
-  (Syntax.:=<) -> do
-    b <- _pop; movq b rsi
-    a <- _pop; movq a rdi
-    _true  <- _atom  "true"; movq _true  rdx
-    _false <- _atom "false"; movq _false rcx
-    callq (runtime BinOp_LTE)
-    movq rax =<< _alloc
-  where
-    binop op = do
-      b <- _pop; movq b rsi
-      a <- _pop; movq a rdi
-      callq (runtime op)
-      movq rax =<< _alloc
-
 encodeInteger :: Integer -> Operand
 encodeInteger i = Imm (i `shiftL` TAG_SIZE .|. INTEGER_TAG)
 
@@ -404,10 +336,15 @@ compileInstr = \case
     callq (runtime RuntimeFillCons)
 
   SM.UNOP op -> do
-    compileUnOp op
+    a <- _pop; movq a rdi
+    callq (runtime (UnOp op))
+    movq rax =<< _alloc
 
   SM.BINOP op -> do
-    compileBinOp op
+    b <- _pop; movq b rsi
+    a <- _pop; movq a rdi
+    callq (runtime (BinOp op))
+    movq rax =<< _alloc
 
   SM.DROP -> do
     void _pop
@@ -740,6 +677,13 @@ compile target prog = let ?target = target in execM do
   tell [Label entryPointName]
   subq WORD_SIZE rsp
 
+  let sharedAtomd = ["true", "false"] ++ foldMap (.context) bifs
+  for_ (Set.fromList sharedAtomd) \atom -> do
+    a <- _atom atom
+    tell [Meta ("// share atom " ++ atom)]
+    movq a rdi
+    callq (runtime (RuntimeShareAtom atom))
+
   movq (Static (mkFunName ("main" Syntax.:/ 0))) rdi
   callq (runtime RuntimeStart)
 
@@ -750,15 +694,9 @@ compile target prog = let ?target = target in execM do
   
   -- BiFs mapping
   tell [Meta "// BiFs mapping"]
-  for_ bifs \(funId, (runtimeName, context)) -> do
-    tell [Label (mkFunName funId)]
-    when (not (null context)) do
-      movq (runtime RuntimeCallingContext) rbx
-      for_ (zip context [0..]) \(a, i) -> do
-        a <- _atom a
-        movq a rax
-        movq rax (MemReg (i * WORD_SIZE) RBX)
-    jmp (Lbl (mkLabel runtimeName))
+  for_ bifs \bif -> do
+    tell [Label (mkFunName bif.funid)]
+    jmp (Lbl (mkLabel bif.lbl))
 
   -- data
   tell [Meta ".data"]

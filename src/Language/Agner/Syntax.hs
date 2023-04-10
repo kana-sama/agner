@@ -6,6 +6,7 @@ import Data.Set qualified as Set
 import Data.List.NonEmpty (NonEmpty)
 import Data.Aeson (ToJSON)
 import Data.List qualified as List
+import Data.Char qualified as Char
 
 type Var = String
 type Atom = String
@@ -46,24 +47,43 @@ instance Show FunId where
       ]
 
 data BinOp
-  = (:+)
-  | (:-)
-  | (:*)
+  = Plus
+  | Minus
+  | Times
   | Div
   | Rem
 
-  | (:++)
-  | (:>=)
-  | (:=<)
-  deriving stock (Show, Generic)
+  | BAnd
+  | BOr
+  | BXor
+
+  | And
+  | Or
+  | Xor
+
+  | PlusPlus
+  | GTE
+  | LTE
+  deriving stock (Show, Generic, Eq)
   deriving anyclass (ToJSON)
 
 data UnOp
-  = (:+!)
-  | (:-!)
+  = Plus'
+  | Minus'
   | BNot
-  deriving stock (Generic, Show)
+
+  | Not
+  deriving stock (Generic, Show, Eq)
   deriving anyclass (ToJSON)
+
+binOpName :: BinOp -> String
+binOpName = map Char.toLower . show
+
+unOpName :: UnOp -> String
+unOpName = dropTick . map Char.toLower . show where
+  dropTick s
+    | '\'' <- last s = init s
+    | otherwise = s
 
 data CallTailness = SimpleCall | TailCall
   deriving stock (Show, Generic)

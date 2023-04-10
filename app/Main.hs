@@ -84,6 +84,7 @@ runtime = traverse (getDataFileName . rt) sources
       , "runtime"
       , "bifs"
       , "operators"
+      , "shared_atoms"
       ]
 
 compile ::  

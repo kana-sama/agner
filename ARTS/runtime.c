@@ -13,7 +13,6 @@
 # include "heap.h"
 # include "scheduler.h"
 
-value_t _runtime__calling_context[10];
 scheduler_t* scheduler;
 FILE* ylog;
 

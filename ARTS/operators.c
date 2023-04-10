@@ -4,6 +4,40 @@
 # include "runtime.h"
 # include "tags.h"
 # include "throw.h"
+# include "shared_atoms.h"
+
+// boolean
+
+value_t _unop__not(value_t value) {
+  if (value == shared_atom_true()) return shared_atom_false();
+  if (value == shared_atom_false()) return shared_atom_true();
+  _THROW_badarg_unop(value, "not");
+}
+
+value_t _binop__and(value_t l, value_t r) {
+  if (l == shared_atom_true()  && r == shared_atom_true())  return shared_atom_true();
+  if (l == shared_atom_false() && r == shared_atom_true())  return shared_atom_false();
+  if (l == shared_atom_true()  && r == shared_atom_false()) return shared_atom_false();
+  if (l == shared_atom_false() && r == shared_atom_false()) return shared_atom_false();
+  _THROW_badarg_binop(l, r, "and");
+}
+
+value_t _binop__or(value_t l, value_t r) {
+  if (l == shared_atom_true()  && r == shared_atom_true())  return shared_atom_true();
+  if (l == shared_atom_false() && r == shared_atom_true())  return shared_atom_true();
+  if (l == shared_atom_true()  && r == shared_atom_false()) return shared_atom_true();
+  if (l == shared_atom_false() && r == shared_atom_false()) return shared_atom_false();
+  _THROW_badarg_binop(l, r, "or");
+}
+
+value_t _binop__xor(value_t l, value_t r) {
+  if (l == shared_atom_true()  && r == shared_atom_true())  return shared_atom_false();
+  if (l == shared_atom_false() && r == shared_atom_true())  return shared_atom_true();
+  if (l == shared_atom_true()  && r == shared_atom_false()) return shared_atom_true();
+  if (l == shared_atom_false() && r == shared_atom_false()) return shared_atom_false();
+  _THROW_badarg_binop(l, r, "xor");
+}
+
 
 // unary
 
@@ -113,10 +147,10 @@ value_t _binop__plusplus(value_t l, value_t r) {
   return new;
 }
 
-value_t _binop__gte(value_t l, value_t r, value_t _true, value_t _false) {
-  return l >= r ? _true : _false;
+value_t _binop__gte(value_t l, value_t r) {
+  return l >= r ? shared_atom_true() : shared_atom_false();
 }
 
-value_t _binop__lte(value_t l, value_t r, value_t _true, value_t _false) {
-  return l <= r ? _true : _false;
+value_t _binop__lte(value_t l, value_t r) {
+  return l <= r ? shared_atom_true() : shared_atom_false();
 }

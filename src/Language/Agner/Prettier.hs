@@ -32,15 +32,20 @@ withVarStyles vars k = do
 
 -- (:++) -> "++"
 binop :: BinOp -> D
-binop Div = "div"
-binop Rem = "rem"
-binop op = (pretty . drop 2 . init . show) op
+binop = \case
+  Plus -> "+"
+  Minus -> "-"
+  Times -> "*"
+  PlusPlus -> "++"
+  GTE -> ">="
+  LTE -> "=<"
+  op -> pretty (binOpName op)
 
 unop :: UnOp -> D
 unop = \case
-  (:+!) -> "+"
-  (:-!) -> "-"
-  BNot  -> "bnot"
+  Plus' -> "+"
+  Minus' -> "-"
+  op -> pretty (unOpName op)
 
 keyword :: D -> D
 keyword = annotate bold

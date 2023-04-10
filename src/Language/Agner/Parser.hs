@@ -217,25 +217,28 @@ expr = makeExprParser term operatorTable
     operatorTable :: [[Operator Parser Expr]]
     operatorTable = concat
       [ replicate 64
-          [ unary  "+"    do unop (:+!)
-          , unary  "-"    do unop (:-!)
+          [ unary  "+"    do unop Plus'
+          , unary  "-"    do unop Minus'
           , unary  "bnot" do unop BNot
+          , unary  "not"  do unop Not
           ]
       , pure
-          [ binary "*"   do binop (:*)
-          , binary "div" do binop Div
-          , binary "rem" do binop Rem
+          [ binary "*"    do binop Times
+          , binary "div"  do binop Div
+          , binary "rem"  do binop Rem
+          , binary "band" do binop BAnd
+          , binary "and"  do binop And
           ]
       , pure 
-          [ binary "+"  do binop (:+)
-          , binary "-"  do binop (:-)
+          [ binary "+"  do binop Plus
+          , binary "-"  do binop Minus
           ]
       , pure
-          [ binary "++" do binop (:++)
+          [ binary "++" do binop PlusPlus
           ]
       , pure
-          [ binary "=<" do binop (:=<)
-          , binary ">=" do binop (:>=)
+          [ binary "=<" do binop LTE
+          , binary ">=" do binop GTE
           ]
       , pure
           [ binary "!" Send
