@@ -84,6 +84,8 @@ expr = \case
     let case_ (p, es) = pat p <+> "->" <+> nest 2 (line' <> exprs es)
         cases' = vcat (punctuate "; " (case_ <$> cases))
      in "receive" <+> vsep [nest 2 (line' <> cases'), "end"]
+  Begin es ->
+    "begin" <+> group (nest 2 (line' <> exprs es) <+> line' <> "end")
 
 exprs :: WithVarStyles => Exprs -> D
 exprs es = vcat (punctuate ", " (expr <$> es))

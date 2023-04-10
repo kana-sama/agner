@@ -144,6 +144,7 @@ compileExpr = \case
     success <- label "receive_success"; tell [LABEL success]
   Syntax.AndAlso a b -> shortCircuit True a b
   Syntax.OrElse  a b -> shortCircuit False a b
+  Syntax.Begin es -> compileExprs es
 
 shortCircuit :: Bool -> Syntax.Expr -> Syntax.Expr -> M ()
 shortCircuit t a b = mdo

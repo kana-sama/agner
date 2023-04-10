@@ -70,6 +70,7 @@ data Expr
   | Receive [(Pat, Exprs)]
   | AndAlso Expr Expr
   | OrElse Expr Expr
+  | Begin Exprs
   deriving stock (Show)
 
 data Pat
@@ -188,6 +189,7 @@ exprVars = \case
   Receive cases -> Set.unions [patVars p `Set.union` exprsVars e | (p, e) <- cases]
   AndAlso a b -> exprVars a `Set.union` exprVars b
   OrElse a b -> exprVars a `Set.union` exprVars b
+  Begin es -> foldMap exprVars es
 
 exprsVars :: Exprs -> Set Var
 exprsVars = foldMap exprVars

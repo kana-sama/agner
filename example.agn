@@ -3,9 +3,14 @@ even(1) -> false;
 even(N) -> even(N-2).
 
 every(F, []) -> true;
-every(F, [H|T]) -> F(H) andalso every(F, T).
+every(F, [H|T]) -> begin
+  F(H) andalso every(F, T)
+end.
 
 % constant stack
 main() ->
   List = [2, 4, 6, 8, 10],
-  agner:println(every(fun even/1, List)).
+  agner:println(every(
+    fun even/1,
+    begin agner:println(here), List end
+  )).

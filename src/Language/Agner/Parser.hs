@@ -195,6 +195,9 @@ receive = do
       es <- exprs
       pure (p, es)
 
+begin :: Parser Exprs
+begin = between (symbol "begin") (symbol "end") exprs
+
 term :: Parser Expr
 term = choice
   [ Fun <$> fun
@@ -202,6 +205,7 @@ term = choice
   , uncurry Match <$> try match
   , uncurry (Apply SimpleCall) <$> try apply
   , uncurry DynApply <$> try dynApply
+  , Begin <$> begin
   , parens expr
   , Var <$> variable
   , Atom <$> atom
