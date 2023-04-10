@@ -216,46 +216,40 @@ expr = makeExprParser term operatorTable
   where
     operatorTable :: [[Operator Parser Expr]]
     operatorTable = concat
-      [ replicate 64
-          [ unary  "+"    do unop Plus'
-          , unary  "-"    do unop Minus'
-          , unary  "bnot" do unop BNot
-          , unary  "not"  do unop Not
-          ]
-      , pure
-          [ binary "*"    do binop Times
-          , binary "div"  do binop Div
-          , binary "rem"  do binop Rem
-          , binary "band" do binop BAnd
-          , binary "and"  do binop And
-          ]
-      , pure 
-          [ binary "+"  do binop Plus
-          , binary "-"  do binop Minus
-          ]
-      , pure
-          [ binary "++" do binop PlusPlus
-          ]
-      , pure
-          [ binary "=<" do binop LTE
-          , binary ">=" do binop GTE
-          ]
-      , pure
-          [ binary "!" Send
-          ]
+      [ 64 * [ unary  "+"       ["+"]      do UnOp  Plus'
+             , unary  "-"       ["-"]      do UnOp  Minus'
+             , unary  "bnot"    []         do UnOp  BNot
+             , unary  "not"     []         do UnOp  Not ]
+      , 01 * [ binary "*"       []         do BinOp Times
+             , binary "div"     []         do BinOp Div
+             , binary "rem"     []         do BinOp Rem
+             , binary "band"    []         do BinOp BAnd
+             , binary "and"     ["also"]   do BinOp And ]
+      , 01 * [ binary "+"       ["+"]      do BinOp Plus
+             , binary "-"       ["-", ">"] do BinOp Minus
+             , binary "bor"     []         do BinOp BOr
+             , binary "bxor"    []         do BinOp BXor
+             , binary "bsl"     []         do BinOp BSL
+             , binary "bsr"     []         do BinOp BSR
+             , binary "or"      ["else"]   do BinOp Or
+             , binary "xor"     []         do BinOp Xor ]
+      , 01 * [ binary "++"      []         do BinOp PlusPlus ]
+      , 01 * [ binary "=<"      []         do BinOp LTE
+             , binary ">="      []         do BinOp GTE ]
+      , 01 * [ binary "andalso" []         do AndAlso ]
+      , 01 * [ binary "orelse"  []         do OrElse  ]
+      , 01 * [ binary "!"       []         do Send    ]
       ]
 
-    unop op a = UnOp op a
-    binop op a b = BinOp a op b
+    (*) = replicate
 
-    unary :: String -> (Expr -> Expr) -> Operator Parser Expr
-    unary name f = Prefix (f <$ op name)
+    unary :: String -> [String] -> (Expr -> Expr) -> Operator Parser Expr
+    unary name notNext f = Prefix (f <$ op name notNext)
 
-    binary :: String -> (Expr -> Expr -> Expr) -> Operator Parser Expr
-    binary name f = InfixL (f <$ op name)
+    binary :: String -> [String] -> (Expr -> Expr -> Expr) -> Operator Parser Expr
+    binary name notNext f = InfixL (f <$ op name notNext)
 
-    op n = (lexeme . try) (string n <* notFollowedBy punctuationChar)
-    punctuationChar = oneOf ("+->" :: [Char])
+    op n notNext = (lexeme . try) (string n <* notFollowedBy (choice (map string notNext)))
 
 exprs :: Parser Exprs
 exprs = expr `sepBy1` symbol ","

@@ -13,12 +13,104 @@ type Atom = String
 type FunName = String
 type ModuleName = String
 
-pattern (:/) :: FunName -> Int -> FunId
-pattern f :/ arity = MkFunId Nothing f arity
-
 data FunId = MkFunId { ns :: Maybe ModuleName, name :: FunName, arity :: Int }
   deriving stock (Eq, Ord, Generic)
   deriving anyclass (ToJSON)
+
+data BinOp
+  = Plus
+  | Minus
+  | Times
+  | Div
+  | Rem
+
+  | BAnd
+  | BOr
+  | BXor
+  | BSL
+  | BSR
+
+  | And
+  | Or
+  | Xor
+
+  | PlusPlus
+  | GTE
+  | LTE
+  deriving stock (Show, Generic, Eq)
+  deriving anyclass (ToJSON)
+
+data UnOp
+  = Plus'
+  | Minus'
+  | BNot
+
+  | Not
+  deriving stock (Generic, Show, Eq)
+  deriving anyclass (ToJSON)
+
+data CallTailness = SimpleCall | TailCall
+  deriving stock (Show, Generic)
+  deriving anyclass (ToJSON)
+
+data Expr
+  = Integer Integer
+  | Atom Atom
+  | Fun FunId
+  | Tuple [Expr]
+  | Nil
+  | Cons Expr Expr
+  | BinOp BinOp Expr Expr
+  | UnOp UnOp Expr
+  | Var Var
+  | Match Pat Expr
+  | Apply CallTailness FunId [Expr]
+  | DynApply Expr [Expr]
+  | Send Expr Expr
+  | Receive [(Pat, Exprs)]
+  | AndAlso Expr Expr
+  | OrElse Expr Expr
+  deriving stock (Show)
+
+data Pat
+  = PatVar Var
+  | PatWildcard
+  | PatInteger Integer
+  | PatAtom Atom
+  | PatTuple [Pat]
+  | PatNil
+  | PatCons Pat Pat
+  deriving (Show)
+
+type Exprs = [Expr]
+
+data FunClause = MkFunClause
+  { funid :: FunId
+  , pats :: [Pat]
+  , guards :: [Expr]
+  , body :: Exprs
+  }
+
+data FunDecl = MkFunDecl
+  { funid :: FunId
+  , clauses :: [FunClause]
+  }
+
+data Module = MkModule
+  { decls :: [FunDecl]
+  }
+
+pattern (:/) :: FunName -> Int -> FunId
+pattern f :/ arity = MkFunId Nothing f arity
+
+binOpName :: BinOp -> String
+binOpName = map Char.toLower . show
+
+unOpName :: UnOp -> String
+unOpName = dropTick . map Char.toLower . show where
+  dropTick s
+    | '\'' <- last s = init s
+    | otherwise = s
 
 instance IsString FunId where
   fromString src0 =
@@ -46,87 +138,6 @@ instance Show FunId where
       , show f.arity
       ]
 
-data BinOp
-  = Plus
-  | Minus
-  | Times
-  | Div
-  | Rem
-
-  | BAnd
-  | BOr
-  | BXor
-
-  | And
-  | Or
-  | Xor
-
-  | PlusPlus
-  | GTE
-  | LTE
-  deriving stock (Show, Generic, Eq)
-  deriving anyclass (ToJSON)
-
-data UnOp
-  = Plus'
-  | Minus'
-  | BNot
-
-  | Not
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass (ToJSON)
-
-binOpName :: BinOp -> String
-binOpName = map Char.toLower . show
-
-unOpName :: UnOp -> String
-unOpName = dropTick . map Char.toLower . show where
-  dropTick s
-    | '\'' <- last s = init s
-    | otherwise = s
-
-data CallTailness = SimpleCall | TailCall
-  deriving stock (Show, Generic)
-  deriving anyclass (ToJSON)
-
-data Expr
-  = Integer Integer
-  | Atom Atom
-  | Fun FunId
-  | Tuple [Expr]
-  | Nil
-  | Cons Expr Expr
-  | BinOp Expr BinOp Expr
-  | UnOp UnOp Expr
-  | Var Var
-  | Match Pat Expr
-  | Apply CallTailness FunId [Expr]
-  | DynApply Expr [Expr]
-  | Send Expr Expr
-  | Receive [(Pat, Exprs)]
-  deriving stock (Show)
-
-viewList :: Expr -> Maybe [Expr]
-viewList = \case
-  Nil -> Just []
-  Cons a b -> do xs <- viewList b; pure (a:xs)
-  _ -> Nothing
-
-pattern List :: [Expr] -> Expr
-pattern List es <- (viewList -> Just es)
-  where
-    List es = foldr Cons Nil es
-
-data Pat
-  = PatVar Var
-  | PatWildcard
-  | PatInteger Integer
-  | PatAtom Atom
-  | PatTuple [Pat]
-  | PatNil
-  | PatCons Pat Pat
-  deriving (Show)
-
 viewPatList :: Pat -> Maybe [Pat]
 viewPatList = \case
   PatNil -> Just []
@@ -138,23 +149,16 @@ pattern PatList ps <- (viewPatList -> Just ps)
   where
     PatList ps = foldr PatCons PatNil ps
 
-type Exprs = [Expr]
+viewList :: Expr -> Maybe [Expr]
+viewList = \case
+  Nil -> Just []
+  Cons a b -> do xs <- viewList b; pure (a:xs)
+  _ -> Nothing
 
-data FunClause = MkFunClause
-  { funid :: FunId
-  , pats :: [Pat]
-  , guards :: [Expr]
-  , body :: Exprs
-  }
-
-data FunDecl = MkFunDecl
-  { funid :: FunId
-  , clauses :: [FunClause]
-  }
-
-data Module = MkModule
-  { decls :: [FunDecl]
-  }
+pattern List :: [Expr] -> Expr
+pattern List es <- (viewList -> Just es)
+  where
+    List es = foldr Cons Nil es
 
 patVars :: Pat -> Set Var
 patVars = \case
@@ -174,7 +178,7 @@ exprVars = \case
   Tuple es -> foldMap exprVars es
   Nil -> Set.empty
   Cons a b -> exprVars a `Set.union` exprVars b
-  BinOp a _ b -> exprVars a `Set.union` exprVars b
+  BinOp _ a b -> exprVars a `Set.union` exprVars b
   UnOp op a -> exprVars a
   Var v -> Set.singleton v
   Match p e -> patVars p `Set.union` exprVars e
@@ -182,6 +186,8 @@ exprVars = \case
   DynApply _ es -> foldMap exprVars es
   Send a b -> exprVars a `Set.union` exprVars b
   Receive cases -> Set.unions [patVars p `Set.union` exprsVars e | (p, e) <- cases]
+  AndAlso a b -> exprVars a `Set.union` exprVars b
+  OrElse a b -> exprVars a `Set.union` exprVars b
 
 exprsVars :: Exprs -> Set Var
 exprsVars = foldMap exprVars

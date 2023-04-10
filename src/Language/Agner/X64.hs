@@ -45,6 +45,8 @@ data RuntimeName
   | RuntimeAllocTuple | RuntimeFillTuple | RuntimeMatchTuple
   | RuntimeAllocCons  | RuntimeFillCons  | RuntimeMatchCons
 
+  | RuntimeAssertBoolArg
+
   | RuntimeReceivePick | RuntimeReceivePicked | RuntimeReceiveSuccess
 
   | ThrowBadArith
@@ -72,6 +74,8 @@ runtimeName = \case
   RuntimeAllocCons -> "_runtime__alloc_cons"
   RuntimeFillCons -> "_runtime__fill_cons"
   RuntimeMatchCons -> "_runtime__match_cons"
+
+  RuntimeAssertBoolArg -> "_runtime__assert_bool_arg"
 
   RuntimeReceivePick -> "_runtime__receive_pick"
   RuntimeReceivePicked -> "_runtime__receive_picked"
@@ -649,6 +653,20 @@ compileInstr = \case
     movq rbx =<< _alloc
     movq (MemReg (0 * WORD_SIZE) RAX) rbx
     movq rbx =<< _alloc
+
+
+  SM.SHORT_CIRCUIT t onFail -> mdo
+    value <- _pop
+    shouldBe <- _atom (if t then "true" else "false")
+    movq value rdi
+    callq (runtime RuntimeAssertBoolArg)
+    cmpq shouldBe rax
+    je (Lbl on_success)
+    movq rax =<< _alloc
+    jmp (Lbl (mkSMLabel onFail))
+    on_success <- _label "short_circuit.on_success"
+    pure ()
+    
 
 matchFailure :: WithTarget => Operand -> SM.OnMatchFail -> M ()
 matchFailure value = \case

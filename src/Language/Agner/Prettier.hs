@@ -71,7 +71,9 @@ expr = \case
   Cons a b -> brackets (expr a <+> "|" <+> expr b)
   Tuple es -> braces (hsep (punctuate comma (expr <$> es)))
   UnOp op l -> unop op <> parens (expr l)
-  BinOp l op r -> parens (expr l <+> binop op <+> expr r)
+  BinOp op l r -> parens (expr l <+> binop op <+> expr r)
+  AndAlso l r -> parens (expr l <+> "andalso" <+> expr r)
+  OrElse  l r -> parens (expr l <+> "orelse"  <+> expr r)
   Var v -> var v
   Match p e -> pat p <+> "=" <+> expr e
   Apply _ f es -> funId f <> parens (listOf expr es)

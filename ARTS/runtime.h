@@ -18,6 +18,8 @@ value_t  _runtime__alloc_cons();
 void     _runtime__fill_cons(value_t cons, value_t head, value_t tail);
 value_t* _runtime__match_cons(value_t);
 
+value_t _runtime__assert_bool_arg(value_t);
+
 void    _runtime__receive_pick();
 value_t _runtime__receive_picked();
 void    _runtime__receive_success();

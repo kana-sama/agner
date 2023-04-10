@@ -12,6 +12,7 @@
 # include "throw.h"
 # include "heap.h"
 # include "scheduler.h"
+# include "shared_atoms.h"
 
 scheduler_t* scheduler;
 FILE* ylog;
@@ -117,6 +118,12 @@ value_t* _runtime__match_cons(value_t value) {
   boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
   if (ref->super.header != CONS_HEADER) return 0;
   return &ref->cons.head;
+}
+
+value_t _runtime__assert_bool_arg(value_t value) {
+  if (value == shared_atom_true()) return shared_atom_true();
+  if (value == shared_atom_false()) return shared_atom_false();
+  _THROW_badarg_single(value);
 }
 
 void _runtime__receive_pick() {

@@ -87,6 +87,14 @@ void _THROW_badarg(fun_meta_t* meta, value_t* args) {
 }
 
 _Noreturn
+void _THROW_badarg_single(value_t arg) {
+  printf("** exception error: bad argument: ");
+  print_value_trancated(arg);
+  printf("\n");
+  exit(-1);
+}
+
+_Noreturn
 void _THROW_badarg_unop(value_t x, char* op) {
   printf("** exception error: bad argument\n");
   printf("     in operator  %s/1\n", op);

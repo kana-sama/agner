@@ -6,7 +6,9 @@
 # include "throw.h"
 # include "shared_atoms.h"
 
-// boolean
+
+
+// booleans
 
 value_t _unop__not(value_t value) {
   if (value == shared_atom_true()) return shared_atom_false();
@@ -39,7 +41,8 @@ value_t _binop__xor(value_t l, value_t r) {
 }
 
 
-// unary
+
+// numbers
 
 value_t _unop__plus(value_t x) {
   if (is_integer(x)) return x;
@@ -50,15 +53,6 @@ value_t _unop__minus(value_t x) {
   if (is_integer(x)) return encode_integer(-decode_integer(x));
   _THROW_badarith_unary(x, "-");
 }
-
-value_t _unop__bnot(value_t x) {
-  if (is_integer(x)) return encode_integer(~decode_integer(x));
-  _THROW_badarith_unary(x, "-");
-}
-
-
-
-// binary for number
 
 value_t _binop__plus(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) + decode_integer(r));
@@ -87,7 +81,12 @@ value_t _binop__rem(value_t l, value_t r) {
 
 
 
-// binary bitwise
+// bitwise
+
+value_t _unop__bnot(value_t x) {
+  if (is_integer(x)) return encode_integer(~decode_integer(x));
+  _THROW_badarith_unary(x, "-");
+}
 
 value_t _binop__band(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) & decode_integer(r));
@@ -116,7 +115,7 @@ value_t _binop__bsr(value_t l, value_t r) {
 
 
 
-// binary
+// lists
 
 value_t _binop__plusplus(value_t l, value_t r) {
   if (!(is_list(l))) _THROW_badarg_binop(l, r, "++");
@@ -146,6 +145,10 @@ value_t _binop__plusplus(value_t l, value_t r) {
 
   return new;
 }
+
+
+
+// comparision
 
 value_t _binop__gte(value_t l, value_t r) {
   return l >= r ? shared_atom_true() : shared_atom_false();

@@ -64,6 +64,8 @@ data Instr
   | MATCH_NIL OnMatchFail
   | MATCH_CONS OnMatchFail
 
+  | SHORT_CIRCUIT Bool Label
+
   deriving stock (Generic, Show)
   deriving anyclass (ToJSON)
 
@@ -93,7 +95,7 @@ compileExpr = \case
     compileExpr a
     compileExpr b
     tell [PUSH_CONS]
-  Syntax.BinOp a op b -> do
+  Syntax.BinOp op a b -> do
     compileExpr a
     compileExpr b
     tell [BINOP op]
@@ -140,6 +142,17 @@ compileExpr = \case
       tell [RESTORE vars]
     tell [GOTO peek]
     success <- label "receive_success"; tell [LABEL success]
+  Syntax.AndAlso a b -> shortCircuit True a b
+  Syntax.OrElse  a b -> shortCircuit False a b
+
+shortCircuit :: Bool -> Syntax.Expr -> Syntax.Expr -> M ()
+shortCircuit t a b = mdo
+  compileExpr a
+  tell [SHORT_CIRCUIT t finally]
+  compileExpr b
+  tell [GOTO finally]
+  tell [DROP] -- remove result of b from stack statically
+  finally <- label "SHORT_CIRCUIT_finally"; tell [LABEL finally]
 
 compilePat :: OnMatchFail -> Syntax.Pat -> M ()
 compilePat onMatchFail = \case
