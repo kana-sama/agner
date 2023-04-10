@@ -1,53 +1,41 @@
 name: agner
 
+language: GHC2021
+
 default-extensions:
   - LambdaCase
   - CPP
   - OverloadedLabels
   - DerivingStrategies
   - DeriveAnyClass
-  - DeriveGeneric
-  - EmptyDataDeriving
   - BlockArguments
-  - ImportQualifiedPost
   - OverloadedRecordDot
   - StrictData
-  - ScopedTypeVariables
-  - NamedFieldPuns
-  - BangPatterns
-  - FlexibleContexts
-  - TypeApplications
   - AllowAmbiguousTypes
-  - BinaryLiterals
   - RecursiveDo
   - ImplicitParams
-  - ConstraintKinds
-  - TypeOperators
   - DataKinds
-  - OverloadedLabels
   - DuplicateRecordFields
-  - GADTs
   - PatternSynonyms
   - OverloadedStrings
-  - RankNTypes
   - ViewPatterns
   - GeneralizedNewtypeDeriving
   - NoFieldSelectors
-  - TupleSections
+  - PartialTypeSignatures
 
 ghc-options:
   - -Wincomplete-patterns
+  - -Wno-partial-type-signatures
 
 dependencies:
   - base
-  - aeson
 
 extra-source-files:
-  - ARTS/tags.h
+  - runtime/tags.h
 
 data-files:
-  - ARTS/*.c
-  - ARTS/*.h
+  - runtime/*.c
+  - runtime/*.h
 
 library:
   source-dirs: src
@@ -60,24 +48,15 @@ library:
     - transformers
     - lens
     - generic-lens
-    - free
 
     - megaparsec
     - parser-combinators
 
-    - unicode-show
-    - prettyprinter
-    - prettyprinter-ansi-terminal
-
 executables:
   agner:
     main: Main.hs
-    source-dirs: app
     dependencies:
       - agner
       - typed-process
-      - temporary
       - filepath
       - named
-      - cassava
-      - bytestring

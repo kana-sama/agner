@@ -1,6 +1,6 @@
-# include "../../../ARTS/tags.h"
+# include "../../../runtime/tags.h"
 
-module Language.Agner.X64 (Ex(..), Prog, Target(..), prettyProg, compile) where
+module Language.Agner.X64 (Prog, Target(..), prettyProg, compile) where
 
 import Language.Agner.Prelude
 
@@ -20,17 +20,9 @@ import Control.Lens
 import Data.Generics.Labels
 import GHC.Generics (Generic)
 
-import Text.Show.Unicode (ushow)
-
-import Language.Agner.Syntax (FunId)
+import Language.Agner.Syntax (FunId, prettyFunId, prettyFunIdNoArity)
 import Language.Agner.Syntax qualified as Syntax
-import Language.Agner.Value (Value)
-import Language.Agner.Value qualified as Value
-import Language.Agner.Prettier qualified as Prettier
 import Language.Agner.SM qualified as SM
-
-data Ex
-  deriving stock (Show)
 
 
 -- DSL
@@ -496,8 +488,8 @@ compileInstr = \case
 
     tell [Label (mkFunMeta funid)]
     tell [Meta  (mkFunMetaOpt "arity" funid ++ ": .quad " ++ show funid.arity)]
-    tell [Meta  (mkFunMetaOpt "name" funid ++ ": .asciz " ++ show (Prettier.string Prettier.funId funid))]
-    tell [Meta  (mkFunMetaOpt "name_a" funid ++ ": .asciz " ++ show (Prettier.string Prettier.funIdA funid))]
+    tell [Meta  (mkFunMetaOpt "name" funid ++ ": .asciz " ++ show (prettyFunIdNoArity funid))]
+    tell [Meta  (mkFunMetaOpt "name_a" funid ++ ": .asciz " ++ show (prettyFunId funid))]
 
   SM.CLAUSE funid clauseN vars -> do
     tell [Label (mkFunClause funid (Just clauseN))]
@@ -721,7 +713,7 @@ compile target prog = let ?target = target in execM do
 
   strings <- use #strings
   for_ (Map.toList strings) \(lbl, str) -> do
-    tell [Meta (lbl ++ ": .asciz " ++ ushow str)]
+    tell [Meta (lbl ++ ": .asciz " ++ show str)]
 
   atoms <- use #atoms
   for_ (Map.toList atoms) \(lbl, str) -> do

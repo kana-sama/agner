@@ -1,17 +1,13 @@
 dist-newstyle
 agner.cabal
 cabal.project.local
-output.s
-output
-q
-q.s
-result
-.direnv
+
+example.s
+example
+
 runtime/*.o
 runtime/*.s
-adbg/src/debug.json
-example
-memory.png
+
 *.dSYM
 log_*.csv
 

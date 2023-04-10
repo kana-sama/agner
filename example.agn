@@ -10,7 +10,4 @@ end.
 % constant stack
 main() ->
   List = [2, 4, 6, 8, 10],
-  agner:println(every(
-    fun even/1,
-    begin agner:println(here), List end
-  )).
+  agner:println(every(fun even/1, begin agner:println(here), List end)).

@@ -3,8 +3,6 @@ module Language.Agner.Syntax where
 import Language.Agner.Prelude
 
 import Data.Set qualified as Set
-import Data.List.NonEmpty (NonEmpty)
-import Data.Aeson (ToJSON)
 import Data.List qualified as List
 import Data.Char qualified as Char
 
@@ -14,8 +12,7 @@ type FunName = String
 type ModuleName = String
 
 data FunId = MkFunId { ns :: Maybe ModuleName, name :: FunName, arity :: Int }
-  deriving stock (Eq, Ord, Generic)
-  deriving anyclass (ToJSON)
+  deriving stock (Eq, Ord)
 
 data BinOp
   = Plus
@@ -37,8 +34,7 @@ data BinOp
   | PlusPlus
   | GTE
   | LTE
-  deriving stock (Show, Generic, Eq)
-  deriving anyclass (ToJSON)
+  deriving stock (Show, Eq)
 
 data UnOp
   = Plus'
@@ -46,12 +42,10 @@ data UnOp
   | BNot
 
   | Not
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass (ToJSON)
+  deriving stock (Show, Eq)
 
 data CallTailness = SimpleCall | TailCall
-  deriving stock (Show, Generic)
-  deriving anyclass (ToJSON)
+  deriving stock (Show)
 
 data Expr
   = Integer Integer
@@ -130,14 +124,14 @@ instance IsString FunId where
       parseArity src =
         (read src, "")
 
+
+prettyFunId, prettyFunIdNoArity :: FunId -> String
+prettyFunId f = prettyFunIdNoArity f ++ "/" ++ show f.arity
+prettyFunIdNoArity f = ns ++ f.name where
+  ns = case f.ns of Nothing -> ""; Just ns -> ns ++ ":"
+
 instance Show FunId where
-  show f =
-    (show . concat)
-      [ case f.ns of Nothing -> ""; Just ns -> ns ++ ":"
-      , f.name
-      , "/"
-      , show f.arity
-      ]
+  show f = show (prettyFunId f)
 
 viewPatList :: Pat -> Maybe [Pat]
 viewPatList = \case
