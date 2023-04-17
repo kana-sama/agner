@@ -1,3 +1,5 @@
+-native(agner:println/1, "_agner__println").
+
 f(N) -> f(N, 0).
 f(0, Acc) -> Acc;
 f(N, Acc) ->
