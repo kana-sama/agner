@@ -1,5 +1,7 @@
 # include "operators.h"
 
+# include <stdbool.h>
+
 # include "value.h"
 # include "runtime.h"
 # include "tags.h"
@@ -148,12 +150,58 @@ value_t _binop__plusplus(value_t l, value_t r) {
 
 
 
-// comparision
+// comparison
 
-value_t _binop__gte(value_t l, value_t r) {
-  return l >= r ? shared_atom_true() : shared_atom_false();
+static inline value_t from_bool(bool b) { return b ? shared_atom_true() : shared_atom_false(); }
+
+// ==
+value_t _binop__eq_eq(value_t l, value_t r) {
+  return from_bool(
+    value_lte(l, r) && value_lte(r, l)
+  );
 }
 
-value_t _binop__lte(value_t l, value_t r) {
-  return l <= r ? shared_atom_true() : shared_atom_false();
+// /=
+value_t _binop__slash_eq(value_t l, value_t r) {
+  return from_bool(
+    !value_lte(l, r) || !value_lte(r, l)
+  );
+}
+
+// =<
+value_t _binop__eq_less(value_t l, value_t r) {
+  return from_bool(
+    value_lte(l, r)
+  );
+}
+
+// <
+value_t _binop__less(value_t l, value_t r) {
+  return from_bool(
+    value_lte(l, r) && !value_lte(r, l)
+  );
+}
+
+// >=
+value_t _binop__greater_eq(value_t l, value_t r) {
+  return from_bool(
+    value_lte(r, l)
+  );
+}
+
+// >
+value_t _binop__greater(value_t l, value_t r) {
+  return from_bool(
+    value_lte(r, l) && !value_lte(l, r)
+  );
+}
+
+// =:=
+value_t _binop__eq_colon_eq(value_t l, value_t r) {
+  return _binop__eq_eq(l, r);
+}
+
+// =/=
+value_t _binop__eq_slash_eq(value_t l, value_t r) {
+  return _binop__slash_eq(l, r);
 }

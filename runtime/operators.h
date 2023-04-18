@@ -28,6 +28,12 @@ value_t _binop__bsr(value_t, value_t);
 // lists
 value_t _binop__plusplus(value_t, value_t);
 
-// comparision
-value_t _binop__gte(value_t, value_t);
-value_t _binop__lte(value_t, value_t);
+// comparison
+value_t _binop__eq_eq(value_t, value_t);
+value_t _binop__slash_eq(value_t, value_t);
+value_t _binop__eq_less(value_t, value_t);
+value_t _binop__less(value_t, value_t);
+value_t _binop__greater_eq(value_t, value_t);
+value_t _binop__greater(value_t, value_t);
+value_t _binop__eq_colon_eq(value_t, value_t);
+value_t _binop__eq_slash_eq(value_t, value_t);

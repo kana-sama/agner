@@ -20,7 +20,7 @@ data BinOp
   | BAnd | BOr | BXor | BSL | BSR
   | And | Or | Xor
   | PlusPlus
-  | GTE | LTE
+  | Eq_Eq | Slash_Eq | Eq_Less | Less | Greater_Eq | Greater | Eq_Colon_Eq | Eq_Slash_Eq
   deriving stock (Show, Eq, Data)
 
 data UnOp = Plus' | Minus' | BNot | Not

@@ -184,13 +184,28 @@ makeList ([], Just rest) = rest
 makeList ([], Nothing) = Nil
 makeList (e:es, rest) = Cons e (makeList (es, rest))
 
+caseBranch :: Parser CaseBranch
+caseBranch = do
+  p <- pat
+  symbol "->"
+  es <- exprs
+  pure (CaseBranch p es)
+
+case_ :: Parser (Expr, [CaseBranch])
+case_ = do
+  symbol "case"
+  e <- expr
+  symbol "of"
+  bs <- caseBranch `sepBy1` symbol ";"
+  symbol "end"
+  pure (e, bs)
+
 receive :: Parser [CaseBranch]
-receive = symbol "receive" *> case_ `sepBy1` symbol ";" <* symbol "end" where
-  case_ = do
-    p <- pat
-    symbol "->"
-    es <- exprs
-    pure (CaseBranch p es)
+receive = do
+  symbol "receive"
+  bs <- caseBranch `sepBy1` symbol ";"
+  symbol "end"
+  pure bs
 
 begin :: Parser Expr
 begin = between (symbol "begin") (symbol "end") exprs
@@ -199,6 +214,7 @@ term :: Parser Expr
 term = choice
   [ Fun <$> fun
   , Receive <$> receive
+  , uncurry Case <$> case_
   , uncurry Apply <$> try apply
   , uncurry DynApply <$> try dynApply
   , begin
@@ -234,8 +250,14 @@ expr = makeExprParser term operatorTable
              , binary "or"      ["else"]   do BinOp Or
              , binary "xor"     []         do BinOp Xor ]
       , 01 * [ binary "++"      []         do BinOp PlusPlus ]
-      , 01 * [ binary "=<"      []         do BinOp LTE
-             , binary ">="      []         do BinOp GTE ]
+      , 01 * [ binary "=="      []         do BinOp Eq_Eq
+             , binary "/="      []         do BinOp Slash_Eq
+             , binary "=<"      []         do BinOp Eq_Less
+             , binary "<"       []         do BinOp Less
+             , binary ">="      []         do BinOp Greater_Eq
+             , binary ">"       []         do BinOp Greater
+             , binary "=:="     []         do BinOp Eq_Colon_Eq
+             , binary "=/="     []         do BinOp Eq_Slash_Eq ]
       , 01 * [ binary "andalso" []         do andAlso ]
       , 01 * [ binary "orelse"  []         do orElse  ]
       , 01 * [ binary "!"       []         do send

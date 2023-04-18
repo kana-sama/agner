@@ -1,8 +1,8 @@
 # include "../../../runtime/tags.h"
 
-{-# LANGUAGE TypeFamilies, RecursiveDo #-}
+{-# LANGUAGE RecursiveDo #-}
 
-module Language.Agner.X64New (module Language.Agner.X64New, module Data.X64) where
+module Language.Agner.X64 (module Language.Agner.X64, module Data.X64) where
 
 import GHC.Exts (IsList(..))
 

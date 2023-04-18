@@ -1,6 +1,7 @@
 # include <stdio.h>
 # include <stdlib.h>
 # include <stdbool.h>
+# include <string.h>
 
 # include "tags.h"
 # include "value.h"
@@ -203,3 +204,118 @@ bool    is_number     (value_t value) { return is_integer(value);               
 bool    is_integer    (value_t value) { return (value & TAG_MASK) == INTEGER_TAG; }
 int64_t decode_integer(value_t value) { return value >> TAG_SIZE;                 }
 value_t encode_integer(int64_t value) { return (value << TAG_SIZE) | INTEGER_TAG; }
+
+
+// comparison
+
+enum value_kind_t {
+  KIND_NUMBER =  0,
+  KIND_ATOM   =  1,
+//KIND_REF    =  2,
+  KIND_FUN    =  3,
+//KIND_PORT   =  4,
+  KIND_PID    =  5,
+  KIND_TUPLE  =  6,
+//KIND_MAP    =  7,
+  KIND_NIL    =  8,
+  KIND_LIST   =  9,
+//KIND_BITS   = 10,
+};
+
+static enum value_kind_t get_value_kind(value_t value) {
+  switch (value & TAG_MASK) {
+    case INTEGER_TAG: return KIND_NUMBER;
+    case ATOM_TAG:    return KIND_ATOM;
+    case NIL_TAG:     return KIND_NIL;
+    case FUN_TAG:     return KIND_FUN;
+    case PID_TAG:     return KIND_PID;
+    case BOX_TAG: {
+      boxed_value_t* ref = cast_to_boxed_value(value);
+      switch (ref->super.header) {
+        case TUPLE_HEADER: return KIND_TUPLE;
+        case CONS_HEADER:  return KIND_LIST;
+        default: printf("get_value_kind: unknown boxed value with tag %lld", ref->super.header); exit(-1);
+      }
+    }
+    default: printf("get_value_kind: unknown value with tag %lld", value & TAG_MASK); exit(-1);
+  }
+}
+
+bool value_lte(value_t l, value_t r) {
+  enum value_kind_t l_kind = get_value_kind(l);
+  enum value_kind_t r_kind = get_value_kind(r);
+
+  if (l_kind < r_kind) return true;
+  if (l_kind > r_kind) return false;
+
+  switch (l_kind) {
+    case KIND_NUMBER:
+      return l <= r;
+
+    case KIND_ATOM:
+      return strcmp((char*)l, (char*)r) <= 0;
+
+    // case KIND_REF:
+    //   return true;
+
+    case KIND_FUN:
+      return l <= r;
+
+    // case KIND_PORT:
+    //   return true;
+
+    case KIND_PID:
+      return l <= r;
+
+    case KIND_TUPLE: {
+      boxed_value_t* l_ref = cast_to_boxed_value(l);
+      boxed_value_t* r_ref = cast_to_boxed_value(r);
+
+      if (l_ref->tuple.size < r_ref->tuple.size) return true;
+      if (l_ref->tuple.size > r_ref->tuple.size) return false;
+
+      for (size_t i = 0; i < l_ref->tuple.size; i++) {
+        if (l_ref->tuple.values[i] < r_ref->tuple.values[i]) return true;
+        if (l_ref->tuple.values[i] > r_ref->tuple.values[i]) return false;
+      }
+
+      return true;
+    }
+
+    // case KIND_MAP:
+    //   return true;
+
+    case KIND_NIL:
+      return true;
+
+    case KIND_LIST: {
+      boxed_value_t* l_ref = cast_to_boxed_value(l);
+      boxed_value_t* r_ref = cast_to_boxed_value(r);
+
+      value_t l_head = l_ref->cons.head;
+      value_t r_head = l_ref->cons.head;
+
+      if (value_lte(l_ref->cons.head, r_ref->cons.head)) {
+        if (value_lte(r_ref->cons.head, l_ref->cons.head)) {
+          __attribute__((musttail))
+          return value_lte(l_ref->cons.tail, r_ref->cons.tail);
+        } else {
+          return true;
+        }
+      } else {
+        return false;
+      }
+    }
+
+    // case KIND_BITS:
+    //   return true;
+
+    default:
+      printf("value of unknown kind %d", l_kind);
+      exit(-1);
+  }
+}
+
+bool value_eq(value_t l, value_t r) {
+  return value_lte(l, r) && value_lte(r, l);
+}
