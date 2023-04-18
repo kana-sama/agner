@@ -1,4 +1,6 @@
-module Language.Agner.Parser (Ex(..), Parser, parse, expr, exprs, module_) where
+module Language.Agner.Parser
+  -- (Ex(..), Parser, parse, expr, exprs, module_)
+  where
 
 import Language.Agner.Prelude hiding (try)
 
@@ -14,15 +16,6 @@ import Language.Agner.Syntax
 
 type Parser = Parsec Void String
 
-data Ex
-  = ParsingException String
-  deriving stock (Show)
-
-instance Exception Ex where
-  displayException = \case
-    ParsingException msg -> msg
-
-
 ord :: Integral a => Char -> a
 ord = fromIntegral . Char.ord
 
@@ -34,9 +27,6 @@ lexeme = L.lexeme sc
 
 symbol :: String -> Parser String
 symbol = L.symbol sc
-
-underscore :: Parser Char
-underscore = char '_'
 
 digit :: Parser Int
 digit = (\c -> Char.ord c - Char.ord '0') <$> digitChar
@@ -70,7 +60,7 @@ integer = label "integer" do
   choice
     [ lexeme do
         d <- digit
-        ds <- many (underscore *> digit <|> digit)
+        ds <- many (char '_' *> digit <|> digit)
         pure (toNumber (d:ds))
     , char_
     ]
@@ -78,63 +68,78 @@ integer = label "integer" do
     toNumber :: [Int] -> Integer
     toNumber = fromIntegral . foldl (\b a -> b * 10 + a) 0
 
-parens :: Parser a -> Parser a
-parens = between (symbol "(") (symbol ")")
+parens, braces, brackets :: Parser a -> Parser a
+parens   = between (symbol "(") (symbol ")")
+braces   = between (symbol "{") (symbol "}")
+brackets = between (symbol "[") (symbol "]")
 
 variable :: Parser Var
 variable = lexeme do
-  x <- upperChar <|> underscore
-  xs <- (if x == '_' then some else many) (underscore <|> alphaNumChar <|> char '@')
-  pure (x:xs)
+  x <- char '_' <|> upperChar
+  xs <- many (char '_' <|> char '@' <|> alphaNumChar)
+  pure (MkVar (x:xs))
 
 atom :: Parser Atom
 atom = lexeme do
   x <- lowerChar
-  xs <- many (underscore <|> alphaNumChar)
-  pure (x:xs)
+  xs <- many (char '_' <|> alphaNumChar)
+  pure (MkAtom (x:xs))
+
+exprToPat :: Expr -> Pat
+exprToPat = \case
+  Integer i -> PatInteger i
+  Atom a -> PatAtom a
+  Tuple es -> PatTuple [exprToPat e | e <- es]
+  Nil -> PatNil
+  Cons a b -> PatCons (exprToPat a) (exprToPat b)
+  Arg _ -> error "invalid pattern: arg"
+  Var "_" -> PatWildcard
+  Var v -> PatVar v
+  Fun _ -> error "invalid pattern: function"
+  BinOp PlusPlus a b | Just xs <- isKnownList a ->
+    foldr PatCons (exprToPat b) xs
+  BinOp _ _ _ -> error "invalid pattern: binop"
+  UnOp Minus' a | Just i <- isKnownInteger a -> PatInteger i
+  UnOp Plus' a | Just i <- isKnownInteger a -> PatInteger i
+  UnOp _ _ -> error "invalid pattern: unop"
+  Match a b -> PatMatch a (exprToPat b)
+  Apply _ _ -> error "invalid pattern: apply"
+  TailApply _ _ -> error "invalid pattern: tailapply"
+  DynApply _ _ -> error "invalid pattern: dynapply"
+  Case _ _ -> error "invalid pattern: case"
+  Receive _ -> error "invalid pattern: receive"
+  Seq _ _ -> error "invalid pattern: seq"
+  where
+    isKnownList = \case
+      Nil -> Just []
+      Cons (Integer i) b -> (PatInteger i :) <$> isKnownList b
+      _ -> Nothing
+
+    isKnownInteger = \case
+      Integer i -> Just i
+      UnOp Minus' a -> negate <$> isKnownInteger a
+      UnOp Plus' a -> isKnownInteger a
+      _ -> Nothing
 
 pat :: Parser Pat
-pat = choice
-  [ PatVar <$> try variable
-  , PatWildcard <$ symbol "_"
-  , PatAtom <$> atom
-  , PatInteger <$> patInteger
-  , PatTuple <$> tupleOf pat
-  , listOrListPrefix
-  ]
-  where
-    patInteger = lexeme do
-      choice
-        [ integer
-        , parens patInteger
-        , lexeme (char '+' <* notFollowedBy (char '+')) *> patInteger
-        , lexeme (char '-' <* notFollowedBy (char '-')) *> patInteger <&> negate
-        ]
+pat = exprToPat <$> expr
 
-    listOrListPrefix = do
-      a <- listOf pat <|> ((, Nothing) <$> stringOf PatInteger)
-      b <- optional do symbol "++" *> pat
-      case (a, b) of
-        ((prefix, Nothing), Just suffix) ->
-          pure (makeList PatCons suffix a)
-        (list, Nothing) ->
-          pure (makeList PatCons PatNil list)
-        _ -> empty
+fullyQualifiedName :: Parser FunId
+fullyQualifiedName = do
+  ns <- atom
+  symbol ":"
+  name <- atom
+  symbol "/"
+  arity <- integer
+  pure (MkFunId (coerce ns) (coerce name) (fromInteger arity))
 
-match :: Parser (Pat, Expr)
-match = do
-  p <- pat
-  symbol "="
-  e <- expr
-  pure (p, e)
-
-qualifiedName :: Parser (Maybe Atom, Atom)
+qualifiedName :: Parser (ModuleName, FunName)
 qualifiedName = do
   a <- atom
   b <- optional do symbol ":" *> atom
   case (a, b) of
-    (a, Nothing) -> pure (Nothing, a)
-    (a, Just b) -> pure (Just a, b)
+    (a, Nothing) -> pure ("root", coerce a)
+    (a, Just b) -> pure (coerce a, coerce b)
 
 fun :: Parser FunId
 fun = do
@@ -144,14 +149,8 @@ fun = do
   arity <- integer
   pure (MkFunId ns f (fromInteger arity))
 
-braces :: Parser a -> Parser a
-braces = between (symbol "{") (symbol "}")
-
-brackets :: Parser a -> Parser a
-brackets = between (symbol "[") (symbol "]")
-
-tupleOf :: Parser a -> Parser [a]
-tupleOf elem = braces (elem `sepBy` symbol ",")
+tuple :: Parser [Expr]
+tuple = braces (expr `sepBy` symbol ",")
 
 apply :: Parser (FunId, [Expr])
 apply = do
@@ -165,54 +164,51 @@ dynApply = do
   args <- parens (expr `sepBy` symbol ",")
   pure (f, args)
 
-listOf :: Parser a -> Parser ([a], Maybe a)
-listOf elem = brackets do
-  elem `sepBy` symbol "," >>= \case
+list :: Parser ([Expr], Maybe Expr)
+list = brackets do
+  expr `sepBy` symbol "," >>= \case
     [] -> pure ([], Nothing)
     es -> do
-      rest <- optional (symbol "|" *> elem)
+      rest <- optional (symbol "|" *> expr)
       pure (es, rest)
 
-stringOf :: (Integer -> a) -> Parser [a]
-stringOf elem = lexeme do
-  map (elem . ord) <$> (char '"' *> manyTill L.charLiteral (char '"'))
+stringLit :: Parser String
+stringLit = char '"' *> manyTill L.charLiteral (char '"')
 
-makeList :: (a -> a -> a) -> a -> ([a], Maybe a) -> a
-makeList cons nil ([], Just rest) = rest
-makeList cons nil ([], Nothing) = nil
-makeList cons nil (e:es, rest) = cons e (makeList cons nil (es, rest))
+string_ :: Parser [Expr]
+string_ = lexeme do
+  map (Integer . ord) <$> stringLit
 
-receive :: Parser [(Pat, Exprs)]
-receive = do
-  symbol "receive"
-  cases <- case_ `sepBy1` symbol ";"
-  symbol "end"
-  pure cases
-  where
-    case_ = do
-      p <- pat
-      symbol "->"
-      es <- exprs
-      pure (p, es)
+makeList :: ([Expr], Maybe Expr) -> Expr
+makeList ([], Just rest) = rest
+makeList ([], Nothing) = Nil
+makeList (e:es, rest) = Cons e (makeList (es, rest))
 
-begin :: Parser Exprs
+receive :: Parser [CaseBranch]
+receive = symbol "receive" *> case_ `sepBy1` symbol ";" <* symbol "end" where
+  case_ = do
+    p <- pat
+    symbol "->"
+    es <- exprs
+    pure (CaseBranch p es)
+
+begin :: Parser Expr
 begin = between (symbol "begin") (symbol "end") exprs
 
 term :: Parser Expr
 term = choice
   [ Fun <$> fun
   , Receive <$> receive
-  , uncurry Match <$> try match
-  , uncurry (Apply SimpleCall) <$> try apply
+  , uncurry Apply <$> try apply
   , uncurry DynApply <$> try dynApply
-  , Begin <$> begin
+  , begin
   , parens expr
   , Var <$> variable
   , Atom <$> atom
   , Integer <$> integer
-  , Tuple <$> tupleOf expr
-  , makeList Cons Nil <$> listOf expr
-  , makeList Cons Nil . (, Nothing) <$> stringOf Integer
+  , Tuple <$> tuple
+  , makeList <$> list
+  , makeList . (, Nothing) <$> string_
   ]
 
 expr :: Parser Expr
@@ -240,10 +236,20 @@ expr = makeExprParser term operatorTable
       , 01 * [ binary "++"      []         do BinOp PlusPlus ]
       , 01 * [ binary "=<"      []         do BinOp LTE
              , binary ">="      []         do BinOp GTE ]
-      , 01 * [ binary "andalso" []         do AndAlso ]
-      , 01 * [ binary "orelse"  []         do OrElse  ]
-      , 01 * [ binary "!"       []         do Send    ]
+      , 01 * [ binary "andalso" []         do andAlso ]
+      , 01 * [ binary "orelse"  []         do orElse  ]
+      , 01 * [ binary "!"       []         do send
+             , binary "="       []         do match ]
       ]
+
+    andAlso a b = Case a
+      [ CaseBranch (PatAtom "true") b
+      , CaseBranch (PatAtom "false") (Atom "false") ]
+    orElse a b = Case a
+      [ CaseBranch (PatAtom "true") (Atom "true")
+      , CaseBranch (PatAtom "false") b ]
+    match a b = Match (exprToPat a) b
+    send  a b = Apply "erlang:send/2" [a, b]
 
     (*) = replicate
 
@@ -255,37 +261,60 @@ expr = makeExprParser term operatorTable
 
     op n notNext = (lexeme . try) (string n <* notFollowedBy (choice (map string notNext)))
 
-exprs :: Parser Exprs
-exprs = expr `sepBy1` symbol ","
+exprs :: Parser Expr
+exprs = foldr1 Seq <$> expr `sepBy1` symbol ","
 
-guardSeq :: Parser [Expr]
-guardSeq = expr `sepBy1` symbol ","
-
-funClause :: Parser FunClause
+funClause :: Parser ((FunName, Int), ([Pat], Expr))
 funClause = do
-  name <- atom
+  name <- coerce <$> atom
   pats <- parens (pat `sepBy` symbol ",")
-  guards <- fromMaybe [] <$> optional (symbol "when" *> guardSeq)
   symbol "->"
   body <- exprs
-  let funid = MkFunId Nothing name (length pats)
-  pure MkFunClause{funid, pats, guards, body}
+  pure ((name, length pats), (pats, body))
 
-funDecl :: Parser FunDecl
+funDecl :: Parser Decl
 funDecl = do
-  c : cs <- funClause `sepBy1` symbol ";"
+  (sigs@((name, arity):_), clauses) <- unzip <$> funClause `sepBy1` symbol ";"
   symbol "."
-  let clauses = c : cs
-  let funid = c.funid
-  pure MkFunDecl {funid, clauses}
+  guard (all (== (name, arity)) sigs)
+  let funid = MkFunId "root" name arity
+  let body = case clauses of
+        -- one nullary clause
+        [([], expr)] -> expr
+        -- some unary clauses
+        ([_], _):_ ->
+          Case (Arg 0)
+            [CaseBranch p e | ([p], e) <- clauses]
+        -- some n-ary clauses
+        clauses ->
+          Case (Tuple [Arg i | i <- [0..arity - 1]])
+            [CaseBranch (PatTuple ps) e | (ps, e) <- clauses]
+  pure FunDecl {funid, body}
+
+decl :: Parser Decl
+decl = choice
+  [ funDecl
+  , pragma "native" do
+      agner <- fullyQualifiedName
+      symbol ","
+      c <- stringLit
+      pure Native{agner, c}
+  ]
+  where
+    pragma name body = do
+      symbol "-"
+      symbol name
+      value <- parens body
+      symbol "."
+      pure value
 
 module_ :: Parser Module
 module_ = do
-  decls <- many funDecl
+  decls <- many decl
   pure MkModule{decls}
 
 parse :: Parser a -> String -> a
 parse p s =
   case runParser (sc *> p <* eof) "" s of
     Right x -> x
-    Left err -> throw (ParsingException (errorBundlePretty err))
+    Left err -> error (errorBundlePretty err)

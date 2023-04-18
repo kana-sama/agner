@@ -1,8 +1,10 @@
-{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE DataKinds #-}
 
 import Named
+import Shower (printer)
 
 import Paths_agner (getDataFileName)
+
 
 import System.Process.Typed (runProcess, shell, proc)
 import System.Exit (ExitCode(..), exitFailure)
@@ -12,7 +14,6 @@ import System.Info (os)
 
 import Control.Exception (evaluate, try, displayException)
 
-import Language.Agner.SM qualified as SM
 import Language.Agner.X64 qualified as X64
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Parser qualified as Parser
@@ -52,16 +53,24 @@ runtimeSource = traverse runtimeFile sources
       , "bifs"
       , "operators"
       , "shared_atoms"
+      , "matches"
+      , "asserts"
       ]
 
 gcc ::
   "target" :! X64.Target ->
   "source" :! [FilePath] ->
   "output" :! FilePath ->
-  IO ExitCode
+  IO ()
 gcc (Arg target) (Arg source) (Arg output) = case target of
-  X64.MacOS -> runProcess (proc "gcc" (["-o", output] ++ source))
-  X64.Linux -> runProcess (proc "gcc" (["-o", output] ++ source ++ ["-z", "noexecstack"]))
+  X64.MacOS -> gcc' []
+  X64.Linux -> gcc' ["-z", "noexecstack"]
+  where
+    gcc' extraArgs = do
+      code <- runProcess (proc "gcc" (["-o", output] ++ extraArgs ++ source))
+      case code of
+        ExitSuccess -> pure ()
+        ExitFailure i -> error ("gcc failied with " ++ show i)
 
 compile ::  
   "target" :! X64.Target ->
@@ -69,32 +78,25 @@ compile ::
   "output" :! FilePath ->
   "asm"    :! FilePath ->
   IO ()
-compile (Arg target) (Arg sourcePath) (Arg outputPath) (Arg asmPath) = do
-  sourceCode <- readFile     sourcePath
-  source     <- parse        sourceCode
-  source     <- optimize     source
-  sm         <- compileToSM  source
-  x64        <- compileToX64 sm
-  _          <- compileToBinary x64
+compile (Arg target) (Arg source) (Arg outputPath) (Arg asmPath) = do
+  source  <-  readFile  source
+  source  <-  parse     source
+  source  <-  optimize  source
+  source  <-  compile   source
+  _       <-  toBinary  source
   pure ()
   where
     parse :: String -> IO Syntax.Module
-    parse source =
-      try (evaluate (Parser.parse Parser.module_ source)) >>= \case
-        Right source -> pure source
-        Left (ex :: Parser.Ex) -> do putStrLn (displayException ex); exitFailure
+    parse source = evaluate (Parser.parse Parser.module_ source)
 
     optimize :: Syntax.Module -> IO Syntax.Module
     optimize module_ = pure (Optimizer.optimize module_)
 
-    compileToSM :: Syntax.Module -> IO SM.Prog
-    compileToSM module_ = pure (SM.compileModule module_)
+    compile :: Syntax.Module -> IO X64.Prog
+    compile prog = pure (X64.compile target prog)
 
-    compileToX64 :: SM.Prog -> IO X64.Prog
-    compileToX64 prog = pure (X64.compile target prog)
-
-    compileToBinary :: X64.Prog -> IO ()
-    compileToBinary prog = do
+    toBinary :: X64.Prog -> IO ()
+    toBinary prog = do
       writeFile asmPath (X64.prettyProg prog)
       runtime <- runtimeSource
       gcc ! param #target target

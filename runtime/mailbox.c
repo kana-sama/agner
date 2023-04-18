@@ -29,17 +29,14 @@ void mailbox_push(mailbox_t* mailbox, value_t value) {
 }
 
 
-value_t* mailbox_picked(mailbox_t* mailbox) {
-  return mailbox->picked;
-}
-
-void mailbox_pick(mailbox_t* mailbox) {
+value_t* mailbox_pick(mailbox_t* mailbox) {
   if (mailbox->picked) {
     list_prepend(mailbox->not_matched, mailbox->picked);
   }
 
   value_t* message = list_shift(mailbox->to_match);
   mailbox->picked = message;
+  return message;
 }
 
 void mailbox_drop_picked(mailbox_t* mailbox) {

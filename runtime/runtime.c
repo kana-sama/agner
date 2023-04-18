@@ -28,7 +28,7 @@ void _runtime__start(value_t entry) {
   struct timespec rt_start, rt_end;
   clock_gettime(CLOCK_MONOTONIC_RAW, &rt_start);
 
-  if ((entry & TAG_MASK) != FUN_TAG) _THROW_badfun(entry);
+  if ((entry & TAG_MASK) != FUN_TAG) _throw__badfun(entry);
   scheduler = scheduler_new();
   scheduler_run(scheduler, (action_t)entry);
   scheduler_free(scheduler);
@@ -59,8 +59,13 @@ void _runtime__yield(char* name) {
   scheduler_yield(scheduler);
 }
 
-void _runtime__save_vstack(value_t* vstack_head) {
-  scheduler->current->vstack_head = vstack_head;
+void _runtime__save_vstack() {
+  asm(
+    "movq %%r12, %[stack_head]"
+    : [stack_head] "=m" (scheduler->current->vstack_head) 
+    :
+    : "rdi", "rsi", "rdx", "rcx", "memory", "r12", "r13"
+  );
 }
 
 void _runtime__print_value(value_t value) {
@@ -68,7 +73,11 @@ void _runtime__print_value(value_t value) {
   puts("");
 }
 
-value_t _runtime__alloc_tuple(int64_t size) {
+value_t _alloc__integer(int64_t i) {
+  return (i << TAG_SIZE) | INTEGER_TAG;
+}
+
+value_t _alloc__tuple(int64_t size) {
   boxed_tuple_t* tuple = allocate(
     &scheduler->current->heap,
     scheduler->current->vstack,
@@ -80,22 +89,7 @@ value_t _runtime__alloc_tuple(int64_t size) {
   return (value_t)tuple | BOX_TAG;
 }
 
-void _runtime__fill_tuple(value_t value, int64_t size, value_t* values) {
-  boxed_tuple_t* tuple = (boxed_tuple_t*)(value ^ BOX_TAG);
-  for (int i = 0; i < size; i++) {
-    tuple->values[i] = values[i];
-  }
-}
-
-value_t* _runtime__match_tuple(value_t value, int64_t size) {
-  if ((value & TAG_MASK) != BOX_TAG) return 0;
-  boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
-  if (ref->super.header != TUPLE_HEADER) return 0;
-  if (ref->tuple.size != size) return 0;
-  return ref->tuple.values;
-}
-
-value_t _runtime__alloc_cons() {
+value_t _alloc__cons() {
   boxed_cons_t* cons = allocate(
     &scheduler->current->heap,
     scheduler->current->vstack,
@@ -106,31 +100,25 @@ value_t _runtime__alloc_cons() {
   return (value_t)cons | BOX_TAG;
 }
 
-void _runtime__fill_cons(value_t value, value_t head, value_t tail) {
+void _fill__tuple(value_t value, int64_t size, value_t* values) {
+  boxed_tuple_t* tuple = (boxed_tuple_t*)(value ^ BOX_TAG);
+  for (int i = 0; i < size; i++) {
+    tuple->values[i] = values[i];
+  }
+}
+
+void _fill__cons(value_t value, value_t head, value_t tail) {
   boxed_cons_t* cons = (boxed_cons_t*)(value ^ BOX_TAG);
   cons->head = head;
   cons->tail = tail;
   cons->is_list = is_list(tail) ? 1 : 0;
 }
 
-value_t* _runtime__match_cons(value_t value) {
-  if ((value & TAG_MASK) != BOX_TAG) return 0;
-  boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
-  if (ref->super.header != CONS_HEADER) return 0;
-  return &ref->cons.head;
-}
-
-value_t _runtime__assert_bool_arg(value_t value) {
-  if (value == shared_atom_true()) return shared_atom_true();
-  if (value == shared_atom_false()) return shared_atom_false();
-  _THROW_badarg_single(value);
-}
-
-void _runtime__receive_pick() {
+value_t _receive__pick() {
   while (true) {
-    mailbox_pick(scheduler->current->mailbox);
-    if (mailbox_picked(scheduler->current->mailbox)) {
-      break;
+    value_t* value = mailbox_pick(scheduler->current->mailbox);
+    if (value) {
+      return *value;
     } else {
       mailbox_unpick(scheduler->current->mailbox);
       scheduler_next(scheduler);
@@ -138,11 +126,7 @@ void _runtime__receive_pick() {
   }
 }
 
-value_t _runtime__receive_picked() {
-  return *mailbox_picked(scheduler->current->mailbox);
-}
-
-void _runtime__receive_success() {
+void _receive__success() {
   mailbox_drop_picked(scheduler->current->mailbox);
   mailbox_unpick(scheduler->current->mailbox);
 }

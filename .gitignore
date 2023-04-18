@@ -11,7 +11,8 @@ runtime/*.s
 *.dSYM
 log_*.csv
 
-examples/*.o
-a.out
+examples/*
+!examples/*.agn
+!examples/run_*
 
 .DS_Store

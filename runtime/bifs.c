@@ -11,37 +11,33 @@
 # include "scheduler.h"
 # include "shared_atoms.h"
 
-value_t _agner__print(value_t value) {
-  _runtime__yield("agner:print/1");  
+static
+fun_meta_t* get_meta(bif_context_t ctx) {
+  return ctx;
+}
+
+value_t _agner__print(bif_context_t ctx, value_t value) {
   print_value(value);
   return shared_atom_ok();
 }
 
-value_t _agner__println(value_t value) {
-  _runtime__yield("agner:println/1");
-  
+value_t _agner__println(bif_context_t ctx, value_t value) {
   print_value(value);
   printf("\n");
   fflush(stdout);
   return shared_atom_ok();
 }
 
-static fun_meta_t _agner__put_char__meta = {.arity = 1, .name = "agner:put_char"};
-value_t _agner__put_char(value_t value) {
-  _runtime__yield("agner:put_char/1");
-
+value_t _agner__put_char(bif_context_t ctx, value_t value) {
   value_t args[1] = { value };
-  if ((value & TAG_MASK) != INTEGER_TAG) _THROW_badarg(&_agner__put_char__meta, args);
+  if ((value & TAG_MASK) != INTEGER_TAG) _throw__badarg(get_meta(ctx), args);
   printf("%lc", (int)value >> TAG_SIZE);
   return shared_atom_ok();
 }
 
-static fun_meta_t _agner__put_str__meta = {.arity = 1, .name = "agner:put_str"};
-value_t _agner__put_str(value_t value) {
-  _runtime__yield("agner:put_str/1");
-
+value_t _agner__put_str(bif_context_t ctx, value_t value) {
   value_t args[1] = { value };
-  if (!is_list(value) || !printable_latin1_list(value)) _THROW_badarg(&_agner__put_str__meta, args);
+  if (!is_list(value) || !printable_latin1_list(value)) _throw__badarg(get_meta(ctx), args);
 
   if (value != NIL_TAG) {
     boxed_value_t* ref = cast_to_boxed_value(value);
@@ -55,19 +51,14 @@ value_t _agner__put_str(value_t value) {
   return shared_atom_ok();
 }
 
-value_t _erlang__error(value_t value) {
-  _runtime__yield("erlang:error/1");
-
+value_t _erlang__error(bif_context_t ctx, value_t value) {
   printf("** exception error: ");
   print_value(value);
   printf("\n");
   exit(-1);
 }
 
-static fun_meta_t _timer__sleep__meta = {.arity = 1, .name = "timer:sleep"};
-value_t _timer__sleep(value_t duration) {
-  _runtime__yield("timer:sleep/1");
-
+value_t _timer__sleep(bif_context_t ctx, value_t duration) {
   switch (duration & TAG_MASK) {
     case INTEGER_TAG: {
       struct timespec ts;
@@ -88,42 +79,38 @@ value_t _timer__sleep(value_t duration) {
     }
     default: {
       value_t args[1] = {duration};
-      _THROW_function_clause(&_timer__sleep__meta, args);
+      _throw__function_clause(get_meta(ctx), args);
       return shared_atom_ok();
     }
   }
 }
 
-value_t _erlang__spawn(value_t value) {
-  _runtime__yield("erlang:spawn/1");
-
-  if ((value & TAG_MASK) != FUN_TAG) _THROW_badfun(value);
+value_t _erlang__spawn(bif_context_t ctx, value_t value) {
+  if ((value & TAG_MASK) != FUN_TAG) _throw__badfun(value);
   action_t action = (action_t)value;
   PID_t pid = scheduler_spawn(scheduler, action);
   return pid << TAG_SIZE | PID_TAG;
 }
 
-value_t _erlang__self() {
-  _runtime__yield("erlang:self/0");
-
+value_t _erlang__self(bif_context_t ctx) {
   return scheduler->current->pid << TAG_SIZE | PID_TAG;
 }
 
-value_t _erlang__send(value_t target, value_t msg) {
-  if ((target & TAG_MASK) != PID_TAG) _THROW_badarg_binop(target, msg, "!");
+value_t _erlang__send(bif_context_t ctx, value_t target, value_t msg) {
+  if ((target & TAG_MASK) != PID_TAG) _throw__badarg_binop(target, msg, "!");
   PID_t pid = target >> TAG_SIZE;
   process_send(pid, msg);
   return msg;
 }
 
-value_t _erlang__is_atom__1(value_t value) {
+value_t _erlang__is_atom__1(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) == ATOM_TAG)
     return shared_atom_true();
   else
     return shared_atom_false();
 }
 
-value_t _erlang__is_list__1(value_t value) {
+value_t _erlang__is_list__1(bif_context_t ctx, value_t value) {
   if (value == NIL_TAG) return shared_atom_true();
 
   boxed_value_t* ref = cast_to_boxed_value(value);
@@ -132,14 +119,14 @@ value_t _erlang__is_list__1(value_t value) {
   return shared_atom_false();
 }
 
-value_t _erlang__is_integer__1(value_t value) {
+value_t _erlang__is_integer__1(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) == INTEGER_TAG)
     return shared_atom_true();
   else
     return shared_atom_false();
 }
 
-value_t _erlang__is_tuple__1(value_t value) {
+value_t _erlang__is_tuple__1(bif_context_t ctx, value_t value) {
   boxed_value_t* ref = cast_to_boxed_value(value);
   if (ref && ref->super.header == TUPLE_HEADER)
     return shared_atom_true();
@@ -147,14 +134,14 @@ value_t _erlang__is_tuple__1(value_t value) {
     return shared_atom_false();
 }
 
-value_t _erlang__is_function__1(value_t value) {
+value_t _erlang__is_function__1(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) == FUN_TAG)
     return shared_atom_true();
   else
     return shared_atom_false();
 }
 
-value_t _erlang__is_pid__1(value_t value) {
+value_t _erlang__is_pid__1(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) == PID_TAG)
     return shared_atom_true();
   else
@@ -162,18 +149,18 @@ value_t _erlang__is_pid__1(value_t value) {
 }
 
 
-static fun_meta_t _erlang__atom_to_list__1__meta = {.arity = 1, .name = "erlang:atom_to_list"};
-value_t _erlang__atom_to_list__1(value_t value) {
+
+value_t _erlang__atom_to_list__1(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) != ATOM_TAG) {
     value_t args[1] = {value};
-    _THROW_badarg(&_erlang__atom_to_list__1__meta, args);
+    _throw__badarg(get_meta(ctx), args);
   }
 
   char* name = (char*)value;
   char* name_end = name + strlen(name);
   value_t list = NIL_TAG;
   for (char* c = name + strlen(name) - 1; c >= name; c--) {
-    value_t new_list = _runtime__alloc_cons();
+    value_t new_list = _alloc__cons();
     boxed_cons_t* cons = &cast_to_boxed_value(new_list)->cons;
     cons->is_list = 1;
     cons->head = (int64_t)(*c) << TAG_SIZE | INTEGER_TAG;
@@ -184,11 +171,10 @@ value_t _erlang__atom_to_list__1(value_t value) {
   return list;
 }
 
-static fun_meta_t _erlang__integer_to_list__1__meta = {.arity = 1, .name = "erlang:integer_to_list"};
-value_t _erlang__integer_to_list__1(value_t value) {
+value_t _erlang__integer_to_list__1(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) != INTEGER_TAG) {
     value_t args[1] = {value};
-    _THROW_badarg(&_erlang__integer_to_list__1__meta, args);
+    _throw__badarg(get_meta(ctx), args);
   }
 
   char* str;
@@ -196,7 +182,7 @@ value_t _erlang__integer_to_list__1(value_t value) {
 
   value_t list = NIL_TAG;
   for (int i = strlen(str) - 1; i >= 0; i--) {
-    value_t new_list = _runtime__alloc_cons();
+    value_t new_list = _alloc__cons();
     boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
     new_list_ref->cons.is_list = 1;
     new_list_ref->cons.head = str[i] << TAG_SIZE | INTEGER_TAG;
@@ -209,17 +195,16 @@ value_t _erlang__integer_to_list__1(value_t value) {
   return list;
 }
 
-static fun_meta_t _erlang__tuple_to_list__1__meta = {.arity = 1, .name = "erlang:tuple_to_list"};
-value_t _erlang__tuple_to_list__1(value_t value) {
+value_t _erlang__tuple_to_list__1(bif_context_t ctx, value_t value) {
   boxed_value_t* ref = cast_to_boxed_value(value);
   if (!ref || ref->super.header != TUPLE_HEADER) {
     value_t args[1] = {value};
-    _THROW_badarg(&_erlang__tuple_to_list__1__meta, args);
+    _throw__badarg(get_meta(ctx), args);
   }
 
   value_t list = NIL_TAG;
   for (value_t *v = ref->tuple.values + ref->tuple.size - 1; v >= ref->tuple.values; v -= 1) {
-    value_t new_list = _runtime__alloc_cons();
+    value_t new_list = _alloc__cons();
     boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
     new_list_ref->cons.is_list = 1;
     new_list_ref->cons.head = *v;
@@ -229,11 +214,10 @@ value_t _erlang__tuple_to_list__1(value_t value) {
   return list;
 }
 
-static fun_meta_t _erlang__fun_to_list__1__meta = {.arity = 1, .name = "erlang:fun_to_list"};
-value_t _erlang__fun_to_list__1(value_t value) {
+value_t _erlang__fun_to_list__1(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) != FUN_TAG) {
     value_t args[1] = {value};
-    _THROW_badarg(&_erlang__fun_to_list__1__meta, args);
+    _throw__badarg(get_meta(ctx), args);
   }
 
   fun_meta_t* meta = get_fun_meta(value);
@@ -242,7 +226,7 @@ value_t _erlang__fun_to_list__1(value_t value) {
 
   value_t list = NIL_TAG;
   for (int i = strlen(str) - 1; i >= 0; i--) {
-    value_t new_list = _runtime__alloc_cons();
+    value_t new_list = _alloc__cons();
     boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
     new_list_ref->cons.is_list = 1;
     new_list_ref->cons.head = str[i] << TAG_SIZE | INTEGER_TAG;
@@ -255,11 +239,10 @@ value_t _erlang__fun_to_list__1(value_t value) {
   return list;
 }
 
-static fun_meta_t _erlang__pid_to_list__1__meta = {.arity = 1, .name = "erlang:pid_to_list"};
-value_t _erlang__pid_to_list__1(value_t value) {
+value_t _erlang__pid_to_list__1(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) != PID_TAG) {
     value_t args[1] = {value};
-    _THROW_badarg(&_erlang__pid_to_list__1__meta, args);
+    _throw__badarg(get_meta(ctx), args);
   }
 
   char* str;
@@ -267,7 +250,7 @@ value_t _erlang__pid_to_list__1(value_t value) {
 
   value_t list = NIL_TAG;
   for (int i = strlen(str) - 1; i >= 0; i--) {
-    value_t new_list = _runtime__alloc_cons();
+    value_t new_list = _alloc__cons();
     boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
     new_list_ref->cons.is_list = 1;
     new_list_ref->cons.head = str[i] << TAG_SIZE | INTEGER_TAG;

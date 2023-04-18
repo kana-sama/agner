@@ -13,7 +13,7 @@
 value_t _unop__not(value_t value) {
   if (value == shared_atom_true()) return shared_atom_false();
   if (value == shared_atom_false()) return shared_atom_true();
-  _THROW_badarg_unop(value, "not");
+  _throw__badarg_unop(value, "not");
 }
 
 value_t _binop__and(value_t l, value_t r) {
@@ -21,7 +21,7 @@ value_t _binop__and(value_t l, value_t r) {
   if (l == shared_atom_false() && r == shared_atom_true())  return shared_atom_false();
   if (l == shared_atom_true()  && r == shared_atom_false()) return shared_atom_false();
   if (l == shared_atom_false() && r == shared_atom_false()) return shared_atom_false();
-  _THROW_badarg_binop(l, r, "and");
+  _throw__badarg_binop(l, r, "and");
 }
 
 value_t _binop__or(value_t l, value_t r) {
@@ -29,7 +29,7 @@ value_t _binop__or(value_t l, value_t r) {
   if (l == shared_atom_false() && r == shared_atom_true())  return shared_atom_true();
   if (l == shared_atom_true()  && r == shared_atom_false()) return shared_atom_true();
   if (l == shared_atom_false() && r == shared_atom_false()) return shared_atom_false();
-  _THROW_badarg_binop(l, r, "or");
+  _throw__badarg_binop(l, r, "or");
 }
 
 value_t _binop__xor(value_t l, value_t r) {
@@ -37,7 +37,7 @@ value_t _binop__xor(value_t l, value_t r) {
   if (l == shared_atom_false() && r == shared_atom_true())  return shared_atom_true();
   if (l == shared_atom_true()  && r == shared_atom_false()) return shared_atom_true();
   if (l == shared_atom_false() && r == shared_atom_false()) return shared_atom_false();
-  _THROW_badarg_binop(l, r, "xor");
+  _throw__badarg_binop(l, r, "xor");
 }
 
 
@@ -46,37 +46,37 @@ value_t _binop__xor(value_t l, value_t r) {
 
 value_t _unop__plus(value_t x) {
   if (is_integer(x)) return x;
-  _THROW_badarith_unary(x, "+");
+  _throw__badarith_unary(x, "+");
 }
 
 value_t _unop__minus(value_t x) {
   if (is_integer(x)) return encode_integer(-decode_integer(x));
-  _THROW_badarith_unary(x, "-");
+  _throw__badarith_unary(x, "-");
 }
 
 value_t _binop__plus(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) + decode_integer(r));
-  _THROW_badarith(l, r, "+");
+  _throw__badarith(l, r, "+");
 }
 
 value_t _binop__minus(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) - decode_integer(r));
-  _THROW_badarith(l, r, "-");
+  _throw__badarith(l, r, "-");
 }
 
 value_t _binop__times(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) * decode_integer(r));
-  _THROW_badarith(l, r, "*");
+  _throw__badarith(l, r, "*");
 }
 
 value_t _binop__div(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) / decode_integer(r));
-  _THROW_badarith(l, r, "div");
+  _throw__badarith(l, r, "div");
 }
 
 value_t _binop__rem(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) % decode_integer(r));
-  _THROW_badarith(l, r, "rem");
+  _throw__badarith(l, r, "rem");
 }
 
 
@@ -85,32 +85,32 @@ value_t _binop__rem(value_t l, value_t r) {
 
 value_t _unop__bnot(value_t x) {
   if (is_integer(x)) return encode_integer(~decode_integer(x));
-  _THROW_badarith_unary(x, "-");
+  _throw__badarith_unary(x, "-");
 }
 
 value_t _binop__band(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) & decode_integer(r));
-  _THROW_badarith(l, r, "band");
+  _throw__badarith(l, r, "band");
 }
 
 value_t _binop__bor(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) | decode_integer(r));
-  _THROW_badarith(l, r, "bor");
+  _throw__badarith(l, r, "bor");
 }
 
 value_t _binop__bxor(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) ^ decode_integer(r));
-  _THROW_badarith(l, r, "bxor");
+  _throw__badarith(l, r, "bxor");
 }
 
 value_t _binop__bsl(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) << decode_integer(r));
-  _THROW_badarith(l, r, "bsl");
+  _throw__badarith(l, r, "bsl");
 }
 
 value_t _binop__bsr(value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) >> decode_integer(r));
-  _THROW_badarith(l, r, "bsr");
+  _throw__badarith(l, r, "bsr");
 }
 
 
@@ -118,7 +118,7 @@ value_t _binop__bsr(value_t l, value_t r) {
 // lists
 
 value_t _binop__plusplus(value_t l, value_t r) {
-  if (!(is_list(l))) _THROW_badarg_binop(l, r, "++");
+  if (!(is_list(l))) _throw__badarg_binop(l, r, "++");
 
   int64_t result_is_list = is_list(r);
   
@@ -126,7 +126,7 @@ value_t _binop__plusplus(value_t l, value_t r) {
   if (l == NIL_TAG) return r;
 
   // case [H|T]
-  value_t new = _runtime__alloc_cons();
+  value_t new = _alloc__cons();
   boxed_value_t* ref = cast_to_boxed_value(l);
   boxed_value_t* cur = cast_to_boxed_value(new);
 
@@ -137,7 +137,7 @@ value_t _binop__plusplus(value_t l, value_t r) {
       cur->cons.tail = r;
       break;
     } else {
-      cur->cons.tail = _runtime__alloc_cons();
+      cur->cons.tail = _alloc__cons();
       cur = cast_to_boxed_value(cur->cons.tail);
       ref = cast_to_boxed_value(ref->cons.tail);
     }

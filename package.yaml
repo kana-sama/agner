@@ -12,9 +12,7 @@ default-extensions:
   - OverloadedRecordDot
   - StrictData
   - AllowAmbiguousTypes
-  - RecursiveDo
   - ImplicitParams
-  - DataKinds
   - DuplicateRecordFields
   - PatternSynonyms
   - OverloadedStrings
@@ -47,7 +45,9 @@ library:
     - mtl
     - transformers
     - lens
+    - indexed-traversable
     - generic-lens
+    - uniplate
 
     - megaparsec
     - parser-combinators
@@ -60,3 +60,4 @@ executables:
       - typed-process
       - filepath
       - named
+      - shower
