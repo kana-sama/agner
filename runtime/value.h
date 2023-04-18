@@ -3,6 +3,8 @@
 # include <stdlib.h>
 # include <stdbool.h>
 
+# include "list.h"
+
 typedef int64_t value_t;
 typedef int64_t PID_t;
 
@@ -24,7 +26,7 @@ typedef struct boxed_tuple_t {
 
 typedef struct boxed_cons_t {
   boxed_super_t super;
-  int64_t is_list;
+  int64_t proper_list_length;
   value_t head;
   value_t tail;
 } boxed_cons_t;
@@ -41,7 +43,11 @@ typedef struct boxed_value_children_t {
 } boxed_value_children_t;
 
 fun_meta_t* get_fun_meta(value_t fun);
-bool is_list(value_t value);
+
+bool is_proper_list(value_t);
+int64_t proper_list_length(value_t);
+list_t* proper_list_values(value_t);
+
 void print_value(value_t value);
 void print_value_trancated(value_t value);
 int64_t boxed_value_size(boxed_value_t*);

@@ -19,7 +19,7 @@ data BinOp
   = Plus | Minus | Times | Div | Rem
   | BAnd | BOr | BXor | BSL | BSR
   | And | Or | Xor
-  | PlusPlus
+  | Plus_Plus | Minus_Minus
   | Eq_Eq | Slash_Eq | Eq_Less | Less | Greater_Eq | Greater | Eq_Colon_Eq | Eq_Slash_Eq
   deriving stock (Show, Eq, Data)
 

@@ -13,12 +13,16 @@ typedef struct list_t {
   node_t* end;
 } list_t;
 
+typedef bool(*eq_fun_t)(void*, void*);
+
 list_t* list_new();
 void    list_free(list_t*);
 bool    list_null(list_t*);
 void    list_append(list_t*, void*);
 void    list_prepend(list_t*, void*);
 void*   list_shift(list_t*);
+list_t* list_reverse(list_t*);
 void    list_remove(list_t*, void*);
+void    list_remove_by(list_t*, void*, eq_fun_t);
 int64_t list_size(list_t*);
 void    list_foreach(list_t*, void(*)(void*));

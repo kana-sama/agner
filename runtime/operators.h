@@ -26,7 +26,8 @@ value_t _binop__bsl(value_t, value_t);
 value_t _binop__bsr(value_t, value_t);
 
 // lists
-value_t _binop__plusplus(value_t, value_t);
+value_t _binop__plus_plus(value_t, value_t);
+value_t _binop__minus_minus(value_t, value_t);
 
 // comparison
 value_t _binop__eq_eq(value_t, value_t);

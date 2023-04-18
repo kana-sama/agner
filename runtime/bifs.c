@@ -37,7 +37,7 @@ value_t _agner__put_char(bif_context_t ctx, value_t value) {
 
 value_t _agner__put_str(bif_context_t ctx, value_t value) {
   value_t args[1] = { value };
-  if (!is_list(value) || !printable_latin1_list(value)) _throw__badarg(get_meta(ctx), args);
+  if (!is_proper_list(value) || !printable_latin1_list(value)) _throw__badarg(get_meta(ctx), args);
 
   if (value != NIL_TAG) {
     boxed_value_t* ref = cast_to_boxed_value(value);
@@ -161,10 +161,7 @@ value_t _erlang__atom_to_list__1(bif_context_t ctx, value_t value) {
   value_t list = NIL_TAG;
   for (char* c = name + strlen(name) - 1; c >= name; c--) {
     value_t new_list = _alloc__cons();
-    boxed_cons_t* cons = &cast_to_boxed_value(new_list)->cons;
-    cons->is_list = 1;
-    cons->head = (int64_t)(*c) << TAG_SIZE | INTEGER_TAG;
-    cons->tail = list;
+    _fill__cons(new_list, encode_integer(*c), list);
     list = new_list;
   }
 
@@ -183,10 +180,7 @@ value_t _erlang__integer_to_list__1(bif_context_t ctx, value_t value) {
   value_t list = NIL_TAG;
   for (int i = strlen(str) - 1; i >= 0; i--) {
     value_t new_list = _alloc__cons();
-    boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
-    new_list_ref->cons.is_list = 1;
-    new_list_ref->cons.head = str[i] << TAG_SIZE | INTEGER_TAG;
-    new_list_ref->cons.tail = list;
+    _fill__cons(new_list, encode_integer(str[i]), list);
     list = new_list;
   }
 
@@ -205,10 +199,7 @@ value_t _erlang__tuple_to_list__1(bif_context_t ctx, value_t value) {
   value_t list = NIL_TAG;
   for (value_t *v = ref->tuple.values + ref->tuple.size - 1; v >= ref->tuple.values; v -= 1) {
     value_t new_list = _alloc__cons();
-    boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
-    new_list_ref->cons.is_list = 1;
-    new_list_ref->cons.head = *v;
-    new_list_ref->cons.tail = list;
+    _fill__cons(new_list, *v, list);
     list = new_list;
   }
   return list;
@@ -227,10 +218,7 @@ value_t _erlang__fun_to_list__1(bif_context_t ctx, value_t value) {
   value_t list = NIL_TAG;
   for (int i = strlen(str) - 1; i >= 0; i--) {
     value_t new_list = _alloc__cons();
-    boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
-    new_list_ref->cons.is_list = 1;
-    new_list_ref->cons.head = str[i] << TAG_SIZE | INTEGER_TAG;
-    new_list_ref->cons.tail = list;
+    _fill__cons(new_list, encode_integer(str[i]), list);
     list = new_list;
   }
 
@@ -251,10 +239,7 @@ value_t _erlang__pid_to_list__1(bif_context_t ctx, value_t value) {
   value_t list = NIL_TAG;
   for (int i = strlen(str) - 1; i >= 0; i--) {
     value_t new_list = _alloc__cons();
-    boxed_value_t* new_list_ref = cast_to_boxed_value(new_list);
-    new_list_ref->cons.is_list = 1;
-    new_list_ref->cons.head = str[i] << TAG_SIZE | INTEGER_TAG;
-    new_list_ref->cons.tail = list;
+    _fill__cons(new_list, encode_integer(str[i]), list);
     list = new_list;
   }
 

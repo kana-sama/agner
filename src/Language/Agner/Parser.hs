@@ -96,7 +96,7 @@ exprToPat = \case
   Var "_" -> PatWildcard
   Var v -> PatVar v
   Fun _ -> error "invalid pattern: function"
-  BinOp PlusPlus a b | Just xs <- isKnownList a ->
+  BinOp Plus_Plus a b | Just xs <- isKnownList a ->
     foldr PatCons (exprToPat b) xs
   BinOp _ _ _ -> error "invalid pattern: binop"
   UnOp Minus' a | Just i <- isKnownInteger a -> PatInteger i
@@ -249,7 +249,8 @@ expr = makeExprParser term operatorTable
              , binary "bsr"     []         do BinOp BSR
              , binary "or"      ["else"]   do BinOp Or
              , binary "xor"     []         do BinOp Xor ]
-      , 01 * [ binary "++"      []         do BinOp PlusPlus ]
+      , 01 * [ binary "++"      []         do BinOp Plus_Plus
+             , binary "--"      []         do BinOp Minus_Minus ]
       , 01 * [ binary "=="      []         do BinOp Eq_Eq
              , binary "/="      []         do BinOp Slash_Eq
              , binary "=<"      []         do BinOp Eq_Less

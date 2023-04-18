@@ -4,6 +4,7 @@
 # include <string.h>
 
 # include "tags.h"
+# include "list.h"
 # include "value.h"
 
 static char control_char_alias(int64_t c) {
@@ -33,7 +34,7 @@ bool printable_latin1_list(value_t value) {
 
   boxed_value_t* ref = cast_to_boxed_value(value);
   if (ref->super.header != CONS_HEADER) return false;
-  if (!ref->cons.is_list) return false;
+  if (ref->cons.proper_list_length == -1) return false;
 
   while (ref) {
     if (!printable_latin1(ref->cons.head)) return false;
@@ -49,12 +50,33 @@ fun_meta_t* get_fun_meta(value_t fun) {
   return ((void*)fun + fun_size);
 }
 
-bool is_list(value_t value) {
+bool is_proper_list(value_t value) {
   if ((value & TAG_MASK) == NIL_TAG) return 1;
   if ((value & TAG_MASK) != BOX_TAG) return 0;
   boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
   if (ref->super.header != CONS_HEADER) return 0;
-  return ref->cons.is_list;
+  return ref->cons.proper_list_length != -1;
+}
+
+int64_t proper_list_length(value_t value) {
+  if (is_proper_list(value)) {
+    if ((value & TAG_MASK) == NIL_TAG) return 0;
+    return cast_to_boxed_value(value)->cons.proper_list_length;
+  } else {
+    return -1;
+  }
+}
+
+list_t* proper_list_values(value_t value) {
+  list_t* values = list_new();
+
+  while (value != NIL_TAG) {
+    boxed_value_t* ref = cast_to_boxed_value(value);
+    list_append(values, (void*)ref->cons.head);
+    value = ref->cons.tail;
+  }
+  
+  return values;
 }
 
 static void print_char(int c) {
@@ -133,7 +155,7 @@ void print_value_(value_t value, bool trancated) {
             print_string(cast_to_boxed_value(value));
           else if (trancated)
             printf("[...]");
-          else if (ref->cons.is_list)
+          else if (ref->cons.proper_list_length != -1)
             print_list(ref);
           else
             print_cons(ref);

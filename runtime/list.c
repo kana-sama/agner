@@ -64,7 +64,18 @@ void* list_shift(list_t* list) {
   return value;
 }
 
-void list_remove(list_t* list, void* value) {
+list_t* list_reverse(list_t* list) {
+  list_t* result = list_new();
+
+  while (!list_null(list)) {
+    list_prepend(result, list_shift(list));
+  }
+
+  free(list);
+  return result;
+}
+
+void list_remove_by(list_t* list, void* value, eq_fun_t eq) {
   if (list_null(list)) return;
   if (list->beg->head == value) {
     list_shift(list);
@@ -73,7 +84,7 @@ void list_remove(list_t* list, void* value) {
   
   node_t* node = list->beg;
   while (node->tail) {
-    if (node->tail->head == value) {
+    if (eq(node->tail->head, value)) {
       node_t* to_remove = node->tail;
 
       if (node->tail == list->end) {
@@ -90,6 +101,11 @@ void list_remove(list_t* list, void* value) {
 
     node = node->tail;
   }
+}
+
+static bool equality(void* a, void* b) { return a == b; }
+void list_remove(list_t* list, void* value) {
+  list_remove_by(list, value, equality);
 }
 
 int64_t list_size(list_t* list) {

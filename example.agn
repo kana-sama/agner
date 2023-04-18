@@ -1,16 +1,7 @@
 -native(agner:println/1, "_agner__println").
 
-even(0) -> true;
-even(1) -> false;
-even(N) -> even(N-2).
-
-every(F, []) -> true;
-every(F, [H|T]) -> begin
-  agner:println([H|T] ++ [0]),
-  even(H) andalso every(F, T)
-end.
-
-% constant stack
 main() ->
-  List = [2, 4, 6, 8, 10],
-  agner:println(every(fun even/1, begin agner:println(here), List end)).
+  agner:println([1, 2, 3, 2, 1, 5] -- [1]),
+  agner:println([1, 2, 3, 2, 1, 5] -- [2]),
+  agner:println([1, 2, 3, 2, 1, 5] -- [2, 1]),
+  agner:println([1, 2, 3, 2, 1, 5] -- [2, 1, 1, 2]).

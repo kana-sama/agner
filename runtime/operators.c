@@ -6,6 +6,7 @@
 # include "runtime.h"
 # include "tags.h"
 # include "throw.h"
+# include "list.h"
 # include "shared_atoms.h"
 
 
@@ -119,35 +120,46 @@ value_t _binop__bsr(value_t l, value_t r) {
 
 // lists
 
-value_t _binop__plusplus(value_t l, value_t r) {
-  if (!(is_list(l))) _throw__badarg_binop(l, r, "++");
+value_t _binop__plus_plus(value_t l, value_t r) {
+  if (!(is_proper_list(l))) _throw__badarg_binop(l, r, "++");
 
-  int64_t result_is_list = is_list(r);
-  
-  // case []
-  if (l == NIL_TAG) return r;
+  list_t* values = list_reverse(proper_list_values(l));
+  value_t result = r;
 
-  // case [H|T]
-  value_t new = _alloc__cons();
-  boxed_value_t* ref = cast_to_boxed_value(l);
-  boxed_value_t* cur = cast_to_boxed_value(new);
-
-  while (true) {
-    cur->cons.head = ref->cons.head;
-    cur->cons.is_list = result_is_list;
-    if (ref->cons.tail == NIL_TAG) {
-      cur->cons.tail = r;
-      break;
-    } else {
-      cur->cons.tail = _alloc__cons();
-      cur = cast_to_boxed_value(cur->cons.tail);
-      ref = cast_to_boxed_value(ref->cons.tail);
-    }
+  while (!list_null(values)) {
+    value_t new_result = _alloc__cons();
+    _fill__cons(new_result, (value_t)list_shift(values), result);
+    result = new_result;
   }
 
-  return new;
+  list_free(values);
+
+  return result;
 }
 
+
+value_t _binop__minus_minus(value_t l, value_t r) {
+  if (!is_proper_list(l) || !is_proper_list(r)) _throw__badarg_binop(l, r, "--");
+
+  list_t* lvals = proper_list_values(l);
+  list_t* rvals = proper_list_values(r);
+
+  while (!list_null(rvals)) {
+    list_remove_by(lvals, list_shift(rvals), (eq_fun_t)value_eq);
+  }
+
+  lvals = list_reverse(lvals);
+  value_t result = NIL_TAG;
+  while (!list_null(lvals)) {
+    value_t new_result = _alloc__cons();
+    _fill__cons(new_result, (value_t)list_shift(lvals), result);
+    result = new_result;
+  }
+
+  list_free(lvals); list_free(rvals);
+
+  return result;
+}
 
 
 // comparison

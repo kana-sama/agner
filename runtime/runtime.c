@@ -111,7 +111,7 @@ void _fill__cons(value_t value, value_t head, value_t tail) {
   boxed_cons_t* cons = (boxed_cons_t*)(value ^ BOX_TAG);
   cons->head = head;
   cons->tail = tail;
-  cons->is_list = is_list(tail) ? 1 : 0;
+  cons->proper_list_length = is_proper_list(tail) ? proper_list_length(tail) + 1 : -1;
 }
 
 value_t _receive__pick() {
