@@ -149,6 +149,56 @@ pat value p on_match_fail = case p of
               pat child p on_match_fail
       
 
+guardSeq :: WithTarget => [[Expr]] -> Label -> M ()
+guardSeq or_guards fail = do
+  guards_done <- label
+  true <- atom "true"
+  for_ or_guards \and_guards -> do
+    next_or_guard <- label
+    for_ and_guards \guard -> do
+      withAlloc \value -> do
+        expr value guard
+        tell [ movq value rax ]
+        tell [ cmpq rax true ]
+        tell [ jne next_or_guard ]
+    tell [ jmp    guards_done ]
+    tell [ _label next_or_guard ]
+  tell [ jmp    fail ]
+  tell [ _label guards_done ]
+
+
+caseBranch :: WithTarget => Operand -> Operand -> Label -> CaseBranch -> M ()
+caseBranch value result done branch = do
+  fail  <- label
+  saved <- saveVars branch.pat
+  pat value branch.pat do
+    tell [ jmp fail ]
+
+  unless (null branch.guards) do
+    guardSeq branch.guards fail
+  
+  expr result branch.body
+  tell [ jmp    done ]
+
+  tell [ _label fail ]
+  restoreVars branch.pat saved
+  where
+    saveVars pat = do
+      for (Set.toList (allVars pat)) \var -> do
+        var   <- variable var
+        saved <- alloc
+        tell [ movq var rax ]
+        tell [ movq rax saved ]
+        pure saved
+
+    restoreVars pat saved = do
+      for_ (zip (Set.toList (allVars pat)) saved) \(var, saved) -> do
+        var <- variable var
+        tell [ movq saved rax ]
+        tell [ movq rax var ]
+        free saved
+
+
 expr :: WithTarget => Operand -> Expr -> M ()
 expr result = \case
   Integer i -> do
@@ -277,20 +327,13 @@ expr result = \case
 
     withAlloc \msg -> do
       tell [ _label loop ]
+
       tell [ callq  (runtime "receive:pick") ]
       tell [ movq   rax msg ]
-
-      for_ cases \(CaseBranch p body) -> do
-        fail  <- label
-        saved <- saveVars p
-        pat msg p do
-          tell [ jmp fail ]
-        result <~ body
-        tell [ jmp done ]
-        tell [ _label fail ]
-        restoreVars p saved
+      for_ cases (caseBranch msg result done)
 
       tell [ jmp    loop ]
+
       tell [ _label done ]
       tell [ callq  (runtime "receive:success") ]
   
@@ -298,15 +341,7 @@ expr result = \case
     done <- label
 
     result <~ e
-    for_ cases \(CaseBranch p body) -> do
-      fail  <- label
-      saved <- saveVars p
-      pat result p do
-        tell [ jmp fail ]
-      result <~ body
-      tell [ jmp    done ]
-      tell [ _label fail ]
-      restoreVars p saved
+    for_ cases (caseBranch result result done)
     
     tell [ movq  result rdi ]
     tell [ callq (runtime "throw:case_clause") ]
@@ -319,21 +354,6 @@ expr result = \case
 
   where
     (<~) = expr
-
-    saveVars pat = do
-      for (Set.toList (allVars pat)) \var -> do
-        var   <- variable var
-        saved <- alloc
-        tell [ movq var rax ]
-        tell [ movq rax saved ]
-        pure saved
-
-    restoreVars pat saved = do
-      for_ (zip (Set.toList (allVars pat)) saved) \(var, saved) -> do
-        var <- variable var
-        tell [ movq saved rax ]
-        tell [ movq rax var ]
-        free saved
 
 
 funWrapper :: WithTarget => FunId -> M () -> M ()

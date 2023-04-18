@@ -184,12 +184,22 @@ makeList ([], Just rest) = rest
 makeList ([], Nothing) = Nil
 makeList (e:es, rest) = Cons e (makeList (es, rest))
 
+guard_seq :: Parser GuardSeq
+guard_seq = (expr `sepBy1` symbol ",") `sepBy1` symbol ";"
+
+whenGuards :: Parser GuardSeq
+whenGuards = do
+  optional (symbol "when" *> guard_seq) >>= \case
+    Nothing -> pure []
+    Just gs -> pure gs
+
 caseBranch :: Parser CaseBranch
 caseBranch = do
-  p <- pat
+  pat <- pat
+  guards <- whenGuards
   symbol "->"
-  es <- exprs
-  pure (CaseBranch p es)
+  body <- exprs
+  pure CaseBranch{pat, guards, body}
 
 case_ :: Parser (Expr, [CaseBranch])
 case_ = do
@@ -199,6 +209,14 @@ case_ = do
   bs <- caseBranch `sepBy1` symbol ";"
   symbol "end"
   pure (e, bs)
+
+if_ :: Parser [(GuardSeq, Expr)]
+if_ = symbol "if" *> (if_branch `sepBy1` symbol ";") <* symbol "end" where
+  if_branch = do
+    g <- guard_seq
+    symbol "->"
+    b <- exprs
+    pure (g, b)
 
 receive :: Parser [CaseBranch]
 receive = do
@@ -215,6 +233,7 @@ term = choice
   [ Fun <$> fun
   , Receive <$> receive
   , uncurry Case <$> case_
+  , makeIf <$> if_
   , uncurry Apply <$> try apply
   , uncurry DynApply <$> try dynApply
   , begin
@@ -226,6 +245,8 @@ term = choice
   , makeList <$> list
   , makeList . (, Nothing) <$> string_
   ]
+  where
+    makeIf branches = Case Nil [CaseBranch PatWildcard gs body | (gs, body) <- branches]
 
 expr :: Parser Expr
 expr = makeExprParser term operatorTable
@@ -266,11 +287,11 @@ expr = makeExprParser term operatorTable
       ]
 
     andAlso a b = Case a
-      [ CaseBranch (PatAtom "true") b
-      , CaseBranch (PatAtom "false") (Atom "false") ]
+      [ CaseBranch (PatAtom "true")  [] b
+      , CaseBranch (PatAtom "false") [] (Atom "false") ]
     orElse a b = Case a
-      [ CaseBranch (PatAtom "true") (Atom "true")
-      , CaseBranch (PatAtom "false") b ]
+      [ CaseBranch (PatAtom "true")  [] (Atom "true")
+      , CaseBranch (PatAtom "false") [] b ]
     match a b = Match (exprToPat a) b
     send  a b = Apply "erlang:send/2" [a, b]
 
@@ -287,13 +308,14 @@ expr = makeExprParser term operatorTable
 exprs :: Parser Expr
 exprs = foldr1 Seq <$> expr `sepBy1` symbol ","
 
-funClause :: Parser ((FunName, Int), ([Pat], Expr))
+funClause :: Parser ((FunName, Int), ([Pat], [[Expr]], Expr))
 funClause = do
   name <- coerce <$> atom
   pats <- parens (pat `sepBy` symbol ",")
+  guards <- whenGuards
   symbol "->"
   body <- exprs
-  pure ((name, length pats), (pats, body))
+  pure ((name, length pats), (pats, guards, body))
 
 funDecl :: Parser Decl
 funDecl = do
@@ -303,15 +325,15 @@ funDecl = do
   let funid = MkFunId "root" name arity
   let body = case clauses of
         -- one nullary clause
-        [([], expr)] -> expr
+        [([], [], expr)] -> expr
         -- some unary clauses
-        ([_], _):_ ->
+        ([_], _, _):_ ->
           Case (Arg 0)
-            [CaseBranch p e | ([p], e) <- clauses]
+            [CaseBranch p gs e | ([p], gs, e) <- clauses]
         -- some n-ary clauses
         clauses ->
           Case (Tuple [Arg i | i <- [0..arity - 1]])
-            [CaseBranch (PatTuple ps) e | (ps, e) <- clauses]
+            [CaseBranch (PatTuple ps) gs e | (ps, gs, e) <- clauses]
   pure FunDecl {funid, body}
 
 decl :: Parser Decl

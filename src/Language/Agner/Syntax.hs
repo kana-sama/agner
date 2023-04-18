@@ -26,7 +26,14 @@ data BinOp
 data UnOp = Plus' | Minus' | BNot | Not
   deriving stock (Show, Eq, Data)
 
-data CaseBranch = CaseBranch Pat Expr
+type GuardSeq = [GuardExp]
+type GuardExp = [Expr]
+
+data CaseBranch = CaseBranch
+  { pat    :: Pat
+  , guards :: GuardSeq
+  , body   :: Expr
+  }
   deriving stock (Show, Data)
   
 data Expr

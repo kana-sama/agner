@@ -1,7 +1,12 @@
 -native(agner:println/1, "_agner__println").
 
+odd(X) -> X rem 2 == 1.
+
 main() ->
-  agner:println([1, 2, 3, 2, 1, 5] -- [1]),
-  agner:println([1, 2, 3, 2, 1, 5] -- [2]),
-  agner:println([1, 2, 3, 2, 1, 5] -- [2, 1]),
-  agner:println([1, 2, 3, 2, 1, 5] -- [2, 1, 1, 2]).
+  X = 10,
+  agner:println(if
+    X < 5 -> "< 5";
+    X > 5, X < 10 -> "in (5..10)";
+    X > 10, odd(X); X =< 10, not odd(X) -> "even =< 10 or odd > 10";
+    true -> "else"
+  end).
