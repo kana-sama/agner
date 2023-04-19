@@ -125,10 +125,10 @@ pat value p on_match_fail = case p of
     pat value p2 on_match_fail
 
   where
-    match fun ops children | length ops > 2 = error "to many args for match"
+    match fun ops children | length ops > 4 = error "to many args for match"
     match fun ops children = do
       done <- label
-      for_ (zip ops [rdi, rsi]) \case
+      for_ (zip ops [rdi, rsi, rdx, rcx]) \case
         (ByValue op, t) -> tell [ movq op t ]
         (ByRef   op, t) -> tell [ leaq op t ]
       tell [ callq  (runtime fun) ]
@@ -218,43 +218,32 @@ expr result = \case
       value <- alloc
       value <~ e
       pure value
-    
-    tell [ movq  (fromIntegral size) rdi ]
-    tell [ callq (runtime "alloc:tuple") ]
-    tell [ movq  rax result ]
 
     when (odd size) do
       tell [ subq WORD_SIZE rsp ]
     for_ (reverse values) \value -> do
       tell [ pushq value ]
-
-    tell [ movq  rax rdi ]
-    tell [ movq  (fromIntegral size) rsi ]
-    tell [ movq  rsp rdx ]
-    tell [ callq (runtime "fill:tuple") ]
+    
+    tell [ movq  (fromIntegral size) rdi ]
+    tell [ movq  rsp rsi ]
+    tell [ callq (runtime "alloc:tuple") ]
+    tell [ movq  rax result ]
 
     let restore = WORD_SIZE * if odd size then size + 1 else size
     tell [ addq (Imm (fromIntegral restore)) rsp ]
 
     for_ values free
   
-  Nil{} ->
+  Nil ->
     tell [ movq NIL_TAG result ]
   
   Cons a b -> do
-    a' <- alloc; a' <~ a
-    b' <- alloc; b' <~ b
-  
-    tell [ callq (runtime "alloc:cons") ]
-    tell [ movq  rax result ]
-
-    tell [ movq  rax rdi ]
-    tell [ movq  a' rsi ]
-    tell [ movq  b' rdx ]
-    tell [ callq (runtime "fill:cons") ]
-
-    free a'
-    free b'
+    withAlloc \a_ -> withAlloc \b_ -> do
+      a_ <~ a; b_ <~ b
+      tell [ movq  a_ rdi ]
+      tell [ movq  b_ rsi ]
+      tell [ callq (runtime "alloc:cons") ]
+      tell [ movq  rax result ]
 
   Arg arg -> do
     arg <- argument arg
@@ -271,19 +260,19 @@ expr result = \case
     tell [ movq rax result ]
   
   BinOp op a b -> do
-    withAlloc \temp -> do
-      result <~ a
-      temp   <~ b
-      tell [ movq  result rdi ]
-      tell [ movq  temp rsi ]
+    withAlloc \a_ -> withAlloc \b_ -> do
+      a_ <~ a; b_ <~ b
+      tell [ movq  a_ rdi ]
+      tell [ movq  b_ rsi ]
       tell [ callq (runtime ("binop:" ++ binOpName op)) ]
       tell [ movq  rax result ]
   
   UnOp op a -> do
-    result <~ a
-    tell [ movq  result rdi ]
-    tell [ callq (runtime ("unop:" ++ unOpName op)) ]
-    tell [ movq  rax result ]
+    withAlloc \a_ -> do
+      a_ <~ a
+      tell [ movq  a_ rdi ]
+      tell [ callq (runtime ("unop:" ++ unOpName op)) ]
+      tell [ movq  rax result ]
   
   Match p e -> do
     result <~ e
@@ -340,13 +329,14 @@ expr result = \case
   Case e cases -> do
     done <- label
 
-    result <~ e
-    for_ cases (caseBranch result result done)
-    
-    tell [ movq  result rdi ]
-    tell [ callq (runtime "throw:case_clause") ]
+    withAlloc \value -> do
+      value <~ e
+      for_ cases (caseBranch value result done)
+      
+      tell [ movq  value rdi ]
+      tell [ callq (runtime "throw:case_clause") ]
 
-    tell [ _label done]
+      tell [ _label done]
 
   Seq a b -> do
     result <~ a
@@ -434,6 +424,7 @@ decl FunDecl{funid, body} = funWrapper funid mdo
   tell [ _comment "initializing locals" ]
   #variables <~ Map.unions <$> for (Set.toList (allVars body)) \var -> do
     slot <- alloc
+    tell [ _comment ("variable " ++ var.getString) ]
     tell [ movq UNBOUND_TAG slot ]
     pure (Map.singleton var slot)
 

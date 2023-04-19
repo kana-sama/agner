@@ -20,71 +20,75 @@ static void append_children(list_t* queue, boxed_value_t* ref) {
   }
 }
 
+static void mark_value(list_t* queue, int64_t* offset, boxed_value_t* ref) {
+  if (ref && ref->super.gc_offset == 0) {
+    ref->super.gc_offset = *offset;
+    *offset += boxed_value_size(ref);
+    append_children(queue, ref);
+  }
+}
+
+static void update_value(list_t* queue, heap_t* new_heap, value_t* value) {
+  boxed_value_t* ref = cast_to_boxed_value(*value);
+  if (!ref) return;
+  *value = (value_t)(new_heap->mem + ref->super.gc_offset) | BOX_TAG;
+  list_append(queue, ref);
+}
+
+static boxed_value_t* move_ref(heap_t* new_heap, boxed_value_t* ref) {
+  void* dst = (void*)(new_heap->mem + ref->super.gc_offset);
+  void* src = (void*)ref;
+  size_t count = boxed_value_size(ref) * sizeof(value_t);
+  memcpy(dst, src, count);
+
+  boxed_value_t* new_ref = (boxed_value_t*)dst;
+  new_ref->super.gc_offset = 0;
+  
+  return new_ref;
+}
+
 // mark and copy algorithm
-heap_t* collect_garbage(
+heap_t* heap_gc(
   heap_t* heap,
-  value_t* stack,
-  value_t* stack_head
+  gc_ctx_t ctx
 ) {
   struct timespec gc_start, gc_end;
   clock_gettime(CLOCK_MONOTONIC_RAW, &gc_start);
   
-  int64_t stack_size = stack_head - stack;
   int64_t offset = 0;
   list_t* queue = list_new();
 
-  for (int i = 0; i < stack_size; i++) {
-    boxed_value_t* ref = cast_to_boxed_value(stack[i]); if (!ref) continue;;
-
-    if (ref->super.gc_offset == 0) {
-      ref->super.gc_offset = offset;
-      offset += boxed_value_size(ref);
-      append_children(queue, ref);
-    }
-  }
-
-  while (!list_null(queue)) {
-    boxed_value_t* ref = list_shift(queue);
-
-    if (ref->super.gc_offset == 0) {
-      ref->super.gc_offset = offset;
-      offset += boxed_value_size(ref);
-      append_children(queue, ref);
-    }
-  }
+  for (value_t* i = ctx.vstack; i < ctx.vstack_head; i++)
+    mark_value(queue, &offset, cast_to_boxed_value(*i));
+  for (node_t* i = ctx.scopes->values->beg; i; i = i->next)
+    mark_value(queue, &offset, cast_to_boxed_value(*(value_t*)i->value));
+  for (node_t* i = ctx.mailbox->messages->beg; i; i = i->next)
+    mark_value(queue, &offset, cast_to_boxed_value(*(value_t*)i->value));
+  for (node_t* i = ctx.mailbox->picked->beg; i; i = i->next)
+    mark_value(queue, &offset, cast_to_boxed_value(*(value_t*)i->value));
+  while (!list_null(queue))
+    mark_value(queue, &offset, list_shift(queue));
 
   heap_t* new_heap = heap_new(offset * 2);
   new_heap->mem_head = new_heap->mem + offset;
 
-  for (int i = 0; i < stack_size; i++) {
-    value_t value = stack[i];
-    boxed_value_t* ref = cast_to_boxed_value(stack[i]); if (!ref) continue;
-    stack[i] = (value_t)(new_heap->mem + ref->super.gc_offset) | BOX_TAG;
-    list_append(queue, ref);
-  }
-
+  for (value_t* i = ctx.vstack; i < ctx.vstack_head; i++)
+    update_value(queue, new_heap, i);
+  for (node_t* i = ctx.scopes->values->beg; i; i = i->next)
+    update_value(queue, new_heap, (value_t*)i->value);
+  for (node_t* i = ctx.mailbox->messages->beg; i; i = i->next)
+    update_value(queue, new_heap, (value_t*)i->value);
+  for (node_t* i = ctx.mailbox->picked->beg; i; i = i->next)
+    update_value(queue, new_heap, (value_t*)i->value);
   while (!list_null(queue)) {
-    boxed_value_t* ref = list_shift(queue);
-
-    void* dst = (void*)(new_heap->mem + ref->super.gc_offset);
-    void* src = (void*)ref;
-    size_t count = boxed_value_size(ref) * sizeof(value_t);
-    memcpy(dst, src, count);
-
-    boxed_value_t* new_ref = (boxed_value_t*)dst;
-    new_ref->super.gc_offset = 0;
-
+    boxed_value_t* new_ref = move_ref(new_heap, list_shift(queue));
     boxed_value_children_t children = boxed_value_children(new_ref);
-    for (int i = 0; i < children.count; i++) {
-      if ((children.values[i] & TAG_MASK) == BOX_TAG) {
-        boxed_value_t* ref = (boxed_value_t*)(children.values[i] ^ BOX_TAG);
-        children.values[i] = (value_t)(new_heap->mem + ref->super.gc_offset) | BOX_TAG;
-      }
-    }
-    
-    append_children(queue, ref);
+    for (int i = 0; i < children.count; i++)
+      update_value(queue, new_heap, &children.values[i]);
   }
 
+  // на всякий случай, чтобы получить ошибку если кто-то будет ссылаться на старый хип
+  memset(heap->mem, 0, sizeof(value_t) * heap->size);
   heap_free(heap);
   list_free(queue);
 
@@ -108,29 +112,28 @@ void heap_free(heap_t* heap) {
   free(heap);
 }
 
-void* allocate(heap_t** heap, value_t* stack, value_t* stack_head, int64_t size) {
-  if ((*heap)->mem_end - (*heap)->mem_head < size) {
-    *heap = collect_garbage(*heap, stack, stack_head);
-  }
+void* heap_allocate(heap_t** heap, int64_t size, gc_ctx_t ctx) {
+  if ((*heap)->mem_end - (*heap)->mem_head < size)
+    *heap = heap_gc(*heap, ctx);
 
   value_t* target = (*heap)->mem_head;
   (*heap)->mem_head += size;
-  for (int i = 0; i < size; i++) target[i] = 0;
-
+  memset(target, 0, size * sizeof(value_t));
+  
   return target;
 }
 
-value_t copy_to_heap(value_t value, heap_t** heap, value_t* stack, value_t* stack_head) {
+value_t copy_to_heap(value_t value, heap_t** heap, gc_ctx_t ctx) {
   boxed_value_t* ref = cast_to_boxed_value(value);
   if (ref == NULL) return value;
 
   int64_t size = boxed_value_size(ref);
-  void* dst = allocate(heap, stack, stack_head, size);
+  void* dst = heap_allocate(heap, size, ctx);
   memcpy(dst, ref, size * sizeof(value_t));
 
   boxed_value_children_t children = boxed_value_children(ref);
   for (int i = 0; i < children.count; i++) {
-    children.values[i] = copy_to_heap(children.values[i], heap, stack, stack_head);
+    children.values[i] = copy_to_heap(children.values[i], heap, ctx);
   }
 
   return (value_t)(dst) | BOX_TAG;

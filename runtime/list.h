@@ -4,8 +4,9 @@
 # include <stdint.h>
 
 typedef struct node_t {
-  void* head;
-  struct node_t* tail;
+  struct node_t* prev;
+  void*  value;
+  struct node_t* next;
 } node_t;
 
 typedef struct list_t {
@@ -25,4 +26,9 @@ list_t* list_reverse(list_t*);
 void    list_remove(list_t*, void*);
 void    list_remove_by(list_t*, void*, eq_fun_t);
 int64_t list_size(list_t*);
-void    list_foreach(list_t*, void(*)(void*));
+
+typedef void(*list_foreach_t)(void*);
+void list_foreach(list_t*, list_foreach_t);
+
+typedef void*(*list_map_t)(void*);
+void list_map(list_t*, list_map_t);

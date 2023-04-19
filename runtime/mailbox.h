@@ -4,9 +4,8 @@
 # include "value.h"
 
 typedef struct mailbox_t {
-  list_t* to_match;
-  list_t* not_matched;
-  value_t* picked;
+  list_t* messages;
+  list_t* picked;
 } mailbox_t;
 
 mailbox_t* mailbox_new();

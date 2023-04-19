@@ -55,6 +55,7 @@ runtimeSource = traverse runtimeFile sources
       , "shared_atoms"
       , "matches"
       , "asserts"
+      , "scopes"
       ]
 
 gcc ::

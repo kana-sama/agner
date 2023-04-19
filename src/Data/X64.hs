@@ -22,7 +22,7 @@ data Operand
   | Imm Int -- $8
   | ImmL String
   | Lbl Label
-  deriving stock (Eq, Ord)
+  deriving stock (Eq, Ord, Show)
 
 instance Num Operand where
   fromInteger = Imm . fromIntegral

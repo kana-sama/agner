@@ -103,14 +103,19 @@ value_t _erlang__send(bif_context_t ctx, value_t target, value_t msg) {
   return msg;
 }
 
-value_t _erlang__is_atom__1(bif_context_t ctx, value_t value) {
+value_t _erlang__garbage_collect(bif_context_t ctx) {
+  allocate(0);
+  return shared_atom_true();
+}
+
+value_t _erlang__is_atom(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) == ATOM_TAG)
     return shared_atom_true();
   else
     return shared_atom_false();
 }
 
-value_t _erlang__is_list__1(bif_context_t ctx, value_t value) {
+value_t _erlang__is_list(bif_context_t ctx, value_t value) {
   if (value == NIL_TAG) return shared_atom_true();
 
   boxed_value_t* ref = cast_to_boxed_value(value);
@@ -119,14 +124,14 @@ value_t _erlang__is_list__1(bif_context_t ctx, value_t value) {
   return shared_atom_false();
 }
 
-value_t _erlang__is_integer__1(bif_context_t ctx, value_t value) {
+value_t _erlang__is_integer(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) == INTEGER_TAG)
     return shared_atom_true();
   else
     return shared_atom_false();
 }
 
-value_t _erlang__is_tuple__1(bif_context_t ctx, value_t value) {
+value_t _erlang__is_tuple(bif_context_t ctx, value_t value) {
   boxed_value_t* ref = cast_to_boxed_value(value);
   if (ref && ref->super.header == TUPLE_HEADER)
     return shared_atom_true();
@@ -134,14 +139,14 @@ value_t _erlang__is_tuple__1(bif_context_t ctx, value_t value) {
     return shared_atom_false();
 }
 
-value_t _erlang__is_function__1(bif_context_t ctx, value_t value) {
+value_t _erlang__is_function(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) == FUN_TAG)
     return shared_atom_true();
   else
     return shared_atom_false();
 }
 
-value_t _erlang__is_pid__1(bif_context_t ctx, value_t value) {
+value_t _erlang__is_pid(bif_context_t ctx, value_t value) {
   if ((value & TAG_MASK) == PID_TAG)
     return shared_atom_true();
   else
@@ -150,100 +155,100 @@ value_t _erlang__is_pid__1(bif_context_t ctx, value_t value) {
 
 
 
-value_t _erlang__atom_to_list__1(bif_context_t ctx, value_t value) {
-  if ((value & TAG_MASK) != ATOM_TAG) {
-    value_t args[1] = {value};
-    _throw__badarg(get_meta(ctx), args);
-  }
+// value_t _erlang__atom_to_list(bif_context_t ctx, value_t value) {
+//   if ((value & TAG_MASK) != ATOM_TAG) {
+//     value_t args[1] = {value};
+//     _throw__badarg(get_meta(ctx), args);
+//   }
 
-  char* name = (char*)value;
-  char* name_end = name + strlen(name);
-  value_t list = NIL_TAG;
-  for (char* c = name + strlen(name) - 1; c >= name; c--) {
-    value_t new_list = _alloc__cons();
-    _fill__cons(new_list, encode_integer(*c), list);
-    list = new_list;
-  }
+//   char* name = (char*)value;
+//   char* name_end = name + strlen(name);
+//   value_t list = NIL_TAG;
+//   for (char* c = name + strlen(name) - 1; c >= name; c--) {
+//     value_t new_list = _alloc__cons();
+//     _fill__cons(new_list, encode_integer(*c), list);
+//     list = new_list;
+//   }
 
-  return list;
-}
+//   return list;
+// }
 
-value_t _erlang__integer_to_list__1(bif_context_t ctx, value_t value) {
-  if ((value & TAG_MASK) != INTEGER_TAG) {
-    value_t args[1] = {value};
-    _throw__badarg(get_meta(ctx), args);
-  }
+// value_t _erlang__integer_to_list(bif_context_t ctx, value_t value) {
+//   if ((value & TAG_MASK) != INTEGER_TAG) {
+//     value_t args[1] = {value};
+//     _throw__badarg(get_meta(ctx), args);
+//   }
 
-  char* str;
-  asprintf(&str, "%lld", value >> TAG_SIZE);
+//   char* str;
+//   asprintf(&str, "%lld", value >> TAG_SIZE);
 
-  value_t list = NIL_TAG;
-  for (int i = strlen(str) - 1; i >= 0; i--) {
-    value_t new_list = _alloc__cons();
-    _fill__cons(new_list, encode_integer(str[i]), list);
-    list = new_list;
-  }
+//   value_t list = NIL_TAG;
+//   for (int i = strlen(str) - 1; i >= 0; i--) {
+//     value_t new_list = _alloc__cons();
+//     _fill__cons(new_list, encode_integer(str[i]), list);
+//     list = new_list;
+//   }
 
-  free(str);
+//   free(str);
 
-  return list;
-}
+//   return list;
+// }
 
-value_t _erlang__tuple_to_list__1(bif_context_t ctx, value_t value) {
-  boxed_value_t* ref = cast_to_boxed_value(value);
-  if (!ref || ref->super.header != TUPLE_HEADER) {
-    value_t args[1] = {value};
-    _throw__badarg(get_meta(ctx), args);
-  }
+// value_t _erlang__tuple_to_list(bif_context_t ctx, value_t value) {
+//   boxed_value_t* ref = cast_to_boxed_value(value);
+//   if (!ref || ref->super.header != TUPLE_HEADER) {
+//     value_t args[1] = {value};
+//     _throw__badarg(get_meta(ctx), args);
+//   }
 
-  value_t list = NIL_TAG;
-  for (value_t *v = ref->tuple.values + ref->tuple.size - 1; v >= ref->tuple.values; v -= 1) {
-    value_t new_list = _alloc__cons();
-    _fill__cons(new_list, *v, list);
-    list = new_list;
-  }
-  return list;
-}
+//   value_t list = NIL_TAG;
+//   for (value_t *v = ref->tuple.values + ref->tuple.size - 1; v >= ref->tuple.values; v -= 1) {
+//     value_t new_list = _alloc__cons();
+//     _fill__cons(new_list, *v, list);
+//     list = new_list;
+//   }
+//   return list;
+// }
 
-value_t _erlang__fun_to_list__1(bif_context_t ctx, value_t value) {
-  if ((value & TAG_MASK) != FUN_TAG) {
-    value_t args[1] = {value};
-    _throw__badarg(get_meta(ctx), args);
-  }
+// value_t _erlang__fun_to_list(bif_context_t ctx, value_t value) {
+//   if ((value & TAG_MASK) != FUN_TAG) {
+//     value_t args[1] = {value};
+//     _throw__badarg(get_meta(ctx), args);
+//   }
 
-  fun_meta_t* meta = get_fun_meta(value);
-  char* str;
-  asprintf(&str, "fun %s/%lld", meta->name, meta->arity);
+//   fun_meta_t* meta = get_fun_meta(value);
+//   char* str;
+//   asprintf(&str, "fun %s/%lld", meta->name, meta->arity);
 
-  value_t list = NIL_TAG;
-  for (int i = strlen(str) - 1; i >= 0; i--) {
-    value_t new_list = _alloc__cons();
-    _fill__cons(new_list, encode_integer(str[i]), list);
-    list = new_list;
-  }
+//   value_t list = NIL_TAG;
+//   for (int i = strlen(str) - 1; i >= 0; i--) {
+//     value_t new_list = _alloc__cons();
+//     _fill__cons(new_list, encode_integer(str[i]), list);
+//     list = new_list;
+//   }
 
-  free(str);
+//   free(str);
 
-  return list;
-}
+//   return list;
+// }
 
-value_t _erlang__pid_to_list__1(bif_context_t ctx, value_t value) {
-  if ((value & TAG_MASK) != PID_TAG) {
-    value_t args[1] = {value};
-    _throw__badarg(get_meta(ctx), args);
-  }
+// value_t _erlang__pid_to_list(bif_context_t ctx, value_t value) {
+//   if ((value & TAG_MASK) != PID_TAG) {
+//     value_t args[1] = {value};
+//     _throw__badarg(get_meta(ctx), args);
+//   }
 
-  char* str;
-  asprintf(&str, "<%lld>", value >> TAG_SIZE);
+//   char* str;
+//   asprintf(&str, "<%lld>", value >> TAG_SIZE);
 
-  value_t list = NIL_TAG;
-  for (int i = strlen(str) - 1; i >= 0; i--) {
-    value_t new_list = _alloc__cons();
-    _fill__cons(new_list, encode_integer(str[i]), list);
-    list = new_list;
-  }
+//   value_t list = NIL_TAG;
+//   for (int i = strlen(str) - 1; i >= 0; i--) {
+//     value_t new_list = _alloc__cons();
+//     _fill__cons(new_list, encode_integer(str[i]), list);
+//     list = new_list;
+//   }
 
-  free(str);
+//   free(str);
 
-  return list;
-}
+//   return list;
+// }

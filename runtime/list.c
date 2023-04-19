@@ -2,6 +2,7 @@
 
 # include <stdlib.h>
 # include <stdint.h>
+# include <stdio.h>
 
 list_t* list_new() {
   list_t* list = malloc(sizeof(list_t));
@@ -13,9 +14,9 @@ list_t* list_new() {
 void list_free(list_t* list) {
   node_t* node = list->beg;
   while (node) {
-    node_t* tail = node->tail;
+    node_t* next = node->next;
     free(node);
-    node = tail;
+    node = next;
   }
 
   free(list);
@@ -27,13 +28,14 @@ bool list_null(list_t* list) {
 
 void list_append(list_t* list, void* value) {
   node_t* node = malloc(sizeof(node_t));
-  node->head = value;
-  node->tail = NULL;
+  node->prev = list->end;
+  node->value = value;
+  node->next = NULL;
 
   if (list_null(list)) {
     list->beg = node;
   } else {
-    list->end->tail = node;
+    list->end->next = node;
   }
 
   list->end = node;
@@ -41,12 +43,16 @@ void list_append(list_t* list, void* value) {
 
 void list_prepend(list_t* list, void* value) {
   node_t* node = malloc(sizeof(node_t));
-  node->head = value;
-  node->tail = list->beg;
-  list->beg = node;
+  node->prev = NULL;
+  node->value = value;
+  node->next = list->beg;
 
   if (list_null(list)) { 
+    list->beg = node;
     list->end = node;
+  } else {
+    list->beg->prev = node;
+    list->beg = node;
   }
 }
 
@@ -54,11 +60,13 @@ void* list_shift(list_t* list) {
   if (list_null(list)) return NULL;
 
   node_t* node = list->beg;
-  void* value = node->head;
+  void* value = node->value;
 
-  list->beg = node->tail;
-  if (node->tail == NULL)
+  list->beg = node->next;
+  if (node->next == NULL)
     list->end = NULL;
+  else
+    list->beg->prev = NULL;
 
   free(node);
   return value;
@@ -77,29 +85,34 @@ list_t* list_reverse(list_t* list) {
 
 void list_remove_by(list_t* list, void* value, eq_fun_t eq) {
   if (list_null(list)) return;
-  if (list->beg->head == value) {
+  if (eq(list->beg->value, value)) {
     list_shift(list);
     return;
   }
   
   node_t* node = list->beg;
-  while (node->tail) {
-    if (eq(node->tail->head, value)) {
-      node_t* to_remove = node->tail;
+  while (node->next) {
+    if (eq(node->next->value, value)) {
+      node_t* to_remove = node->next;
 
-      if (node->tail == list->end) {
+      if (node->next == list->end) {
         list->end = node;
-        node->tail = NULL;
+        node->next = NULL;
       } else {
-        node->tail = node->tail->tail;
+        node->next = node->next->next;
       }
 
       free(to_remove);
-
       return;
     }
 
-    node = node->tail;
+    if (node->next == list->end && eq(node->next->value, value)) {
+      free(node->next);
+      node->next = NULL;
+      list->end = node;
+    } else {
+      node = node->next;
+    }
   }
 }
 
@@ -114,17 +127,18 @@ int64_t list_size(list_t* list) {
 
   while (node) {
     size += 1;
-    node = node->tail;
+    node = node->next;
   }
 
   return size;
 }
 
-void list_foreach(list_t* list, void(*action)(void*)) {
-  node_t* node = list->beg;
+void list_foreach(list_t* list, list_foreach_t action) {
+  for (node_t* i = list->beg; i; i = i->next)
+    action(i->value);
+}
 
-  while (node) {
-    action(node->head);
-    node = node->tail;
-  }
-};
+void list_map(list_t* list, list_map_t action) {
+  for (node_t* i = list->beg; i; i = i->next)
+    i->value = action(i->value);
+}

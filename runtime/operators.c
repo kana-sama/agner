@@ -120,45 +120,27 @@ value_t _binop__bsr(value_t l, value_t r) {
 
 // lists
 
-value_t _binop__plus_plus(value_t l, value_t r) {
-  if (!(is_proper_list(l))) _throw__badarg_binop(l, r, "++");
+value_t _binop__plus_plus(value_t l_, value_t r_) {
+  enter_scope();
 
-  list_t* values = list_reverse(proper_list_values(l));
-  value_t result = r;
+  value_t* l = add_to_scope(l_);
+  value_t* r = add_to_scope(r_);
 
-  while (!list_null(values)) {
-    value_t new_result = _alloc__cons();
-    _fill__cons(new_result, (value_t)list_shift(values), result);
-    result = new_result;
-  }
+  if (!(is_proper_list(*l))) _throw__badarg_binop(*l, *r, "++");
 
+  list_t* values = list_reverse(proper_list_values(*l));
+  while (!list_null(values))
+    *r = _alloc__cons((value_t)list_shift(values), *r);
   list_free(values);
 
+  value_t result = *r;
+  leave_scope();
   return result;
 }
 
-
 value_t _binop__minus_minus(value_t l, value_t r) {
-  if (!is_proper_list(l) || !is_proper_list(r)) _throw__badarg_binop(l, r, "--");
-
-  list_t* lvals = proper_list_values(l);
-  list_t* rvals = proper_list_values(r);
-
-  while (!list_null(rvals)) {
-    list_remove_by(lvals, list_shift(rvals), (eq_fun_t)value_eq);
-  }
-
-  lvals = list_reverse(lvals);
-  value_t result = NIL_TAG;
-  while (!list_null(lvals)) {
-    value_t new_result = _alloc__cons();
-    _fill__cons(new_result, (value_t)list_shift(lvals), result);
-    result = new_result;
-  }
-
-  list_free(lvals); list_free(rvals);
-
-  return result;
+  puts("--/2 is not defined");
+  exit(-1);
 }
 
 

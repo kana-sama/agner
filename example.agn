@@ -1,12 +1,24 @@
 -native(agner:println/1, "_agner__println").
+-native(erlang:garbage_collect/0, "_erlang__garbage_collect").
 
-odd(X) -> X rem 2 == 1.
+replicate(N) -> replicate(N, []).
+replicate(0, Acc) -> Acc;
+replicate(N, Acc) -> replicate(N-1, [{N}|Acc]).
+
+length(List) -> length(List, 0).
+length({}, Acc) -> Acc;
+length({_,T}, Acc) -> length(T, Acc+1).
+
+reverse(X) -> reverse(X, []).
+reverse([], Acc) -> Acc;
+reverse([H|T], Acc) -> reverse(T, [H|Acc]).
+
+f(X) -> f(X, []).
+f([], Acc) -> reverse(Acc);
+f([{H}|T], Acc) -> f(T, [{H+1}|Acc]).
 
 main() ->
-  X = 10,
-  agner:println(if
-    X < 5 -> "< 5";
-    X > 5, X < 10 -> "in (5..10)";
-    X > 10, odd(X); X =< 10, not odd(X) -> "even =< 10 or odd > 10";
-    true -> "else"
-  end).
+  N = 10000,
+  A = replicate(N),
+  agner:println(A),
+  ok.

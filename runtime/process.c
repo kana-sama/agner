@@ -8,6 +8,7 @@
 # include "value.h"
 # include "list.h"
 # include "mailbox.h"
+# include "scopes.h"
 
 # define MB (1024 * 1024)
 
@@ -34,6 +35,7 @@ process_t* process_new() {
   process->vstack      = calloc(options.initial_vstack * MB, sizeof(value_t));
   process->vstack_head = process->vstack;
   process->mailbox     = mailbox_new();
+  process->scopes      = scopes_new();
   process->context     = malloc(sizeof(jmp_buf));
   process->is_alive    = true;
 
@@ -47,6 +49,7 @@ void process_free(process_t* process) {
 
   heap_free(process->heap);
   mailbox_free(process->mailbox);
+  scopes_free(process->scopes);
   free(process->stack);
   free(process->vstack);
   free(process->context);
@@ -56,16 +59,25 @@ void process_free(process_t* process) {
 process_t* process_lookup(PID_t pid) {
   node_t* node = registry->beg;
   while (node) {
-    process_t* process = node->head;
+    process_t* process = node->value;
     if (process->pid == pid) return process;
-    node = node->tail;
+    node = node->next;
   }
   return NULL;
+}
+
+gc_ctx_t process_gc_ctx(process_t* process) {
+  return (gc_ctx_t){
+    .vstack = process->vstack,
+    .vstack_head = process->vstack_head,
+    .scopes = process->scopes,
+    .mailbox = process->mailbox,
+  };
 }
 
 void process_send(PID_t pid, value_t message) {
   process_t* process = process_lookup(pid);
   if (process == NULL || !process->is_alive) return;
-  value_t message_copy = copy_to_heap(message, &process->heap, process->vstack, process->vstack_head);
+  value_t message_copy = copy_to_heap(message, &process->heap, process_gc_ctx(process));
   mailbox_push(process->mailbox, message_copy);
 }

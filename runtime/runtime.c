@@ -56,6 +56,12 @@ void _runtime__yield(char* name) {
     );
   }
 
+  if (list_size(scheduler->current->scopes->values) != 0 ||
+      list_size(scheduler->current->scopes->frames) != 0) {
+    puts("Non-empty heap.extra_values");
+    exit(-1);
+  }
+
   scheduler_yield(scheduler);
 }
 
@@ -68,50 +74,56 @@ void _runtime__save_vstack() {
   );
 }
 
-void _runtime__print_value(value_t value) {
-  print_value(value);
-  puts("");
+void enter_scope() {
+  scopes_enter(scheduler->current->scopes);
+}
+
+void leave_scope() {
+  scopes_leave(scheduler->current->scopes);
+}
+
+value_t* add_to_scope(value_t value) {
+  return scopes_declare(scheduler->current->scopes, value);
+}
+
+void* allocate(int64_t size) {
+  return heap_allocate(&scheduler->current->heap, size, process_gc_ctx(scheduler->current));
 }
 
 value_t _alloc__integer(int64_t i) {
   return (i << TAG_SIZE) | INTEGER_TAG;
 }
 
-value_t _alloc__tuple(int64_t size) {
-  boxed_tuple_t* tuple = allocate(
-    &scheduler->current->heap,
-    scheduler->current->vstack,
-    scheduler->current->vstack_head,
-    sizeof(boxed_tuple_t)/WORD_SIZE + size
-  );
+value_t _alloc__tuple(int64_t size, value_t* values_) {
+  enter_scope();
+
+  value_t* values[size];
+  for (int i = 0; i < size; i++)
+    values[i] = add_to_scope(values_[i]);
+
+  boxed_tuple_t* tuple = allocate(sizeof(boxed_tuple_t)/WORD_SIZE + size);
   tuple->super.header = TUPLE_HEADER;
   tuple->size = size;
+  for (int i = 0; i < size; i++)
+    tuple->values[i] = *values[i];
+
+  leave_scope();
   return (value_t)tuple | BOX_TAG;
 }
 
-value_t _alloc__cons() {
-  boxed_cons_t* cons = allocate(
-    &scheduler->current->heap,
-    scheduler->current->vstack,
-    scheduler->current->vstack_head,
-    sizeof(boxed_cons_t)/WORD_SIZE
-  );
+value_t _alloc__cons(value_t head_, value_t tail_) {
+  enter_scope();
+  value_t* head = add_to_scope(head_);
+  value_t* tail = add_to_scope(tail_);
+
+  boxed_cons_t* cons = allocate(sizeof(boxed_cons_t) / WORD_SIZE);
   cons->super.header = CONS_HEADER;
+  cons->head = *head;
+  cons->tail = *tail;
+  cons->proper_list_length = is_proper_list(*tail) ? proper_list_length(*tail) + 1 : -1;
+
+  leave_scope();
   return (value_t)cons | BOX_TAG;
-}
-
-void _fill__tuple(value_t value, int64_t size, value_t* values) {
-  boxed_tuple_t* tuple = (boxed_tuple_t*)(value ^ BOX_TAG);
-  for (int i = 0; i < size; i++) {
-    tuple->values[i] = values[i];
-  }
-}
-
-void _fill__cons(value_t value, value_t head, value_t tail) {
-  boxed_cons_t* cons = (boxed_cons_t*)(value ^ BOX_TAG);
-  cons->head = head;
-  cons->tail = tail;
-  cons->proper_list_length = is_proper_list(tail) ? proper_list_length(tail) + 1 : -1;
 }
 
 value_t _receive__pick() {

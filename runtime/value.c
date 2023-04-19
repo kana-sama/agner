@@ -120,7 +120,7 @@ static void print_cons(boxed_value_t* ref) {
   printf("]");
 }
 
-void print_value_(value_t value, bool trancated) {
+void print_value_(value_t value, bool trancated, int available_depth) {
   switch (value & TAG_MASK) {
     case UNBOUND_TAG:
       printf("[UNBOUND]"); break;
@@ -143,9 +143,13 @@ void print_value_(value_t value, bool trancated) {
       switch (ref->super.header) {
         case TUPLE_HEADER: {
           printf("{");
-          for (int i = 0; i < ref->tuple.size; i++) {
-            print_value_(ref->tuple.values[i], trancated);
-            if (i != ref->tuple.size - 1) printf(",");
+          if (trancated && available_depth == 0) {
+            printf("...");
+          } else {
+            for (int i = 0; i < ref->tuple.size; i++) {
+              print_value_(ref->tuple.values[i], trancated, available_depth - 1);
+              if (i != ref->tuple.size - 1) printf(",");
+            }
           }
           printf("}");
           break;
@@ -169,11 +173,11 @@ void print_value_(value_t value, bool trancated) {
 }
 
 void print_value(value_t value) {
-  print_value_(value, false);
+  print_value_(value, false, 3);
 }
 
 void print_value_trancated(value_t value) {
-  print_value_(value, true);
+  print_value_(value, true, 3);
 }
 
 int64_t boxed_value_size(boxed_value_t* ref) {
@@ -264,6 +268,8 @@ static enum value_kind_t get_value_kind(value_t value) {
 }
 
 bool value_lte(value_t l, value_t r) {
+  if (l == r) return true;
+
   enum value_kind_t l_kind = get_value_kind(l);
   enum value_kind_t r_kind = get_value_kind(r);
 
