@@ -25,6 +25,7 @@ data Ctx = MkCtx
   , stackframe :: ~Int
   , variables :: Map Var Operand
   , atoms :: Set Atom
+  , operators :: Map Operator FunId
   } deriving stock (Generic)
   
 type M = StateT Ctx (Writer Prog)
@@ -41,6 +42,7 @@ runM m = execWriter (evalStateT m initialCtx) where
     , stackframe = defaultStackFrame
     , variables = Map.empty
     , atoms = Set.empty
+    , operators = Map.empty
     }
 
 runtime :: WithTarget => String -> Label
@@ -259,20 +261,15 @@ expr result = \case
     tell [ movq (Static (mkFunctionLabel funid)) rax ]
     tell [ movq rax result ]
   
-  BinOp op a b -> do
-    withAlloc \a_ -> withAlloc \b_ -> do
-      a_ <~ a; b_ <~ b
-      tell [ movq  a_ rdi ]
-      tell [ movq  b_ rsi ]
-      tell [ callq (runtime ("binop:" ++ binOpName op)) ]
-      tell [ movq  rax result ]
+  BinOp op a b ->
+    use (#operators . at (Binary op)) >>= \case
+      Nothing -> error ("Operator " ++ binOpName op ++ "/2 is not defined")
+      Just funid -> expr result (Apply funid [a, b])
   
   UnOp op a -> do
-    withAlloc \a_ -> do
-      a_ <~ a
-      tell [ movq  a_ rdi ]
-      tell [ callq (runtime ("unop:" ++ unOpName op)) ]
-      tell [ movq  rax result ]
+    use (#operators . at (Unary op)) >>= \case
+      Nothing -> error ("Operator " ++ unOpName op ++ "/1 is not defined")
+      Just funid -> expr result (Apply funid [a])
   
   Match p e -> do
     result <~ e
@@ -377,6 +374,9 @@ funWrapper funid body = mdo
     error "local heap is not empty"
 
 decl :: WithTarget => Decl -> M ()
+
+decl Operator{operator, funid} = do
+  #operators . at operator ?= funid
 
 decl Native{agner = funid, c} = funWrapper funid do
   tell [ subq WORD_SIZE rsp ]

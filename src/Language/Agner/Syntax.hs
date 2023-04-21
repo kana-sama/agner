@@ -21,10 +21,13 @@ data BinOp
   | And | Or | Xor
   | Plus_Plus | Minus_Minus
   | Eq_Eq | Slash_Eq | Eq_Less | Less | Greater_Eq | Greater | Eq_Colon_Eq | Eq_Slash_Eq
-  deriving stock (Show, Eq, Data)
+  deriving stock (Show, Eq, Ord, Data)
 
 data UnOp = Plus' | Minus' | BNot | Not
-  deriving stock (Show, Eq, Data)
+  deriving stock (Show, Eq, Ord, Data)
+
+data Operator = Unary UnOp | Binary BinOp
+  deriving stock (Show, Eq, Ord, Data)
 
 type GuardSeq = [GuardExp]
 type GuardExp = [Expr]
@@ -76,6 +79,7 @@ data Pat
 data Decl
   = FunDecl{funid :: FunId, body :: Expr}
   | Native{agner :: FunId, c :: String}
+  | Operator{operator :: Operator, funid :: FunId}
   deriving stock (Show, Data)
 
 data Module = MkModule

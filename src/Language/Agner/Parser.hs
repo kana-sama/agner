@@ -248,44 +248,52 @@ term = choice
   where
     makeIf branches = Case Nil [CaseBranch PatWildcard gs body | (gs, body) <- branches]
 
-expr :: Parser Expr
-expr = makeExprParser term operatorTable
-  where
-    operatorTable :: [[Operator Parser Expr]]
-    operatorTable = concat
-      [ 64 * [ unary  "+"       ["+"]      do UnOp  Plus'
-             , unary  "-"       ["-"]      do UnOp  Minus'
-             , unary  "bnot"    []         do UnOp  BNot
-             , unary  "not"     []         do UnOp  Not ]
-      , 01 * [ binary "*"       []         do BinOp Times
-             , binary "div"     []         do BinOp Div
-             , binary "rem"     []         do BinOp Rem
-             , binary "band"    []         do BinOp BAnd
-             , binary "and"     ["also"]   do BinOp And ]
-      , 01 * [ binary "+"       ["+"]      do BinOp Plus
-             , binary "-"       ["-", ">"] do BinOp Minus
-             , binary "bor"     []         do BinOp BOr
-             , binary "bxor"    []         do BinOp BXor
-             , binary "bsl"     []         do BinOp BSL
-             , binary "bsr"     []         do BinOp BSR
-             , binary "or"      ["else"]   do BinOp Or
-             , binary "xor"     []         do BinOp Xor ]
-      , 01 * [ binary "++"      []         do BinOp Plus_Plus
-             , binary "--"      []         do BinOp Minus_Minus ]
-      , 01 * [ binary "=="      []         do BinOp Eq_Eq
-             , binary "/="      []         do BinOp Slash_Eq
-             , binary "=<"      []         do BinOp Eq_Less
-             , binary "<"       []         do BinOp Less
-             , binary ">="      []         do BinOp Greater_Eq
-             , binary ">"       []         do BinOp Greater
-             , binary "=:="     []         do BinOp Eq_Colon_Eq
-             , binary "=/="     []         do BinOp Eq_Slash_Eq ]
-      , 01 * [ binary "andalso" []         do andAlso ]
-      , 01 * [ binary "orelse"  []         do orElse  ]
-      , 01 * [ binary "!"       []         do send
-             , binary "="       []         do match ]
-      ]
+operatorName :: Parser Language.Agner.Syntax.Operator
+operatorName = choice (concat (operatorTable unary binary)) where
+  hole = Var "_"
+  unary  s _ build = eject (build hole)      <* try (lexeme (string (s ++ "/1")))
+  binary s _ build = eject (build hole hole) <* try (lexeme (string (s ++ "/2")))
+  eject = \case BinOp op _ _ -> pure (Binary op); UnOp op _ -> pure (Unary op); _ -> empty
 
+operatorTable ::
+  (String -> [String] -> (Expr -> Expr) -> a) ->
+  (String -> [String] -> (Expr -> Expr -> Expr) -> a) ->
+  [[a]]
+operatorTable unary binary = concat
+  [ 64 *  [ unary  "+"       ["+"]      do UnOp  Plus'
+          , unary  "-"       ["-"]      do UnOp  Minus'
+          , unary  "bnot"    []         do UnOp  BNot
+          , unary  "not"     []         do UnOp  Not ]
+  , 01 *  [ binary "*"       []         do BinOp Times
+          , binary "div"     []         do BinOp Div
+          , binary "rem"     []         do BinOp Rem
+          , binary "band"    []         do BinOp BAnd
+          , binary "and"     ["also"]   do BinOp And ]
+  , 01 *  [ binary "+"       ["+"]      do BinOp Plus
+          , binary "-"       ["-", ">"] do BinOp Minus
+          , binary "bor"     []         do BinOp BOr
+          , binary "bxor"    []         do BinOp BXor
+          , binary "bsl"     []         do BinOp BSL
+          , binary "bsr"     []         do BinOp BSR
+          , binary "or"      ["else"]   do BinOp Or
+          , binary "xor"     []         do BinOp Xor ]
+  , 01 *  [ binary "++"      []         do BinOp Plus_Plus
+          , binary "--"      []         do BinOp Minus_Minus ]
+  , 01 *  [ binary "=="      []         do BinOp Eq_Eq
+          , binary "/="      []         do BinOp Slash_Eq
+          , binary "=<"      []         do BinOp Eq_Less
+          , binary "<"       []         do BinOp Less
+          , binary ">="      []         do BinOp Greater_Eq
+          , binary ">"       []         do BinOp Greater
+          , binary "=:="     []         do BinOp Eq_Colon_Eq
+          , binary "=/="     []         do BinOp Eq_Slash_Eq ]
+  , 01 *  [ binary "andalso" []         do andAlso ]
+  , 01 *  [ binary "orelse"  []         do orElse  ]
+  , 01 *  [ binary "!"       []         do send
+          , binary "="       []         do match ]
+  ]
+  where
+    (*) = replicate
     andAlso a b = Case a
       [ CaseBranch (PatAtom "true")  [] b
       , CaseBranch (PatAtom "false") [] (Atom "false") ]
@@ -295,15 +303,11 @@ expr = makeExprParser term operatorTable
     match a b = Match (exprToPat a) b
     send  a b = Apply "erlang:send/2" [a, b]
 
-    (*) = replicate
-
-    unary :: String -> [String] -> (Expr -> Expr) -> Operator Parser Expr
-    unary name notNext f = Prefix (f <$ op name notNext)
-
-    binary :: String -> [String] -> (Expr -> Expr -> Expr) -> Operator Parser Expr
-    binary name notNext f = InfixL (f <$ op name notNext)
-
-    op n notNext = (lexeme . try) (string n <* notFollowedBy (choice (map string notNext)))
+expr :: Parser Expr
+expr = makeExprParser term (operatorTable unary binary) where
+  unary  name notNext f = Prefix (f <$ op name notNext)
+  binary name notNext f = InfixL (f <$ op name notNext)
+  op n notNext = (lexeme . try) (string n <* notFollowedBy (choice (map string notNext)))
 
 exprs :: Parser Expr
 exprs = foldr1 Seq <$> expr `sepBy1` symbol ","
@@ -337,17 +341,21 @@ funDecl = do
   pure FunDecl {funid, body}
 
 decl :: Parser Decl
-decl = choice
-  [ funDecl
-  , pragma "native" do
-      agner <- fullyQualifiedName
-      symbol ","
-      c <- stringLit
-      pure Native{agner, c}
-  ]
+decl = funDecl <|> somePragma
   where
-    pragma name body = do
-      symbol "-"
+    somePragma = symbol "-" *> choice
+      [ pragma "operator" do
+          operator <- operatorName
+          symbol ","
+          funid <- fullyQualifiedName
+          pure Operator{operator, funid}
+      , pragma "native" do
+          agner <- fullyQualifiedName
+          symbol ","
+          c <- stringLit
+          pure Native{agner, c}
+      ]
+    pragma name body = try do
       symbol name
       value <- parens body
       symbol "."

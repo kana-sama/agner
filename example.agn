@@ -1,5 +1,10 @@
+-native(operator:minus/2, "_binop__minus").
+-operator(-/2, operator:minus/2).
+
+-native(operator:plus/2, "_binop__plus").
+-operator(+/2, operator:plus/2).
+
 -native(agner:println/1, "_agner__println").
--native(erlang:garbage_collect/0, "_erlang__garbage_collect").
 
 replicate(N) -> replicate(N, []).
 replicate(0, Acc) -> Acc;

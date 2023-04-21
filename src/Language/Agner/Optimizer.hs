@@ -10,8 +10,8 @@ resolveTailCalls :: Module -> Module
 resolveTailCalls = module_
   where
     module_ m = m{decls = map decl m.decls}
-    decl d@Native{} = d
     decl FunDecl{funid, body} = FunDecl{funid, body = expr funid body}
+    decl d = d
     expr f = \case
       Apply funid es | f == funid -> TailApply funid es
       Case e bs -> Case e (map (branch f) bs)
