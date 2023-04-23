@@ -4,6 +4,7 @@
 
 _Noreturn void _throw__badarity(value_t fun, int64_t args);
 _Noreturn void _throw__badfun(value_t value);
+_Noreturn void _throw__badmap(value_t value);
 _Noreturn void _throw__function_clause(fun_meta_t* meta, value_t* args);
 _Noreturn void _throw__badmatch(value_t value);
 _Noreturn void _throw__badarith(value_t l, value_t r, char* op);

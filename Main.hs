@@ -41,7 +41,7 @@ runtimeSource = traverse runtimeFile sources
   where
     runtimeFile f = getDataFileName ("." </> "runtime" </> f <.> "c")
     sources =
-      [ "list"
+      [ "containers/list"
       , "options"
       , "value"
       , "throw"
@@ -50,9 +50,9 @@ runtimeSource = traverse runtimeFile sources
       , "process"
       , "scheduler"
       , "runtime"
-      , "bifs"
+      , "primitives"
       , "operators"
-      , "shared_atoms"
+      , "shared"
       , "matches"
       , "asserts"
       , "scopes"

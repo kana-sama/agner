@@ -5,8 +5,8 @@ cabal.project.local
 example.s
 example
 
-runtime/*.o
-runtime/*.s
+runtime/**/*.o
+runtime/**/*.s
 
 *.dSYM
 log_*.csv

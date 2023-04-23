@@ -8,7 +8,7 @@
 # define NIL_TAG     0b011
 # define FUN_TAG     0b100
 # define PID_TAG     0b101
-# define ____TAG     0b110
+# define MAP_TAG     0b110
 # define BOX_TAG     0b111
 
 # define TUPLE_HEADER 0x01

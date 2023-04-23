@@ -14,7 +14,6 @@ import Data.Map.Strict qualified as Map
 import Language.Agner.Prelude
 import Language.Agner.Syntax
 
-
 data Target = Linux | MacOS
 type WithTarget = ?target :: Target
 
@@ -25,7 +24,7 @@ data Ctx = MkCtx
   , stackframe :: ~Int
   , variables :: Map Var Operand
   , atoms :: Set Atom
-  , operators :: Map Operator FunId
+  , builtins :: Map String FunId
   } deriving stock (Generic)
   
 type M = StateT Ctx (Writer Prog)
@@ -42,7 +41,7 @@ runM m = execWriter (evalStateT m initialCtx) where
     , stackframe = defaultStackFrame
     , variables = Map.empty
     , atoms = Set.empty
-    , operators = Map.empty
+    , builtins = Map.empty
     }
 
 runtime :: WithTarget => String -> Label
@@ -121,6 +120,9 @@ pat value p on_match_fail = case p of
 
   PatCons p1 p2 ->
     match "match:cons" [ByValue value] [p1, p2]
+
+  PatMap _ ->
+    error "unimplemented map pattern"
 
   PatMatch p1 p2 -> do
     pat value p1 on_match_fail
@@ -247,6 +249,27 @@ expr result = \case
       tell [ callq (runtime "alloc:cons") ]
       tell [ movq  rax result ]
 
+  Map [] -> do
+    apply result "maps:new/0" []
+
+  Map elems -> do
+    let tuples = elems >>= \case
+          (:=>) k v -> pure (Tuple [k, v])
+          (::=) k v -> error "unexpected := in map literal"
+    let list = foldr Cons Nil tuples
+    apply result "maps:from_list/1" [ApplyExpr list]
+
+  MapUpdate m [] -> do
+    result <~ m
+    tell [ movq  result rdi ]
+    tell [ callq (runtime "assert:map") ]
+
+  MapUpdate m elems -> do
+    result <~ m
+    for_ elems \case
+      k :=> v -> apply result "maps:put/3"    [ApplyExpr k, ApplyExpr v, ApplyOp result]
+      k ::= v -> apply result "maps:update/3" [ApplyExpr k, ApplyExpr v, ApplyOp result]
+
   Arg arg -> do
     arg <- argument arg
     tell [ movq arg rax ]
@@ -262,14 +285,14 @@ expr result = \case
     tell [ movq rax result ]
   
   BinOp op a b ->
-    use (#operators . at (Binary op)) >>= \case
+    use (#builtins . at ("binary_" ++ binOpName op)) >>= \case
       Nothing -> error ("Operator " ++ binOpName op ++ "/2 is not defined")
-      Just funid -> expr result (Apply funid [a, b])
+      Just funid -> apply result funid [ApplyExpr a, ApplyExpr b]
   
   UnOp op a -> do
-    use (#operators . at (Unary op)) >>= \case
+    use (#builtins . at ("unary_" ++ unOpName op)) >>= \case
       Nothing -> error ("Operator " ++ unOpName op ++ "/1 is not defined")
-      Just funid -> expr result (Apply funid [a])
+      Just funid -> apply result funid [ApplyExpr a]
   
   Match p e -> do
     result <~ e
@@ -278,10 +301,7 @@ expr result = \case
       tell [ callq (runtime "throw:badmatch") ]
   
   Apply f es -> do
-    ifor_ es \i e -> MemReg (i * WORD_SIZE) vstack <~ e
-    tell [ addq  (Imm (length es * WORD_SIZE)) vstack ]
-    tell [ callq (mkFunctionLabel f) ]
-    tell [ movq  rax result ]
+    apply result f [ApplyExpr e | e <- es]
   
   TailApply f es -> do
     values <- for es \e -> do
@@ -343,6 +363,29 @@ expr result = \case
     (<~) = expr
 
 
+data ApplyArg = ApplyExpr Expr | ApplyOp Operand
+
+apply :: WithTarget => Operand -> FunId -> [ApplyArg] -> M ()
+apply result f args = do
+  args_ops <- for args \case
+    ApplyExpr arg -> do
+      value <- alloc
+      expr value arg
+      pure value
+    ApplyOp op -> pure op
+
+  ifor_ args_ops \i op -> do
+    let arg = MemReg (i * WORD_SIZE) vstack
+    tell [ movq op rax ]
+    tell [ movq rax arg ]
+  tell [ addq  (Imm (length args * WORD_SIZE)) vstack ]
+  tell [ callq (mkFunctionLabel f) ]
+  tell [ movq  rax result ]
+
+  for_ (zip args_ops args) \case
+    (op, ApplyExpr{}) -> free op
+    (_, ApplyOp{})    -> pure ()
+
 funWrapper :: WithTarget => FunId -> M () -> M ()
 funWrapper funid body = mdo
   tell [ _newline ]
@@ -375,13 +418,13 @@ funWrapper funid body = mdo
 
 decl :: WithTarget => Decl -> M ()
 
-decl Operator{operator, funid} = do
-  #operators . at operator ?= funid
+decl BuiltIn{name, funid} = do
+  #builtins . at name ?= funid
 
-decl Native{agner = funid, c} = funWrapper funid do
+decl Primitive{funid} = funWrapper funid do
   tell [ subq WORD_SIZE rsp ]
 
-  tell [ movq  (Static (mkFunctionMetaOptLabel funid "name_a")) rdi ]
+  tell [ leaq  (MemRegL (mkFunctionMetaOptLabel funid "name_a") rip) rdi ]
   tell [ callq (runtime "runtime:yield") ]
   
   let args = [0..funid.arity - 1]
@@ -399,7 +442,7 @@ decl Native{agner = funid, c} = funWrapper funid do
     arg <- argument arg
     tell [ pushq arg ]
 
-  tell [ callq (mkLabel c) ]
+  tell [ callq (mkLabel (prim_name funid)) ]
 
   when (argsOnStack > 0) do
     let toRestore = argsOnStack + if odd argsOnStack then 1 else 0
@@ -411,6 +454,9 @@ decl Native{agner = funid, c} = funWrapper funid do
   where
     fast_args = [rsi, rdx, rcx, r8, r9]
 
+    prim_name funid =
+      "_" ++ funid.ns.getString ++ "__" ++ funid.name.getString ++ "__" ++ show funid.arity
+
 decl FunDecl{funid, body} = funWrapper funid mdo
   tell [ _comment "prologue" ]
   tell [ subq WORD_SIZE rsp ]
@@ -418,7 +464,7 @@ decl FunDecl{funid, body} = funWrapper funid mdo
   tell [ callq (runtime "runtime:save_vstack") ]
 
   tell [ _label (mkFunctionBodyLabel funid) ]
-  tell [ movq  (Static (mkFunctionMetaOptLabel funid "name_a")) rdi ]
+  tell [ leaq  (MemRegL (mkFunctionMetaOptLabel funid "name_a") rip) rdi ]
   tell [ callq (runtime "runtime:yield") ]
 
   tell [ _comment "initializing locals" ]
@@ -469,7 +515,7 @@ entryPoint = do
     share_atom a = do
       a' <- atom a
       tell [ movq a' rdi ]
-      tell [ callq (mkLabel ("share_atom_" ++ a.getString)) ]
+      tell [ callq (mkLabel ("share_" ++ a.getString)) ]
 
 atoms :: WithTarget => M ()
 atoms = do

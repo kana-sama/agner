@@ -39,12 +39,19 @@ data CaseBranch = CaseBranch
   }
   deriving stock (Show, Data)
   
+data MapElemBind
+  = (:=>) Expr Expr
+  | (::=) Expr Expr
+  deriving stock (Show, Data)
+
 data Expr
   = Integer Integer
   | Atom Atom
   | Tuple [Expr]
   | Nil
   | Cons Expr Expr
+  | Map [MapElemBind]
+  | MapUpdate Expr [MapElemBind]
 
   | Arg Int
   | Var Var
@@ -73,13 +80,14 @@ data Pat
   | PatTuple [Pat]
   | PatNil
   | PatCons Pat Pat
+  | PatMap [(Expr, Pat)]
   | PatMatch Pat Pat
   deriving stock (Show, Data)
 
 data Decl
   = FunDecl{funid :: FunId, body :: Expr}
-  | Native{agner :: FunId, c :: String}
-  | Operator{operator :: Operator, funid :: FunId}
+  | Primitive{funid :: FunId}
+  | BuiltIn{funid :: FunId, name :: String}
   deriving stock (Show, Data)
 
 data Module = MkModule

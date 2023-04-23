@@ -35,6 +35,14 @@ void _throw__badfun(value_t value) {
 }
 
 _Noreturn
+void _throw__badmap(value_t value) {
+  printf("** exception error: bad map ");
+  print_value_trancated(value);
+  printf("\n");
+  exit(-1);
+}
+
+_Noreturn
 void _throw__function_clause(fun_meta_t* meta, value_t* args) {
   printf("** exception error: no function clause matching %s(", meta->name);
 

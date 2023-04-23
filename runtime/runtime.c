@@ -12,7 +12,7 @@
 # include "throw.h"
 # include "heap.h"
 # include "scheduler.h"
-# include "shared_atoms.h"
+# include "shared.h"
 
 scheduler_t* scheduler;
 FILE* ylog;

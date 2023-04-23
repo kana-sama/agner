@@ -92,6 +92,11 @@ exprToPat = \case
   Tuple es -> PatTuple [exprToPat e | e <- es]
   Nil -> PatNil
   Cons a b -> PatCons (exprToPat a) (exprToPat b)
+  Map elems -> PatMap do
+    elems >>= \case
+      (::=) k v -> pure (k, exprToPat v)
+      (:=>) k v -> error "illegal pattern #{_ => }"
+  MapUpdate _ _ -> error "illegal pattern: map update"
   Arg _ -> error "invalid pattern: arg"
   Var "_" -> PatWildcard
   Var v -> PatVar v
@@ -123,6 +128,13 @@ exprToPat = \case
 
 pat :: Parser Pat
 pat = exprToPat <$> expr
+
+nameWithArity :: Parser FunId
+nameWithArity = do
+  (ns, name) <- qualifiedName
+  symbol "/"
+  arity <- integer
+  pure (MkFunId (coerce ns) (coerce name) (fromInteger arity))
 
 fullyQualifiedName :: Parser FunId
 fullyQualifiedName = do
@@ -178,6 +190,11 @@ stringLit = char '"' *> manyTill L.charLiteral (char '"')
 string_ :: Parser [Expr]
 string_ = lexeme do
   map (Integer . ord) <$> stringLit
+
+map_ :: Parser [MapElemBind]
+map_ = between (symbol "#{") (symbol "}") (elem `sepBy` symbol ",") where
+  bind = choice [ (:=>) <$ symbol "=>", (::=) <$ symbol ":=" ]
+  elem = do key <- expr; b <- bind; val <- expr; pure (b key val)
 
 makeList :: ([Expr], Maybe Expr) -> Expr
 makeList ([], Just rest) = rest
@@ -244,6 +261,7 @@ term = choice
   , Tuple <$> tuple
   , makeList <$> list
   , makeList . (, Nothing) <$> string_
+  , Map <$> map_
   ]
   where
     makeIf branches = Case Nil [CaseBranch PatWildcard gs body | (gs, body) <- branches]
@@ -264,12 +282,12 @@ operatorTable unary binary = concat
           , unary  "-"       ["-"]      do UnOp  Minus'
           , unary  "bnot"    []         do UnOp  BNot
           , unary  "not"     []         do UnOp  Not ]
-  , 01 *  [ binary "*"       []         do BinOp Times
+  ,  1 *  [ binary "*"       []         do BinOp Times
           , binary "div"     []         do BinOp Div
           , binary "rem"     []         do BinOp Rem
           , binary "band"    []         do BinOp BAnd
           , binary "and"     ["also"]   do BinOp And ]
-  , 01 *  [ binary "+"       ["+"]      do BinOp Plus
+  ,  1 *  [ binary "+"       ["+"]      do BinOp Plus
           , binary "-"       ["-", ">"] do BinOp Minus
           , binary "bor"     []         do BinOp BOr
           , binary "bxor"    []         do BinOp BXor
@@ -277,9 +295,9 @@ operatorTable unary binary = concat
           , binary "bsr"     []         do BinOp BSR
           , binary "or"      ["else"]   do BinOp Or
           , binary "xor"     []         do BinOp Xor ]
-  , 01 *  [ binary "++"      []         do BinOp Plus_Plus
+  ,  1 *  [ binary "++"      []         do BinOp Plus_Plus
           , binary "--"      []         do BinOp Minus_Minus ]
-  , 01 *  [ binary "=="      []         do BinOp Eq_Eq
+  ,  1 *  [ binary "=="      []         do BinOp Eq_Eq
           , binary "/="      []         do BinOp Slash_Eq
           , binary "=<"      []         do BinOp Eq_Less
           , binary "<"       []         do BinOp Less
@@ -287,10 +305,10 @@ operatorTable unary binary = concat
           , binary ">"       []         do BinOp Greater
           , binary "=:="     []         do BinOp Eq_Colon_Eq
           , binary "=/="     []         do BinOp Eq_Slash_Eq ]
-  , 01 *  [ binary "andalso" []         do andAlso ]
-  , 01 *  [ binary "orelse"  []         do orElse  ]
-  , 01 *  [ binary "!"       []         do send
-          , binary "="       []         do match ]
+  ,  1 *  [ binary "andalso" []         do andAlso ]
+  ,  1 *  [ binary "orelse"  []         do orElse  ]
+  ,  1 *  [ binary "!"       []         do send
+          , binary "="       [">"]      do match ]
   ]
   where
     (*) = replicate
@@ -304,29 +322,33 @@ operatorTable unary binary = concat
     send  a b = Apply "erlang:send/2" [a, b]
 
 expr :: Parser Expr
-expr = makeExprParser term (operatorTable unary binary) where
+expr = makeExprParser term ([mapUpdate] : operatorTable unary binary) where
   unary  name notNext f = Prefix (f <$ op name notNext)
   binary name notNext f = InfixL (f <$ op name notNext)
   op n notNext = (lexeme . try) (string n <* notFollowedBy (choice (map string notNext)))
 
+  mapUpdate = Postfix do
+    update <- map_
+    pure (\e -> MapUpdate e update)
+
 exprs :: Parser Expr
 exprs = foldr1 Seq <$> expr `sepBy1` symbol ","
 
-funClause :: Parser ((FunName, Int), ([Pat], [[Expr]], Expr))
+funClause :: Parser (FunId, ([Pat], [[Expr]], Expr))
 funClause = do
-  name <- coerce <$> atom
+  (ns, name) <- qualifiedName
   pats <- parens (pat `sepBy` symbol ",")
+  let funid = MkFunId ns name (length pats)
   guards <- whenGuards
   symbol "->"
   body <- exprs
-  pure ((name, length pats), (pats, guards, body))
+  pure (funid, (pats, guards, body))
 
 funDecl :: Parser Decl
 funDecl = do
-  (sigs@((name, arity):_), clauses) <- unzip <$> funClause `sepBy1` symbol ";"
+  (sigs@(funid:_), clauses) <- unzip <$> funClause `sepBy1` symbol ";"
   symbol "."
-  guard (all (== (name, arity)) sigs)
-  let funid = MkFunId "root" name arity
+  guard (all (== funid) sigs)
   let body = case clauses of
         -- one nullary clause
         [([], [], expr)] -> expr
@@ -336,30 +358,28 @@ funDecl = do
             [CaseBranch p gs e | ([p], gs, e) <- clauses]
         -- some n-ary clauses
         clauses ->
-          Case (Tuple [Arg i | i <- [0..arity - 1]])
+          Case (Tuple [Arg i | i <- [0..funid.arity - 1]])
             [CaseBranch (PatTuple ps) gs e | (ps, gs, e) <- clauses]
   pure FunDecl {funid, body}
 
 decl :: Parser Decl
-decl = funDecl <|> somePragma
-  where
-    somePragma = symbol "-" *> choice
-      [ pragma "operator" do
-          operator <- operatorName
-          symbol ","
-          funid <- fullyQualifiedName
-          pure Operator{operator, funid}
-      , pragma "native" do
-          agner <- fullyQualifiedName
-          symbol ","
-          c <- stringLit
-          pure Native{agner, c}
-      ]
-    pragma name body = try do
-      symbol name
-      value <- parens body
-      symbol "."
-      pure value
+decl = funDecl <|> builtin <|> primitive where
+  builtin = pragma "builtin" do
+    name <- (.getString) <$> atom
+    symbol ","
+    funid <- nameWithArity
+    pure BuiltIn{name, funid}
+
+  primitive = pragma "primitive" do
+    funid <- fullyQualifiedName
+    pure Primitive{funid}
+
+  pragma name body = try do
+    symbol "-"
+    symbol name
+    value <- parens body
+    symbol "."
+    pure value
 
 module_ :: Parser Module
 module_ = do
