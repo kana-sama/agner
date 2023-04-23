@@ -27,15 +27,15 @@ value_t _agner__plus__2(bif_context_t, value_t, value_t);
 // value_t _binop__bsr(bif_context_t, value_t, value_t);
 
 // // lists
-// value_t _binop__plus_plus(bif_context_t, value_t, value_t);
+value_t _binop__plus_plus(bif_context_t, value_t, value_t);
 // value_t _binop__minus_minus(bif_context_t, value_t, value_t);
 
 // // comparison
-// value_t _binop__eq_eq(bif_context_t, value_t, value_t);
+value_t _binop__eq_eq(bif_context_t, value_t, value_t);
 // value_t _binop__slash_eq(bif_context_t, value_t, value_t);
 // value_t _binop__eq_less(bif_context_t, value_t, value_t);
-// value_t _binop__less(bif_context_t, value_t, value_t);
+value_t _binop__less(bif_context_t, value_t, value_t);
 // value_t _binop__greater_eq(bif_context_t, value_t, value_t);
-// value_t _binop__greater(bif_context_t, value_t, value_t);
+value_t _binop__greater(bif_context_t, value_t, value_t);
 // value_t _binop__eq_colon_eq(bif_context_t, value_t, value_t);
 // value_t _binop__eq_slash_eq(bif_context_t, value_t, value_t);

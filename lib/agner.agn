@@ -1,6 +1,20 @@
--module(agner).
+-module(agner, primitive 0).
+
+-primitive(boxed_to_map/1).
+-primitive(map_to_boxed/1).
 
 -primitive(println/1).
--primitive(plus/2).
 
+-primitive(plus/2).
 -builtin(binary_plus, plus/2).
+
+-primitive(plus_plus/2).
+-builtin(binary_plus_plus, plus_plus/2).
+
+-primitive(eq_eq/2).
+-builtin(binary_eq_eq, eq_eq/2).
+-primitive(less/2).
+-builtin(binary_less, less/2).
+-primitive(greater/2).
+-builtin(binary_greater, greater/2).
+

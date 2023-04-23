@@ -31,5 +31,5 @@ value_t _agner__println__1(bif_context_t, value_t);
 // value_t _erlang__pid_to_list(bif_context_t, value_t);
 
 
-// value_t _agner__tuple_to_map(bif_context_t, value_t);
-// value_t _agner__map_to_tuple(bif_context_t, value_t);
+value_t _agner__map_to_boxed__1(bif_context_t, value_t);
+value_t _agner__boxed_to_map__1(bif_context_t, value_t);

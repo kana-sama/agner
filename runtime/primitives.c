@@ -255,17 +255,16 @@ value_t _agner__println__1(bif_context_t ctx, value_t value) {
 // }
 
 
+value_t _agner__map_to_boxed__1(bif_context_t ctx, value_t value) {
+  _assert__map(value);
+  return value - MAP_TAG + BOX_TAG;
+}
 
-// value_t _agner__boxed_to_map(bif_context_t ctx, value_t value) {
-//   if ((value & TAG_MASK) == BOX_TAG) {
-//     return value - BOX_TAG + MAP_TAG;
-//   } else {
-//     puts("expected boxed value");
-//     exit(-1);
-//   }
-// }
-
-// value_t _agner__map_to_boxed(bif_context_t ctx, value_t value) {
-//   _assert__map(value);
-//   return value - MAP_TAG + BOX_TAG;
-// }
+value_t _agner__boxed_to_map__1(bif_context_t ctx, value_t value) {
+  if ((value & TAG_MASK) == BOX_TAG) {
+    return value - BOX_TAG + MAP_TAG;
+  } else {
+    puts("expected boxed value");
+    exit(-1);
+  }
+}

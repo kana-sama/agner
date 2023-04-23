@@ -118,42 +118,37 @@ value_t _agner__plus__2(bif_context_t ctx, value_t l, value_t r) {
 
 
 
-// // lists
+// lists
 
-// value_t _binop__plus_plus(bif_context_t ctx, value_t l_, value_t r_) {
-//   enter_scope();
+value_t _agner__plus_plus__2(bif_context_t ctx, value_t l_, value_t r_) {
+  enter_scope();
 
-//   value_t* l = add_to_scope(l_);
-//   value_t* r = add_to_scope(r_);
+  value_t* l = add_to_scope(l_);
 
-//   if (!(is_proper_list(*l))) _throw__badarg_binop(*l, *r, "++");
+  if (!(is_proper_list(*l))) _throw__badarg_binop(*l, r_, "++");
 
-//   list_t* values = list_reverse(proper_list_values(*l));
-//   while (!list_null(values))
-//     *r = _alloc__cons((value_t)list_shift(values), *r);
-//   list_free(values);
+  value_t result = r_;
+  list_t* values = list_reverse(proper_list_values(*l));
+  while (!list_null(values))
+    result = _alloc__cons((value_t)list_shift(values), result);
+  list_free(values);
 
-//   value_t result = *r;
-//   leave_scope();
-//   return result;
-// }
-
-// value_t _binop__minus_minus(bif_context_t ctx, value_t l, value_t r) {
-//   puts("--/2 is not defined");
-//   exit(-1);
-// }
+  leave_scope();
+  return result;
+}
 
 
-// // comparison
 
-// static inline value_t from_bool(bool b) { return b ? shared_true() : shared_false(); }
+// comparison
 
-// // ==
-// value_t _binop__eq_eq(bif_context_t ctx, value_t l, value_t r) {
-//   return from_bool(
-//     value_lte(l, r) && value_lte(r, l)
-//   );
-// }
+static inline value_t from_bool(bool b) { return b ? shared_true() : shared_false(); }
+
+// ==
+value_t _agner__eq_eq__2(bif_context_t ctx, value_t l, value_t r) {
+  return from_bool(
+    value_lte(l, r) && value_lte(r, l)
+  );
+}
 
 // // /=
 // value_t _binop__slash_eq(bif_context_t ctx, value_t l, value_t r) {
@@ -169,12 +164,12 @@ value_t _agner__plus__2(bif_context_t ctx, value_t l, value_t r) {
 //   );
 // }
 
-// // <
-// value_t _binop__less(bif_context_t ctx, value_t l, value_t r) {
-//   return from_bool(
-//     value_lte(l, r) && !value_lte(r, l)
-//   );
-// }
+// <
+value_t _agner__less__2(bif_context_t ctx, value_t l, value_t r) {
+  return from_bool(
+    value_lte(l, r) && !value_lte(r, l)
+  );
+}
 
 // // >=
 // value_t _binop__greater_eq(bif_context_t ctx, value_t l, value_t r) {
@@ -183,12 +178,12 @@ value_t _agner__plus__2(bif_context_t ctx, value_t l, value_t r) {
 //   );
 // }
 
-// // >
-// value_t _binop__greater(bif_context_t ctx, value_t l, value_t r) {
-//   return from_bool(
-//     value_lte(r, l) && !value_lte(l, r)
-//   );
-// }
+// >
+value_t _agner__greater__2(bif_context_t ctx, value_t l, value_t r) {
+  return from_bool(
+    value_lte(r, l) && !value_lte(l, r)
+  );
+}
 
 // // =:=
 // value_t _binop__eq_colon_eq(bif_context_t ctx, value_t l, value_t r) {

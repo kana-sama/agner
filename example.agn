@@ -1,66 +1,7 @@
 -module(main).
 
-f() -> 2.
-
 main() ->
-  agner:println("hello"),
-  agner:println(40 + main:f()).
+  A = #{name => kana},
+  B = A #{name := "KANA", age => 25},
+  agner:println(maps:to_list(B)).
 
-% -native(agner:println/1, "_agner__println").
-% -native(agner:boxed_to_map/1, "_agner__boxed_to_map").
-% -native(agner:map_to_boxed/1, "_agner__map_to_boxed").
-
-% -native(operators:concat/2, "_binop__plus_plus").
-% -operator(++/2, operators:concat/2).
-
-% -native(operators:ge/2, "_binop__greater").
-% -operator(>/2, operators:ge/2).
-
-% -native(operators:le/2, "_binop__less").
-% -operator(</2, operators:le/2).
-
-% -native(operators:eq/2, "_binop__eq_eq").
-% -operator(==/2, operators:eq/2).
-
-% -built('==/2')
-
-% main() ->
-%   ok = agner:println(maps:to_list(#{})),
-%   ok = agner:println(maps:to_list(#{name => kana, age => 25})),
-%   % agner:println(maps:to_list(#{name => kana} #{name := "Kana", age => 25})),
-%   ok.
-
-% maps:new() -> agner:boxed_to_map({maps_internal:new()}).
-% maps:put(K, V, M) -> {M_} = agner:map_to_boxed(M), agner:boxed_to_map({maps_internal:put(K, V, M_)}).
-% maps:update(K, V, M) -> {M_} = agner:map_to_boxed(M), agner:boxed_to_map({maps_internal:update(K, V, M_)}).
-% maps:from_list(KVs) -> agner:boxed_to_map({maps_internal:from_list(KVs)}).
-% maps:to_list(M) -> {M_} = agner:map_to_boxed(M), maps_internal:to_list(M_).
-
-% maps_internal:new() ->
-%   empty.
-
-% maps_internal:put(NK, NV, empty) ->
-%   {node, empty, empty, NK, NV};
-% maps_internal:put(NK, NV, {node, L, R, K, V}) -> if
-%   NK == K -> {node, L, R, K, NV};
-%   NK <  K -> {node, maps_internal:put(NK, NV, L), R, K, V};
-%   NK >  K -> {node, L, maps_internal:put(NK, NV, R), K, V}
-% end.
-
-% maps_internal:update(NK, NV, {node, L, R, K, V}) -> if
-%   NK == K -> {node, L, R, K, NV};
-%   NK <  K -> {node, maps_internal:update(NK, NV, L), R, K, V};
-%   NK >  K -> {node, L, maps_internal:update(NK, NV, R), K, V}
-% end.
-
-% maps_internal:from_list(KVs) ->
-%   maps_internal:from_list(KVs, maps_internal:new()).
-% maps_internal:from_list([{K, V}|KVs], Acc) ->
-%   maps_internal:from_list(KVs, maps_internal:put(K, V, Acc));
-% maps_internal:from_list([], Acc) -> Acc.
-
-% maps_internal:to_list(empty) -> [];
-% maps_internal:to_list({node, L, R, K, V}) ->
-%   f(maps_internal:to_list(L), [{K, V}]) ++ maps_internal:to_list(R).
-
-% f(A, B) -> agner:println({A, B, A++B}), A++B.

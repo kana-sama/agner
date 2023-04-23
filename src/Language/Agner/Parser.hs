@@ -378,10 +378,16 @@ decl = funDecl <|> builtin <|> primitive where
 
 module_ :: Parser Module
 module_ = do
-  name <- pragma "module" (coerce <$> atom)
+  (name, primitive) <- pragma "module" do
+    name <- coerce <$> atom
+    primitive <- optional do
+      symbol ","
+      symbol "primitive"
+      lexeme L.decimal
+    pure (name, primitive)
   put name
   decls <- many decl
-  pure MkModule{name, decls}
+  pure MkModule{name, primitive, decls}
 
 parse :: FilePath -> Parser a -> String -> a
 parse path p s =

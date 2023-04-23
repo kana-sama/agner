@@ -92,6 +92,7 @@ data Decl
 
 data Module = MkModule
   { name :: ModuleName
+  , primitive :: Maybe Int
   , decls :: [Decl]
   }
   deriving stock (Show)

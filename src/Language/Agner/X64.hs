@@ -94,6 +94,11 @@ argument ~arg = do
   ~base <- use #stackframe
   pure (MemReg (base + arg * WORD_SIZE) vstack)
 
+builtin :: String -> M FunId
+builtin name = use (#builtins . at name) >>= \case
+  Just funid -> pure funid
+  Nothing -> error ("builtin " ++ name ++ " is not defined")
+
 data MatchOp = ByValue Operand | ByRef Operand
 
 pat :: WithTarget => Operand -> Pat -> M () -> M ()
@@ -250,14 +255,16 @@ expr result = \case
       tell [ movq  rax result ]
 
   Map [] -> do
-    apply result "maps:new/0" []
+    funid <- builtin "maps_new"
+    apply result funid []
 
   Map elems -> do
     let tuples = elems >>= \case
           (:=>) k v -> pure (Tuple [k, v])
           (::=) k v -> error "unexpected := in map literal"
     let list = foldr Cons Nil tuples
-    apply result "maps:from_list/1" [ApplyExpr list]
+    funid <- builtin "maps_from_list"
+    apply result funid [ApplyExpr list]
 
   MapUpdate m [] -> do
     result <~ m
@@ -266,9 +273,11 @@ expr result = \case
 
   MapUpdate m elems -> do
     result <~ m
+    put    <- builtin "maps_put"
+    update <- builtin "maps_update"
     for_ elems \case
-      k :=> v -> apply result "maps:put/3"    [ApplyExpr k, ApplyExpr v, ApplyOp result]
-      k ::= v -> apply result "maps:update/3" [ApplyExpr k, ApplyExpr v, ApplyOp result]
+      k :=> v -> apply result put    [ApplyExpr k, ApplyExpr v, ApplyOp result]
+      k ::= v -> apply result update [ApplyExpr k, ApplyExpr v, ApplyOp result]
 
   Arg arg -> do
     arg <- argument arg
@@ -284,15 +293,13 @@ expr result = \case
     tell [ movq (Static (mkFunctionLabel funid)) rax ]
     tell [ movq rax result ]
   
-  BinOp op a b ->
-    use (#builtins . at ("binary_" ++ binOpName op)) >>= \case
-      Nothing -> error ("Operator " ++ binOpName op ++ "/2 is not defined")
-      Just funid -> apply result funid [ApplyExpr a, ApplyExpr b]
+  BinOp op a b -> do
+    funid <- builtin ("binary_" ++ binOpName op)
+    apply result funid [ApplyExpr a, ApplyExpr b]
   
   UnOp op a -> do
-    use (#builtins . at ("unary_" ++ unOpName op)) >>= \case
-      Nothing -> error ("Operator " ++ unOpName op ++ "/1 is not defined")
-      Just funid -> apply result funid [ApplyExpr a]
+    funid <- builtin ("unary_" ++ unOpName op)
+    apply result funid [ApplyExpr a]
   
   Match p e -> do
     result <~ e
@@ -550,7 +557,14 @@ project modules = do
 
 compile :: Target -> [Module] -> Prog
 compile target modules =
-  let ?target = target in runM (project modules)
+  let ?target = target in runM (project (sortModules modules))
+  where
+    sortModules = List.sortBy \a b ->
+      case (a.primitive, b.primitive) of
+        (Nothing, Nothing) -> EQ
+        (Just _, Nothing) -> LT
+        (Nothing, Just _) -> GT
+        (Just a, Just b) -> compare a b
 
 
 -- utils
