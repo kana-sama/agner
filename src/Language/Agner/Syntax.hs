@@ -91,7 +91,8 @@ data Decl
   deriving stock (Show, Data)
 
 data Module = MkModule
-  { decls :: [Decl]
+  { name :: ModuleName
+  , decls :: [Decl]
   }
   deriving stock (Show)
 

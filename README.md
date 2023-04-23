@@ -38,12 +38,13 @@ agner pretty example.agn
 - [x] case Expr of (Pat -> Exprs)+ end
 - [x] гарды
 - [x] if
+- [x] модули (module, ренейминг)
 - [ ] мапы
 - [ ] битстроки
-- [ ] модули (module, import, ренейминг)
 - [ ] тесты
 
 на этом этапе можно переписывать компилятор на agner, а потом:
+- [ ] external name import
 - [ ] стд либа, встроенные функции, IO
 - [ ] --/2
 - [ ] maybe

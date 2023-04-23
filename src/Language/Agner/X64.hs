@@ -503,7 +503,7 @@ entryPoint = do
   share_atom "ok"
   share_atom "infinity"
 
-  tell [ movq   (Static (mkFunctionLabel "root:main/0")) rdi ]
+  tell [ movq   (Static (mkFunctionLabel "main:main/0")) rdi ]
   tell [ callq  (runtime "runtime:start") ]
 
   tell [ addq   WORD_SIZE rsp ]
@@ -528,16 +528,29 @@ atoms = do
     tell [ _skip  ATOM_TAG ]
     tell [ _label (mkAtomLabel atom), _asciz (show atom) ]
 
-compile :: Target -> Module -> Prog
-compile target mod = let ?target = target in runM do
+module_ :: WithTarget => Module -> M ()
+module_ module_ = do
+  tell [ _newline ]
+  tell [ _newline ]
+  tell [ _comment ("module: " ++ module_.name.getString) ]
+  tell [ _text ]
+  for_ module_.decls decl
+
+project :: WithTarget => [Module] -> M ()
+project modules = do
   tell [ _newline ]
   tell [ _text ]
   entryPoint
-  for_ mod.decls decl
+
+  for_ modules module_
 
   tell [ _newline ]
   tell [ _data ]
   atoms
+
+compile :: Target -> [Module] -> Prog
+compile target modules =
+  let ?target = target in runM (project modules)
 
 
 -- utils

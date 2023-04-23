@@ -5,10 +5,12 @@ import Shower (printer)
 
 import Paths_agner (getDataFileName)
 
+import Data.Traversable (for)
 
 import System.Process.Typed (runProcess, shell, proc)
 import System.Exit (ExitCode(..), exitFailure)
-import System.FilePath ((</>), (<.>), stripExtension)
+import System.FilePath ((</>), (<.>), stripExtension, isExtensionOf)
+import System.Directory (getDirectoryContents)
 import System.Environment (getArgs, setEnv)
 import System.Info (os)
 
@@ -21,20 +23,13 @@ import Language.Agner.Optimizer qualified as Optimizer
 
 data Command
   = Example
-  | Compile{source :: FilePath}
+  | Compile{source :: [FilePath], output :: FilePath}
 
 parseArgs :: IO Command
 parseArgs = do
   getArgs >>= \case
     [] -> pure Example
-    [source] -> pure Compile{source}
-    _ -> error "неправильные аргументы"
-
-getOutputPath :: FilePath -> FilePath
-getOutputPath source =
-  case stripExtension "agn" source of
-    Nothing -> error "unknown extension"
-    Just path -> path
+    output : source -> pure Compile{source, output}
 
 runtimeSource :: IO [FilePath]
 runtimeSource = traverse runtimeFile sources
@@ -73,28 +68,33 @@ gcc (Arg target) (Arg source) (Arg output) = case target of
         ExitSuccess -> pure ()
         ExitFailure i -> error ("gcc failied with " ++ show i)
 
+stdLib :: IO [FilePath]
+stdLib = do
+  files <- getDirectoryContents "lib"
+  pure ["lib" </> file | file <- files, "agn" `isExtensionOf` file]
+
 compile ::  
   "target" :! X64.Target ->
-  "source" :! FilePath ->
+  "sources" :! [FilePath] ->
   "output" :! FilePath ->
   "asm"    :! FilePath ->
   IO ()
-compile (Arg target) (Arg source) (Arg outputPath) (Arg asmPath) = do
-  source  <-  readFile  source
-  source  <-  parse     source
-  source  <-  optimize  source
-  source  <-  compile   source
-  _       <-  toBinary  source
-  pure ()
+compile (Arg target) (Arg sources) (Arg outputPath) (Arg asmPath) = do
+  modules <- for sources \path -> do
+    source <- readFile  path
+    source <- parse     path source
+    source <- optimize  source
+    pure source
+  toBinary =<< compile modules
   where
-    parse :: String -> IO Syntax.Module
-    parse source = evaluate (Parser.parse Parser.module_ source)
+    parse :: FilePath -> String -> IO Syntax.Module
+    parse path source = evaluate (Parser.parse path Parser.module_ source)
 
     optimize :: Syntax.Module -> IO Syntax.Module
     optimize module_ = pure (Optimizer.optimize module_)
 
-    compile :: Syntax.Module -> IO X64.Prog
-    compile prog = pure (X64.compile target prog)
+    compile :: [Syntax.Module] -> IO X64.Prog
+    compile modules = pure (X64.compile target modules)
 
     toBinary :: X64.Prog -> IO ()
     toBinary prog = do
@@ -107,14 +107,15 @@ compile (Arg target) (Arg source) (Arg outputPath) (Arg asmPath) = do
 
 example :: X64.Target -> IO ()
 example target = do
+  sourceLib <- stdLib
   let source = "example.agn"
   compile ! param #target target
-          ! param #source source
-          ! param #output (getOutputPath source)
-          ! param #asm    (getOutputPath source <.> "s")
+          ! param #sources (sourceLib ++ ["example.agn"])
+          ! param #output "example"
+          ! param #asm    "example.s"
   setEnv "ARTS_FUEL" "10"
   setEnv "ARTS_YLOG" "log_x64.csv"
-  runProcess (shell ("." </> getOutputPath source)) >>= \case
+  runProcess (shell "./example") >>= \case
     ExitFailure (-11) -> putStrLn "сегфолт"
     ExitFailure i -> putStrLn ("ExitCode = " ++ show i)
     ExitSuccess -> pure ()
@@ -122,11 +123,11 @@ example target = do
 main :: IO ()
 main = parseArgs >>= \case
   Example -> example target
-  Compile{source} ->
+  Compile{output, source} ->
     compile ! param #target target
-            ! param #source source
-            ! param #output (getOutputPath source)
-            ! param #asm    (getOutputPath source <.> "s")
+            ! param #sources source
+            ! param #output output
+            ! param #asm    (output <.> "s")
   where
     target = case os of
       "linux" -> X64.Linux

@@ -1,11 +1,10 @@
--primitive(agner:println/1).
--primitive(agner:plus/2).
+-module(main).
 
--builtin(binary_plus, agner:plus/2).
+f() -> 2.
 
 main() ->
   agner:println("hello"),
-  agner:println(40 + 2).
+  agner:println(40 + main:f()).
 
 % -native(agner:println/1, "_agner__println").
 % -native(agner:boxed_to_map/1, "_agner__boxed_to_map").

@@ -6,7 +6,7 @@ import Language.Agner.Prelude hiding (try)
 
 import Data.Char qualified as Char
 
-import Text.Megaparsec (Parsec, label, satisfy, between, choice, runParser, eof, oneOf, some, notFollowedBy, many, empty, (<|>), try, sepBy, sepBy1, optional, anySingle, manyTill)
+import Text.Megaparsec (ParsecT, label, satisfy, between, choice, runParserT, eof, oneOf, some, notFollowedBy, many, empty, (<|>), try, sepBy, sepBy1, optional, anySingle, manyTill)
 import Text.Megaparsec.Char (char, string, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
@@ -14,7 +14,7 @@ import Control.Monad.Combinators.Expr (makeExprParser, Operator(..))
 
 import Language.Agner.Syntax
 
-type Parser = Parsec Void String
+type Parser = ParsecT Void String (State ModuleName)
 
 ord :: Integral a => Char -> a
 ord = fromIntegral . Char.ord
@@ -129,28 +129,22 @@ exprToPat = \case
 pat :: Parser Pat
 pat = exprToPat <$> expr
 
-nameWithArity :: Parser FunId
-nameWithArity = do
-  (ns, name) <- qualifiedName
+localName :: Parser FunId
+localName = do
+  ns <- get
+  name <- coerce <$> atom
   symbol "/"
-  arity <- integer
-  pure (MkFunId (coerce ns) (coerce name) (fromInteger arity))
-
-fullyQualifiedName :: Parser FunId
-fullyQualifiedName = do
-  ns <- atom
-  symbol ":"
-  name <- atom
-  symbol "/"
-  arity <- integer
-  pure (MkFunId (coerce ns) (coerce name) (fromInteger arity))
+  arity <- lexeme L.decimal
+  pure MkFunId{ns, name, arity}
 
 qualifiedName :: Parser (ModuleName, FunName)
 qualifiedName = do
   a <- atom
   b <- optional do symbol ":" *> atom
   case (a, b) of
-    (a, Nothing) -> pure ("root", coerce a)
+    (a, Nothing) -> do
+      moduleName <- get
+      pure (moduleName, coerce a)
     (a, Just b) -> pure (coerce a, coerce b)
 
 fun :: Parser FunId
@@ -362,32 +356,35 @@ funDecl = do
             [CaseBranch (PatTuple ps) gs e | (ps, gs, e) <- clauses]
   pure FunDecl {funid, body}
 
+pragma :: String -> Parser a -> Parser a
+pragma name body = try do
+  symbol "-"
+  symbol name
+  value <- parens body
+  symbol "."
+  pure value
+
 decl :: Parser Decl
 decl = funDecl <|> builtin <|> primitive where
   builtin = pragma "builtin" do
     name <- (.getString) <$> atom
     symbol ","
-    funid <- nameWithArity
+    funid <- localName
     pure BuiltIn{name, funid}
 
   primitive = pragma "primitive" do
-    funid <- fullyQualifiedName
+    funid <- localName
     pure Primitive{funid}
-
-  pragma name body = try do
-    symbol "-"
-    symbol name
-    value <- parens body
-    symbol "."
-    pure value
 
 module_ :: Parser Module
 module_ = do
+  name <- pragma "module" (coerce <$> atom)
+  put name
   decls <- many decl
-  pure MkModule{decls}
+  pure MkModule{name, decls}
 
-parse :: Parser a -> String -> a
-parse p s =
-  case runParser (sc *> p <* eof) "" s of
+parse :: FilePath -> Parser a -> String -> a
+parse path p s =
+  case evalState (runParserT (sc *> p <* eof) path s) undefined of
     Right x -> x
     Left err -> error (errorBundlePretty err)

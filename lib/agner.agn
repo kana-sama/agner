@@ -1,0 +1,6 @@
+-module(agner).
+
+-primitive(println/1).
+-primitive(plus/2).
+
+-builtin(binary_plus, plus/2).
