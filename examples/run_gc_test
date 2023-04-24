@@ -1,4 +1,4 @@
 #! /usr/bin/env bash
 
-cabal run agner -- gc_test.agn &&
+cabal run agner -- gc_test ../lib/*.agn gc_test.agn &&
 ARTS_STAT=1 ARTS_HEAP=3 ./gc_test

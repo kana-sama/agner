@@ -32,8 +32,8 @@ extra-source-files:
   - runtime/tags.h
 
 data-files:
-  - runtime/*.c
-  - runtime/*.h
+  - runtime/**/*.c
+  - runtime/**/*.h
 
 library:
   source-dirs: src

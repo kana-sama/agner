@@ -1,4 +1,4 @@
--native(agner:println/1, "_agner__println").
+-module(main).
 
 f(N) -> f(N, 0).
 f(0, Acc) -> Acc;

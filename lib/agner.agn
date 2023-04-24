@@ -14,6 +14,8 @@
 
 -primitive(plus/2).
 -builtin(binary_plus, plus/2).
+-primitive(minus/2).
+-builtin(binary_minus, minus/2).
 
 -primitive(plus_plus/2).
 -builtin(binary_plus_plus, plus_plus/2).

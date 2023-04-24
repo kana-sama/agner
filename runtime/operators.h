@@ -13,7 +13,7 @@ value_t _agner__and__2(bif_context_t, value_t, value_t);
 // value_t _unop__plus(bif_context_t, value_t);
 // value_t _unop__minus(bif_context_t, value_t);
 value_t _agner__plus__2(bif_context_t, value_t, value_t);
-// value_t _binop__minus(bif_context_t, value_t, value_t);
+value_t _agner__minus__2(bif_context_t, value_t, value_t);
 // value_t _binop__times(bif_context_t, value_t, value_t);
 // value_t _binop__div(bif_context_t, value_t, value_t);
 // value_t _binop__rem(bif_context_t, value_t, value_t);
