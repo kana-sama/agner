@@ -25,6 +25,7 @@ data Ctx = MkCtx
   , variables :: Map Var Operand
   , atoms :: Set Atom
   , builtins :: Map String FunId
+  , records :: Map RecordName [RecordField]
   } deriving stock (Generic)
   
 type M = StateT Ctx (Writer Prog)
@@ -42,6 +43,7 @@ runM m = execWriter (evalStateT m initialCtx) where
     , variables = Map.empty
     , atoms = Set.empty
     , builtins = Map.empty
+    , records = Map.empty
     }
 
 runtime :: WithTarget => String -> Label
@@ -99,6 +101,18 @@ builtin name = use (#builtins . at name) >>= \case
   Just funid -> pure funid
   Nothing -> error ("builtin " ++ name ++ " is not defined")
 
+record :: RecordName -> M [RecordField]
+record name = use (#records . at name) >>= \case
+  Just fields -> pure fields
+  Nothing -> error ("record " ++ name.getString ++ " is not defined")
+
+recordField :: RecordName -> RecordField -> M Int
+recordField name field = do
+  fields <- record name
+  case List.findIndex (== field) fields of
+    Nothing -> error ("unknown field " ++ field.getString ++ " of record " ++ name.getString)
+    Just ix -> pure ix
+
 data MatchOp = ByValue Operand | ByRef Operand
 
 pat :: WithTarget => Operand -> Pat -> M () -> M ()
@@ -126,12 +140,18 @@ pat value p on_match_fail = case p of
   PatCons p1 p2 ->
     match "match:cons" [ByValue value] [p1, p2]
 
-  PatMap _ ->
-    error "unimplemented map pattern"
-
   PatMatch p1 p2 -> do
     pat value p1 on_match_fail
     pat value p2 on_match_fail
+
+  PatRecord name values -> do
+    fields <- record name
+    pat value (PatTuple (PatAtom (coerce name) : [getFieldValue f | f <- fields])) on_match_fail
+    where
+      getFieldValue field =
+        case List.lookup field values of
+          Nothing -> PatWildcard
+          Just p  -> p
 
   where
     match fun ops children | length ops > 4 = error "to many args for match"
@@ -278,6 +298,52 @@ expr result = \case
     for_ elems \case
       k :=> v -> apply result put    [ApplyExpr k, ApplyExpr v, ApplyOp result]
       k ::= v -> apply result update [ApplyExpr k, ApplyExpr v, ApplyOp result]
+
+  Record name values -> do
+    fields <- record name
+    result <~ Tuple (Atom (coerce name) : [getFieldValue f | f <- fields])
+    where
+      getFieldValue field =
+        case List.lookup field values of
+          Nothing    -> Atom "undefined"
+          Just value -> value
+
+  RecordGet expr name field -> do
+    field_ix <- recordField name field
+    withAlloc \value -> do
+      value <~ expr
+
+      fields    <- record name
+      name_atom <- atom (coerce name)
+      tell [ movq  value rdi]
+      tell [ movq  name_atom rsi ]
+      tell [ movq  (Imm (length fields)) rdx ]
+      tell [ callq (runtime "assert:record") ]
+
+      tell [ movq  value rdi ]
+      tell [ movq  (Imm field_ix) rsi ]
+      tell [ callq (runtime "record:get") ]
+      tell [ movq  rax result ]
+
+  RecordUpdate expr name values -> do
+    result <~ expr
+
+    fields    <- record name
+    name_atom <- atom (coerce name)
+    tell [ movq  result rdi]
+    tell [ movq  name_atom rsi ]
+    tell [ movq  (Imm (length fields)) rdx ]
+    tell [ callq (runtime "assert:record") ]
+
+    for_ values \(field, field_value) -> do
+      withAlloc \field_value_ -> do
+        field_ix     <- recordField name field
+        field_value_ <~ field_value
+        tell [ movq  result rdi ]
+        tell [ movq  (Imm field_ix) rsi ]
+        tell [ movq  field_value_ rdx ]
+        tell [ callq (runtime "record:set") ]
+        tell [ movq  rax result ]
 
   Arg arg -> do
     arg <- argument arg
@@ -427,6 +493,9 @@ funWrapper funid body = mdo
     error "local heap is not empty"
 
 decl :: WithTarget => Decl -> M ()
+
+decl RecordDecl{recordName, recordFields} = do
+  #records %= Map.insert recordName recordFields
 
 decl BuiltIn{name, funid} = do
   #builtins . at name ?= funid

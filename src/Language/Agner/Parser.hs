@@ -92,11 +92,14 @@ exprToPat = \case
   Tuple es -> PatTuple [exprToPat e | e <- es]
   Nil -> PatNil
   Cons a b -> PatCons (exprToPat a) (exprToPat b)
-  Map elems -> PatMap do
-    elems >>= \case
-      (::=) k v -> pure (k, exprToPat v)
-      (:=>) k v -> error "illegal pattern #{_ => }"
+
+  Map elems -> error "unimplemented: maps in patterns"
   MapUpdate _ _ -> error "illegal pattern: map update"
+
+  Record recordName values -> PatRecord recordName [(f, exprToPat e) | (f, e) <- values]
+  RecordGet _ _ _ -> error "invalid pattern: record_get"
+  RecordUpdate _ _ _ -> error "invalid pattern: record_set"
+
   Arg _ -> error "invalid pattern: arg"
   Var "_" -> PatWildcard
   Var v -> PatVar v
@@ -239,6 +242,20 @@ receive = do
 begin :: Parser Expr
 begin = between (symbol "begin") (symbol "end") exprs
 
+record_kv :: Parser (RecordField, Expr)
+record_kv = do
+  field <- coerce <$> atom
+  symbol "="
+  value <- expr
+  pure (field, value) 
+
+record_construct :: Parser Expr
+record_construct = do
+  symbol "#"
+  recordName <- coerce <$> atom
+  values <- braces (record_kv `sepBy` symbol ",")
+  pure (Record recordName values)
+
 term :: Parser Expr
 term = choice
   [ Fun <$> fun
@@ -255,6 +272,9 @@ term = choice
   , Tuple <$> tuple
   , makeList <$> list
   , makeList . (, Nothing) <$> string_
+
+  , try record_construct
+
   , Map <$> map_
   ]
   where
@@ -316,14 +336,27 @@ operatorTable unary binary = concat
     send  a b = Apply "erlang:send/2" [a, b]
 
 expr :: Parser Expr
-expr = makeExprParser term ([mapUpdate] : operatorTable unary binary) where
+expr = makeExprParser term ([[mapUpdate, recordGet, recordUpdate]] ++ operatorTable unary binary) where
   unary  name notNext f = Prefix (f <$ op name notNext)
   binary name notNext f = InfixL (f <$ op name notNext)
   op n notNext = (lexeme . try) (string n <* notFollowedBy (choice (map string notNext)))
 
-  mapUpdate = Postfix do
+  mapUpdate = (Postfix . try) do
     update <- map_
-    pure (\e -> MapUpdate e update)
+    pure \e -> MapUpdate e update
+
+  recordGet = (Postfix . try) do
+    symbol "#"
+    recordName <- coerce <$> atom
+    symbol "."
+    recordField <- coerce <$> atom
+    pure \e -> RecordGet e recordName recordField
+
+  recordUpdate = Postfix do
+    symbol "#"
+    recordName <- coerce <$> atom
+    kvs <- braces (record_kv `sepBy` symbol ",")
+    pure \e -> RecordUpdate e recordName kvs
 
 exprs :: Parser Expr
 exprs = foldr1 Seq <$> expr `sepBy1` symbol ","
@@ -365,7 +398,7 @@ pragma name body = try do
   pure value
 
 decl :: Parser Decl
-decl = funDecl <|> builtin <|> primitive where
+decl = funDecl <|> builtin <|> primitive <|> record where
   builtin = pragma "builtin" do
     name <- (.getString) <$> atom
     symbol ","
@@ -375,6 +408,12 @@ decl = funDecl <|> builtin <|> primitive where
   primitive = pragma "primitive" do
     funid <- localName
     pure Primitive{funid}
+
+  record = pragma "record" do
+    recordName <- coerce <$> atom
+    symbol ","
+    recordFields <- coerce <$> braces (atom `sepBy` symbol ",")
+    pure RecordDecl{recordName, recordFields}
 
 module_ :: Parser Module
 module_ = do

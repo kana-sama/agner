@@ -142,3 +142,15 @@ void _receive__success() {
   mailbox_drop_picked(scheduler->current->mailbox);
   mailbox_unpick(scheduler->current->mailbox);
 }
+
+
+value_t _record__get(value_t value, int64_t field_ix) {
+  return cast_to_boxed_value(value)->tuple.values[field_ix + 1];
+}
+
+value_t _record__set(value_t value, int64_t field_ix, value_t field_value) {
+  boxed_value_t* ref = cast_to_boxed_value(value);
+  value_t new_value = _alloc__tuple(ref->tuple.size, ref->tuple.values);
+  cast_to_boxed_value(new_value)->tuple.values[field_ix + 1] = field_value;
+  return new_value;
+}

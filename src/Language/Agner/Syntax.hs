@@ -7,10 +7,12 @@ import Data.List qualified as List
 import Data.Char qualified as Char
 import Data.Generics.Uniplate.Data (universeBi)
 
-newtype Var        = MkVar        {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
-newtype Atom       = MkAtom       {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
-newtype FunName    = MkFunName    {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
-newtype ModuleName = MkModuleName {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
+newtype Var         = MkVar         {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
+newtype Atom        = MkAtom        {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
+newtype FunName     = MkFunName     {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
+newtype ModuleName  = MkModuleName  {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
+newtype RecordName  = MkRecordName  {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
+newtype RecordField = MkRecordField {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
 
 data FunId = MkFunId { ns :: ModuleName, name :: FunName, arity :: Int }
   deriving stock (Eq, Ord, Data)
@@ -50,6 +52,11 @@ data Expr
   | Tuple [Expr]
   | Nil
   | Cons Expr Expr
+  
+  | Record RecordName [(RecordField, Expr)]
+  | RecordGet Expr RecordName RecordField
+  | RecordUpdate Expr RecordName [(RecordField, Expr)]
+
   | Map [MapElemBind]
   | MapUpdate Expr [MapElemBind]
 
@@ -80,7 +87,7 @@ data Pat
   | PatTuple [Pat]
   | PatNil
   | PatCons Pat Pat
-  | PatMap [(Expr, Pat)]
+  | PatRecord RecordName [(RecordField, Pat)]
   | PatMatch Pat Pat
   deriving stock (Show, Data)
 
@@ -88,6 +95,7 @@ data Decl
   = FunDecl{funid :: FunId, body :: Expr}
   | Primitive{funid :: FunId}
   | BuiltIn{funid :: FunId, name :: String}
+  | RecordDecl{recordName :: RecordName, recordFields :: [RecordField]}
   deriving stock (Show, Data)
 
 data Module = MkModule

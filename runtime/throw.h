@@ -3,6 +3,7 @@
 # include "value.h"
 
 _Noreturn void _throw__unbound(char* var);
+_Noreturn void _throw__badrecord(value_t value);
 _Noreturn void _throw__badarity(value_t fun, int64_t args);
 _Noreturn void _throw__badfun(value_t value);
 _Noreturn void _throw__badmap(value_t value);

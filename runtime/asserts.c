@@ -29,3 +29,19 @@ void _assert__map(value_t value) {
   if ((value & TAG_MASK) != MAP_TAG)
     _throw__badmap(value);
 }
+
+void _assert__record(value_t value, char* record_name, int64_t record_size) {
+  boxed_value_t* ref = cast_to_boxed_value(value);
+  
+  if (!ref)
+    _throw__badrecord(value);
+
+  if (ref->super.header != TUPLE_HEADER)
+    _throw__badrecord(value);
+
+  if (ref->tuple.size != record_size + 1)
+    _throw__badrecord(value);
+
+  if (ref->tuple.values[0] != (value_t)record_name)
+    _throw__badrecord(value);
+}

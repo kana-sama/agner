@@ -22,3 +22,6 @@ value_t _alloc__cons(value_t head, value_t tail);
 value_t _receive__pick();
 void    _receive__success();
 
+value_t _record__get(value_t, int64_t field_ix);
+value_t _record__set(value_t, int64_t field_ix, value_t field_value);
+

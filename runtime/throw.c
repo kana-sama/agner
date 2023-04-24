@@ -12,6 +12,14 @@ void _throw__unbound(char* var_atom) {
   exit(-1);
 }
 
+_Noreturn
+void _throw__badrecord(value_t value) {
+  printf("** exception error: {badrecord,");
+  print_value(value);
+  printf("}\n");
+  exit(-1);
+}
+
 static char* format_args(int64_t n) {
   switch (n) {
     case 0: return "no arguments";

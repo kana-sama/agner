@@ -49,3 +49,5 @@ build(Markup) -> build({none, none, none}, Markup).
 build(State, []) -> "";
 build(State, [H|T]) ->
   node(State, H) ++ build(State, T).
+
+println(Markup) -> agner:put_str(build(Markup)), agner:put_str("\n").
