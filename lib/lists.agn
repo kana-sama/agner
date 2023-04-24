@@ -29,3 +29,6 @@ intersperse(X, List) ->
   end.
 intersperse(X, [], Acc) -> reverse(Acc);
 intersperse(X, [H|T], Acc) -> intersperse(X, T, [H,X|Acc]).
+
+foldl(Fun, Acc, [H|T]) -> foldl(Fun, Fun(H, Acc), T);
+foldl(Fun, Acc, []) -> Acc.
