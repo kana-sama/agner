@@ -29,28 +29,30 @@ value_t _agner__println__1(bif_context_t ctx, value_t value) {
   return shared_ok();
 }
 
-// value_t _agner__put_char(bif_context_t ctx, value_t value) {
-//   value_t args[1] = { value };
-//   if ((value & TAG_MASK) != INTEGER_TAG) _throw__badarg(get_meta(ctx), args);
-//   printf("%lc", (int)value >> TAG_SIZE);
-//   return shared_ok();
-// }
+value_t _agner__put_char__1(bif_context_t ctx, value_t value) {
+  if ((value & TAG_MASK) != INTEGER_TAG) {
+    value_t args[1] = { value };
+    _throw__badarg(get_meta(ctx), args);
+  }
 
-// value_t _agner__put_str(bif_context_t ctx, value_t value) {
-//   value_t args[1] = { value };
-//   if (!is_proper_list(value) || !printable_latin1_list(value)) _throw__badarg(get_meta(ctx), args);
+  printf("%lc", (int)decode_integer(value));
+  return shared_ok();
+}
 
-//   if (value != NIL_TAG) {
-//     boxed_value_t* ref = cast_to_boxed_value(value);
-//     while (true) {
-//       printf("%lc", (int)ref->cons.head >> TAG_SIZE);
-//       if (ref->cons.tail == NIL_TAG) break;
-//       ref = cast_to_boxed_value(ref->cons.tail);
-//     }
-//   }
+value_t _agner__put_str__1(bif_context_t ctx, value_t value) {
+  if (!is_proper_list(value) || !printable_latin1_list(value)) {
+    value_t args[1] = { value };
+    _throw__badarg(get_meta(ctx), args);
+  }
 
-//   return shared_ok();
-// }
+  while (!is_nil(value)) {
+    boxed_cons_t cons = cast_to_boxed_value(value)->cons;
+    printf("%lc", (int)decode_integer(cons.head));
+    value = cons.tail;
+  }
+
+  return shared_ok();
+}
 
 // value_t _erlang__error(bif_context_t ctx, value_t value) {
 //   printf("** exception error: ");
@@ -116,21 +118,21 @@ value_t _agner__println__1(bif_context_t ctx, value_t value) {
 //     return shared_false();
 // }
 
-// value_t _erlang__is_list(bif_context_t ctx, value_t value) {
-//   if (value == NIL_TAG) return shared_true();
+value_t _erlang__is_integer__1(bif_context_t ctx, value_t value) {
+  if ((value & TAG_MASK) == INTEGER_TAG)
+    return shared_true();
+  else
+    return shared_false();
+}
 
-//   boxed_value_t* ref = cast_to_boxed_value(value);
-//   if (ref && ref->super.header == CONS_HEADER) return shared_true();
+value_t _erlang__is_list__1(bif_context_t ctx, value_t value) {
+  if (is_nil(value)) return shared_true();
 
-//   return shared_false();
-// }
+  boxed_value_t* ref = cast_to_boxed_value(value);
+  if (ref && ref->super.header == CONS_HEADER) return shared_true();
 
-// value_t _erlang__is_integer(bif_context_t ctx, value_t value) {
-//   if ((value & TAG_MASK) == INTEGER_TAG)
-//     return shared_true();
-//   else
-//     return shared_false();
-// }
+  return shared_false();
+}
 
 // value_t _erlang__is_tuple(bif_context_t ctx, value_t value) {
 //   boxed_value_t* ref = cast_to_boxed_value(value);
@@ -174,26 +176,22 @@ value_t _agner__println__1(bif_context_t ctx, value_t value) {
 //   return list;
 // }
 
-// value_t _erlang__integer_to_list(bif_context_t ctx, value_t value) {
-//   if ((value & TAG_MASK) != INTEGER_TAG) {
-//     value_t args[1] = {value};
-//     _throw__badarg(get_meta(ctx), args);
-//   }
+value_t _erlang__integer_to_list__1(bif_context_t ctx, value_t value) {
+  if (!is_integer(value)) {
+    value_t args[1] = {value};
+    _throw__badarg(get_meta(ctx), args);
+  }
 
-//   char* str;
-//   asprintf(&str, "%lld", value >> TAG_SIZE);
+  char* str; asprintf(&str, "%lld", decode_integer(value));
 
-//   value_t list = NIL_TAG;
-//   for (int i = strlen(str) - 1; i >= 0; i--) {
-//     value_t new_list = _alloc__cons();
-//     _fill__cons(new_list, encode_integer(str[i]), list);
-//     list = new_list;
-//   }
+  value_t list = nil();
+  for (int i = strlen(str) - 1; i >= 0; i--)
+    list = _alloc__cons(encode_integer(str[i]), list);
 
-//   free(str);
+  free(str);
 
-//   return list;
-// }
+  return list;
+}
 
 // value_t _erlang__tuple_to_list(bif_context_t ctx, value_t value) {
 //   boxed_value_t* ref = cast_to_boxed_value(value);

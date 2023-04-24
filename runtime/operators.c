@@ -13,19 +13,19 @@
 
 // // booleans
 
-// value_t _unop__not(bif_context_t ctx, value_t value) {
-//   if (value == shared_true()) return shared_false();
-//   if (value == shared_false()) return shared_true();
-//   _throw__badarg_unop(value, "not");
-// }
+value_t _agner__not__1(bif_context_t ctx, value_t value) {
+  if (value == shared_true()) return shared_false();
+  if (value == shared_false()) return shared_true();
+  _throw__badarg_unop(value, "not");
+}
 
-// value_t _binop__and(bif_context_t ctx, value_t l, value_t r) {
-//   if (l == shared_true()  && r == shared_true())  return shared_true();
-//   if (l == shared_false() && r == shared_true())  return shared_false();
-//   if (l == shared_true()  && r == shared_false()) return shared_false();
-//   if (l == shared_false() && r == shared_false()) return shared_false();
-//   _throw__badarg_binop(l, r, "and");
-// }
+value_t _agner__and__2(bif_context_t ctx, value_t l, value_t r) {
+  if (l == shared_true()  && r == shared_true())  return shared_true();
+  if (l == shared_false() && r == shared_true())  return shared_false();
+  if (l == shared_true()  && r == shared_false()) return shared_false();
+  if (l == shared_false() && r == shared_false()) return shared_false();
+  _throw__badarg_binop(l, r, "and");
+}
 
 // value_t _binop__or(bif_context_t ctx, value_t l, value_t r) {
 //   if (l == shared_true()  && r == shared_true())  return shared_true();
@@ -157,12 +157,12 @@ value_t _agner__eq_eq__2(bif_context_t ctx, value_t l, value_t r) {
 //   );
 // }
 
-// // =<
-// value_t _binop__eq_less(bif_context_t ctx, value_t l, value_t r) {
-//   return from_bool(
-//     value_lte(l, r)
-//   );
-// }
+// =<
+value_t _agner__eq_less__2(bif_context_t ctx, value_t l, value_t r) {
+  return from_bool(
+    value_lte(l, r)
+  );
+}
 
 // <
 value_t _agner__less__2(bif_context_t ctx, value_t l, value_t r) {
@@ -171,12 +171,12 @@ value_t _agner__less__2(bif_context_t ctx, value_t l, value_t r) {
   );
 }
 
-// // >=
-// value_t _binop__greater_eq(bif_context_t ctx, value_t l, value_t r) {
-//   return from_bool(
-//     value_lte(r, l)
-//   );
-// }
+// >=
+value_t _agner__greater_eq__2(bif_context_t ctx, value_t l, value_t r) {
+  return from_bool(
+    value_lte(r, l)
+  );
+}
 
 // >
 value_t _agner__greater__2(bif_context_t ctx, value_t l, value_t r) {

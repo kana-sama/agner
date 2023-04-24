@@ -285,9 +285,12 @@ expr result = \case
     tell [ movq rax result ]
   
   Var var -> do
-    var <- variable var
-    tell [ movq var rax ]
-    tell [ movq rax result ]
+    var_op   <- variable var
+    var_atom <- atom (MkAtom var.getString)
+    tell [ movq var_op rdi ]
+    tell [ movq var_atom rsi ]
+    tell [ callq (runtime "assert:bound") ]
+    tell [ movq rdi result ]
   
   Fun funid -> do
     tell [ movq (Static (mkFunctionLabel funid)) rax ]

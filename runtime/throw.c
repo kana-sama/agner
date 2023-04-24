@@ -4,6 +4,14 @@
 # include "value.h"
 # include "throw.h"
 
+_Noreturn
+void _throw__unbound(char* var_atom) {
+  printf("** exception error: variable ");
+  print_value((value_t)var_atom);
+  printf(" is unbound\n");
+  exit(-1);
+}
+
 static char* format_args(int64_t n) {
   switch (n) {
     case 0: return "no arguments";

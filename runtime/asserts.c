@@ -4,6 +4,13 @@
 # include "throw.h"
 # include "shared.h"
 
+void _assert__bound(value_t value, char* var) {
+  if (value == UNBOUND_TAG) {
+    _throw__unbound(var);
+    exit(-1);
+  }
+}
+
 void _assert__bool(value_t value) {
   if (value == shared_true()) return;
   if (value == shared_false()) return;

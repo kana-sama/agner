@@ -1,7 +1,76 @@
 -module(main).
 
-main() ->
-  A = #{name => kana},
-  B = A #{name := "KANA", age => 25},
-  agner:println(maps:to_list(B)).
+reverse(List) -> reverse(List, []).
+reverse([H|T], Acc) -> reverse(T, [H|Acc]);
+reverse([], Acc) -> Acc.
 
+map(F, List) -> reverse(map(F, List, Acc=[])).
+map(F, [H|T], Acc) -> map(F, T, [F(H)|Acc]);
+map(F, [], Acc) -> Acc.
+
+is_upper(C) when erlang:is_integer(C) ->
+  (C >= $A) and (C =< $Z).
+
+words(S) -> reverse(words(S, [""])).
+words(" " ++ S, Acc=[""|_]) -> words(S, Acc);
+words(" " ++ S, [W|Acc]) -> words(S, ["", reverse(W)|Acc]);
+words([C|S], [W|Acc]) -> words(S, [[C|W]|Acc]);
+words([], [""|Acc]) -> Acc;
+words([], [W|Acc]) -> [reverse(W)|Acc].
+
+lines(S) -> reverse(lines(S, [""])).
+lines("\n" ++ S, Acc=[""|_]) -> lines(S, Acc);
+lines("\n" ++ S, [W|Acc]) -> lines(S, ["", reverse(W)|Acc]);
+lines([C|S], [W|Acc]) -> lines(S, [[C|W]|Acc]);
+lines([], [""|Acc]) -> Acc;
+lines([], [W|Acc]) -> [reverse(W)|Acc].
+
+intersperse(X, List) ->
+  case intersperse(X, List, []) of
+    [] -> [];
+    [_|T] -> T
+  end.
+intersperse(X, [], Acc) -> reverse(Acc);
+intersperse(X, [H|T], Acc) -> intersperse(X, T, [H,X|Acc]).
+
+pretty_point({t, T}) -> [{fg,  blue, [T]}];
+pretty_point({e, E}) -> [{fg, green, [E]}].
+
+parse_point(Cs = [C|_]) when is_upper(C) -> {e, Cs};
+parse_point(Cs) -> {t, Cs}.
+
+pretty_rule({rule, Ctor, E, Points}) -> [
+  {fg, magenta, [Ctor]},
+  {fg, red, [" . "]},
+  pretty_point({e, E}),
+  {fg, red, [" = "]},
+  intersperse(" ", map(fun pretty_point/1, Points)),
+  "\n"
+].
+
+parse_rule(S) ->
+  [Ctor, ".", E, "=" | Points] = words(S),
+  {rule, Ctor, E, map(fun parse_point/1, Points)}.
+
+pretty_grammar({grammar, Rules}) ->
+  map(fun pretty_rule/1, Rules).
+
+parse_grammar(S) ->
+  {grammar, map(fun parse_rule/1, lines(S))}.
+
+main() ->
+  Grammar =
+    " s . S = E
+      + . E = E + F
+      - . E = E - F
+      F . E = F
+      * . F = F * T
+      / . F = F / T
+      T . F = T
+      i . T = <int>
+      i . T = ( E )
+      g . T = ( E : Ty )
+      e . Ty = int ",
+  agner:put_str(sgr:build(
+    pretty_grammar(parse_grammar(Grammar))
+  )).

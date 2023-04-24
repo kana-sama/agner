@@ -62,6 +62,10 @@ void dump_value(value_t);
 
 bool is_number(value_t);
 bool is_integer(value_t);
+
+bool is_nil(value_t);
+value_t nil();
+
 int64_t decode_integer(value_t);
 value_t encode_integer(int64_t);
 

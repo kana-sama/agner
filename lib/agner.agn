@@ -3,7 +3,14 @@
 -primitive(boxed_to_map/1).
 -primitive(map_to_boxed/1).
 
+-primitive(put_char/1).
+-primitive(put_str/1).
 -primitive(println/1).
+
+-primitive(not/1).
+-builtin(unary_not, not/1).
+-primitive(and/2).
+-builtin(binary_and, and/2).
 
 -primitive(plus/2).
 -builtin(binary_plus, plus/2).
@@ -17,4 +24,8 @@
 -builtin(binary_less, less/2).
 -primitive(greater/2).
 -builtin(binary_greater, greater/2).
+-primitive(greater_eq/2).
+-builtin(binary_greater_eq, greater_eq/2).
+-primitive(eq_less/2).
+-builtin(binary_eq_less, eq_less/2).
 

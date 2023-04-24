@@ -1,0 +1,6 @@
+-module(erlang).
+
+-primitive(is_integer/1).
+-primitive(is_list/1).
+
+-primitive(integer_to_list/1).

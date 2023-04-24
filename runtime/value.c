@@ -347,3 +347,11 @@ bool value_lte(value_t l, value_t r) {
 bool value_eq(value_t l, value_t r) {
   return value_lte(l, r) && value_lte(r, l);
 }
+
+bool is_nil(value_t value) {
+  return value == NIL_TAG;
+}
+
+value_t nil() {
+  return NIL_TAG;
+}
