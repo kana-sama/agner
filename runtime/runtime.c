@@ -54,6 +54,7 @@ void _runtime__yield(char* name) {
       scheduler->fuel,
       (int64_t)(scheduler->current->vstack_head - scheduler->current->vstack)
     );
+    fflush(ylog);
   }
 
   if (list_size(scheduler->current->scopes->values) != 0 ||
@@ -126,6 +127,25 @@ value_t _alloc__cons(value_t head_, value_t tail_) {
   return (value_t)cons | BOX_TAG;
 }
 
+value_t _alloc__closure(value_t body, int64_t env_size, value_t* env) {
+  enter_scope();
+
+  value_t* values[env_size];
+  for (int i = 0; i < env_size; i++)
+    values[i] = add_to_scope(env[i]);
+
+  boxed_closure_t* closure = allocate(sizeof(boxed_closure_t)/WORD_SIZE + env_size);
+  closure->super.header = CLOSURE_HEADER;
+  closure->env_size = env_size;
+  closure->body = body;
+
+  for (int i = 0; i < env_size; i++)
+    closure->env[i] = *values[i];
+
+  leave_scope();
+  return (value_t)(closure) | BOX_TAG;
+}
+
 value_t _receive__pick() {
   while (true) {
     value_t* value = mailbox_pick(scheduler->current->mailbox);
@@ -153,4 +173,13 @@ value_t _record__set(value_t value, int64_t field_ix, value_t field_value) {
   value_t new_value = _alloc__tuple(ref->tuple.size, ref->tuple.values);
   cast_to_boxed_value(new_value)->tuple.values[field_ix + 1] = field_value;
   return new_value;
+}
+
+
+value_t* _closure__get_env(value_t value) {
+  return cast_to_boxed_value(value)->closure.env;
+}
+
+value_t _closure__get_fun(value_t value) {
+  return cast_to_boxed_value(value)->closure.body;
 }

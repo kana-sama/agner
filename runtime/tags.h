@@ -11,5 +11,9 @@
 # define MAP_TAG     0b110
 # define BOX_TAG     0b111
 
-# define TUPLE_HEADER 0x01
-# define CONS_HEADER  0x02
+# define TUPLE_HEADER   0x01
+# define CONS_HEADER    0x02
+# define CLOSURE_HEADER 0x03
+
+# define FUN_KIND_STATIC  0x01
+# define FUN_KIND_CLOSURE 0x02

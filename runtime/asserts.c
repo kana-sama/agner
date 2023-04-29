@@ -17,12 +17,15 @@ void _assert__bool(value_t value) {
   _throw__badarg_single(value);
 }
 
-void _assert__fun(value_t value, int64_t arity) {
-  if ((value & TAG_MASK) != FUN_TAG)
-    _throw__badfun(value);
+fun_kind_t _assert__fun(value_t value, int64_t arity) {
+  if ((value & TAG_MASK) == FUN_TAG && get_fun_meta(value)->arity == arity)
+    return FUN_KIND_STATIC;
 
-  if (get_fun_meta(value)->arity != arity)
-    _throw__badarity(value, arity);
+  boxed_value_t* ref = cast_to_boxed_value(value);
+  if (ref && ref->super.header == CLOSURE_HEADER && get_fun_meta(ref->closure.body)->arity == arity)
+    return FUN_KIND_CLOSURE;
+  
+  _throw__badfun(value);
 }
 
 void _assert__map(value_t value) {

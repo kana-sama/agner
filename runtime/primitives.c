@@ -88,28 +88,43 @@ value_t _agner__put_str__1(bif_context_t ctx, value_t value) {
 //   }
 // }
 
-// value_t _erlang__spawn(bif_context_t ctx, value_t value) {
-//   if ((value & TAG_MASK) != FUN_TAG) _throw__badfun(value);
-//   action_t action = (action_t)value;
-//   PID_t pid = scheduler_spawn(scheduler, action);
-//   return pid << TAG_SIZE | PID_TAG;
-// }
+value_t _erlang__spawn__1(bif_context_t ctx, value_t value) {
+  action_t action;
+  switch (_assert__fun(value, 0)) {
+    case FUN_KIND_STATIC:
+      action = (action_t)value;
+      break;
+    case FUN_KIND_CLOSURE: {
+      boxed_value_t* ref = cast_to_boxed_value(value);
+      asm(
+        " movq %[env], %%r13"
+        :
+        : [env] "r" (ref->closure.env)
+        : "r13"
+      );
+      action = (action_t)(ref->closure.body);
+    }
+  }
+  
+  PID_t pid = scheduler_spawn(scheduler, action);
+  return pid << TAG_SIZE | PID_TAG;
+}
 
-// value_t _erlang__self(bif_context_t ctx) {
-//   return scheduler->current->pid << TAG_SIZE | PID_TAG;
-// }
+value_t _erlang__self__0(bif_context_t ctx) {
+  return scheduler->current->pid << TAG_SIZE | PID_TAG;
+}
 
-// value_t _erlang__send(bif_context_t ctx, value_t target, value_t msg) {
-//   if ((target & TAG_MASK) != PID_TAG) _throw__badarg_binop(target, msg, "!");
-//   PID_t pid = target >> TAG_SIZE;
-//   process_send(pid, msg);
-//   return msg;
-// }
+value_t _erlang__send__2(bif_context_t ctx, value_t target, value_t msg) {
+  if ((target & TAG_MASK) != PID_TAG) _throw__badarg_binop(target, msg, "!");
+  PID_t pid = target >> TAG_SIZE;
+  process_send(pid, msg);
+  return msg;
+}
 
-// value_t _erlang__garbage_collect(bif_context_t ctx) {
-//   allocate(0);
-//   return shared_true();
-// }
+value_t _erlang__garbage_collect__0(bif_context_t ctx) {
+  scheduler->current->heap = heap_gc(scheduler->current->heap, process_gc_ctx(scheduler->current));
+  return shared_true();
+}
 
 // value_t _erlang__is_atom(bif_context_t ctx, value_t value) {
 //   if ((value & TAG_MASK) == ATOM_TAG)

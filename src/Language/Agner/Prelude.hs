@@ -1,4 +1,4 @@
-module Language.Agner.Prelude (module X) where
+module Language.Agner.Prelude (module X, whileM) where
 
 import Data.Data as X (Data)
 import Data.Map.Strict as X (Map)
@@ -27,3 +27,10 @@ import Control.Monad.Fix as X
 
 import Control.Lens as X hiding (pattern List, Context, argument)
 import GHC.Generics as X (Generic)
+
+whileM :: Monad m => m Bool -> m () -> m ()
+whileM cond body =
+  let loop = cond >>= \case
+        True -> do body; loop
+        False -> pure ()
+   in loop

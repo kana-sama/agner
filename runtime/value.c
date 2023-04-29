@@ -165,6 +165,12 @@ void print_value_(value_t value, bool trancated, int available_depth) {
             print_cons(ref);
           break;
         }
+        case CLOSURE_HEADER: {
+          puts("unimplemted: closures printed");
+          exit(-1);
+
+          break;
+        }
       }
 
       break;
@@ -186,6 +192,8 @@ int64_t boxed_value_size(boxed_value_t* ref) {
       return sizeof(boxed_tuple_t)/sizeof(value_t) + ref->tuple.size;
     case CONS_HEADER:
       return sizeof(boxed_cons_t)/sizeof(value_t);
+    case CLOSURE_HEADER:
+      return sizeof(boxed_closure_t)/sizeof(value_t) + ref->closure.env_size;
     default:
       printf("Unknown boxed value header: %lld\n", ref->super.header);
       exit(-1);
@@ -198,6 +206,8 @@ boxed_value_children_t boxed_value_children(boxed_value_t* ref) {
       return (boxed_value_children_t){.values=ref->tuple.values, .count=ref->tuple.size};
     case CONS_HEADER:
       return (boxed_value_children_t){.values=(value_t*)&ref->cons.head, .count=2};
+    case CLOSURE_HEADER:
+      return (boxed_value_children_t){.values=(value_t*)&ref->closure.env, .count=ref->closure.env_size};
     default:
       printf("Unknown boxed value header: %lld\n", ref->super.header);
       exit(-1);
@@ -258,8 +268,9 @@ static enum value_kind_t get_value_kind(value_t value) {
     case BOX_TAG: {
       boxed_value_t* ref = cast_to_boxed_value(value);
       switch (ref->super.header) {
-        case TUPLE_HEADER: return KIND_TUPLE;
-        case CONS_HEADER:  return KIND_LIST;
+        case TUPLE_HEADER:   return KIND_TUPLE;
+        case CONS_HEADER:    return KIND_LIST;
+        case CLOSURE_HEADER: return KIND_FUN;
         default: printf("get_value_kind: unknown boxed value with tag %lld", ref->super.header); exit(-1);
       }
     }

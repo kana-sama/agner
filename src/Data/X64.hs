@@ -78,6 +78,7 @@ _skip i = Meta (".skip " ++ show i)
 _quad s = Meta (".quad " ++ s)
 _asciz s = Meta (".asciz " ++ s)
 _comment comm = Meta ("// " ++ comm)
+_include path = Meta ("#include " ++ show path)
 
 prettyOperand :: Operand -> String
 prettyOperand = \case

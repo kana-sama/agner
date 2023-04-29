@@ -31,10 +31,18 @@ typedef struct boxed_cons_t {
   value_t tail;
 } boxed_cons_t;
 
-typedef union boxed_value_t {
+typedef struct boxed_closure_t {
   boxed_super_t super;
-  boxed_tuple_t tuple;
-  boxed_cons_t  cons;
+  int64_t env_size;
+  value_t body;
+  value_t env[];
+} boxed_closure_t;
+
+typedef union boxed_value_t {
+  boxed_super_t   super;
+  boxed_tuple_t   tuple;
+  boxed_cons_t    cons;
+  boxed_closure_t closure;
 } boxed_value_t;
 
 typedef struct boxed_value_children_t {

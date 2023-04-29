@@ -63,6 +63,7 @@ data Expr
   | Arg Int
   | Var Var
   | Fun FunId
+  | FunL Int Expr
 
   | BinOp BinOp Expr Expr
   | UnOp UnOp Expr

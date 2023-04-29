@@ -3,6 +3,8 @@
 module Language.Agner.X64 (module Language.Agner.X64, module Data.X64) where
 
 import GHC.Exts (IsList(..))
+import Paths_agner (getDataFileName)
+import System.IO.Unsafe (unsafePerformIO)
 
 import Data.X64
 import Data.Set qualified as Set
@@ -25,6 +27,7 @@ data Ctx = MkCtx
   , builtins :: Map String FunId
   , builtins_total :: ~(Map String FunId)
   , records :: Map RecordName [RecordField]
+  , lambdas :: [(FunId, Int, [Var], Expr)]
   } deriving stock (Generic)
   
 type M = StateT Ctx (Writer Prog)
@@ -44,6 +47,7 @@ runM m = execWriter (evalStateT m initialCtx) where
     , builtins = Map.empty
     , builtins_total = error "builtins_total is not evaluated yet"
     , records = Map.empty
+    , lambdas = []
     }
 
 runtime :: WithTarget => String -> Label
@@ -56,6 +60,11 @@ uuid = #uuid <<+= 1
 
 label :: WithTarget => M Label
 label = do uuid <- uuid; pure (mkLabel ("_lbl." ++ show uuid))
+
+closureFunId :: WithTarget => Int -> M FunId
+closureFunId arity = do
+  uuid <- uuid
+  pure MkFunId{ns = "_anon", name = coerce ("n" ++ show uuid), arity}
 
 alloc :: M Operand
 alloc = do
@@ -363,6 +372,28 @@ expr result = \case
   Fun funid -> do
     tell [ movq (Static (mkFunctionLabel funid)) rax ]
     tell [ movq rax result ]
+
+  FunL arity body -> do
+    let env = Set.toList (allVars body)
+    let size = length env
+
+    funid <- closureFunId arity
+    #lambdas %= ((funid, arity, env, body):)
+
+    when (odd size) do
+      tell [ subq WORD_SIZE rsp ]
+    for_ (reverse env) \var -> do
+      var_op <- variable var
+      tell [ pushq var_op ]
+
+    tell [ leaq  (MemRegL (mkFunctionLabel funid) rip) rdi ]
+    tell [ movq  (fromIntegral size) rsi ]
+    tell [ movq  rsp rdx ]
+    tell [ callq (runtime "alloc:closure") ]
+    tell [ movq  rax result ]
+
+    let restore = WORD_SIZE * if odd size then size + 1 else size
+    tell [ addq (Imm (fromIntegral restore)) rsp ]
   
   BinOp op a b -> do
     funid <- builtin ("binary_" ++ binOpName op)
@@ -395,11 +426,24 @@ expr result = \case
   
   DynApply f es ->
     withAlloc \f' -> do
+      call_lbl <- label
       f' <~ f
+
       tell [ movq   f' rdi ]
       tell [ movq   (fromIntegral (length es)) rsi ]
       tell [ callq  (runtime "assert:fun") ]
+      tell [ cmpq   (ImmL "FUN_KIND_CLOSURE") rax ]
+      tell [ jne    call_lbl ]
 
+      tell [ movq   f' rdi ]
+      tell [ callq  (runtime "closure:get_env") ]
+      tell [ movq   rax closureEnv ]
+
+      tell [ movq   f' rdi ]
+      tell [ callq  (runtime "closure:get_fun") ]
+      tell [ movq   rax f' ]
+
+      tell [ _label call_lbl ]
       ifor_ es \i e -> MemReg (i * WORD_SIZE) vstack <~ e
       tell [ movq   f' rax ]
       tell [ addq   (Imm (length es * WORD_SIZE)) vstack ]
@@ -478,7 +522,6 @@ funWrapper funid body = mdo
   #stackframe .= stackframe
   
   tell [ _label (mkFunctionLabel funid) ]
-
   body
   tell [ _label (mkFunctionEndLabel funid) ]
 
@@ -617,8 +660,46 @@ module_ module_ = do
   tell [ _text ]
   for_ module_.decls decl
 
+anonFun :: WithTarget => FunId -> Int -> [Var] -> Expr -> M ()
+anonFun funid arity env body = funWrapper funid mdo
+  tell [ _comment "prologue" ]
+  tell [ subq WORD_SIZE rsp ]
+  tell [ addq  (Imm (requiredSlots * WORD_SIZE)) vstack ]
+  tell [ callq (runtime "runtime:save_vstack") ]
+
+  tell [ _label (mkFunctionBodyLabel funid) ]
+  tell [ leaq  (MemRegL (mkFunctionMetaOptLabel funid "name_a") rip) rdi ]
+  tell [ callq (runtime "runtime:yield") ]
+
+  tell [ _comment "initializing locals" ]
+  #variables <~ Map.unions <$> ifor env \i var -> do
+    slot <- alloc
+    tell [ _comment ("variable " ++ var.getString) ]
+    tell [ movq (MemReg (i * WORD_SIZE) closureEnv) rax ]
+    tell [ movq rax slot ]
+    pure (Map.singleton var slot)
+
+  tell [ _comment "body" ]
+  withAlloc \result -> do
+    expr result body
+    tell [ movq result rbx ]
+
+  for_ (allVars body) \var -> do
+    free =<< variable var
+    
+  tell [ _comment "epilogue" ]
+  requiredSlots <- use #required_slots
+  tell [ subq  (Imm ((requiredSlots + funid.arity) * WORD_SIZE)) vstack ]
+  tell [ callq (runtime "runtime:save_vstack") ]
+  tell [ addq WORD_SIZE rsp ]
+  tell [ movq rbx rax ]
+  tell [ retq ]
+
 project :: WithTarget => [Module] -> M ()
 project modules = mdo
+  tell [ _include do unsafePerformIO (getDataFileName "runtime/tags.h") ]
+  tell [ _newline ]
+
   tell [ _newline ]
   tell [ _text ]
   entryPoint
@@ -626,6 +707,12 @@ project modules = mdo
   #builtins_total .= builtins
   for_ modules module_
   builtins <- use #builtins
+
+  whileM (not . null <$> use #lambdas) do
+    (funid, arity, env, body) <- #lambdas %%= \(l:ls) -> (l, ls)
+    tell [ _newline ]
+    tell [ _text ]
+    anonFun funid arity env body
 
   tell [ _newline ]
   tell [ _data ]
@@ -653,5 +740,6 @@ mkFunctionMetaOptLabel funid field = mkFunctionMetaLabel funid ++ "." ++ field
 mkAtomLabel :: WithTarget => Atom -> Label
 mkAtomLabel atom = mkLabel ("_atom." ++ atom.getString)
 
-vstack :: FromReg a => a
-vstack = fromReg R12
+vstack, closureEnv :: FromReg a => a
+vstack     = fromReg R12
+closureEnv = fromReg R13

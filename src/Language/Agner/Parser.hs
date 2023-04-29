@@ -1,8 +1,11 @@
+{-# LANGUAGE DataKinds #-}
+
 module Language.Agner.Parser where
 
 import Language.Agner.Prelude hiding (try)
 
 import Data.Char qualified as Char
+import GHC.Records (HasField(getField))
 
 import Text.Megaparsec (ParsecT, label, satisfy, between, choice, runParserT, eof, oneOf, some, notFollowedBy, many, empty, (<|>), try, sepBy, sepBy1, optional, anySingle, manyTill)
 import Text.Megaparsec.Char (char, string, digitChar, space1, upperChar, lowerChar, alphaNumChar)
@@ -13,6 +16,9 @@ import Control.Monad.Combinators.Expr (makeExprParser, Operator(..))
 import Language.Agner.Syntax
 
 type Parser = ParsecT Void String (State ModuleName)
+
+instance HasField "length" [a] Int where
+  getField = length
 
 ord :: Integral a => Char -> a
 ord = fromIntegral . Char.ord
@@ -102,6 +108,7 @@ exprToPat = \case
   Var "_" -> PatWildcard
   Var v -> PatVar v
   Fun _ -> error "invalid pattern: function"
+  FunL _ _ -> error "invalid pattern: lambda"
   BinOp Plus_Plus a b | Just xs <- isKnownList a ->
     foldr PatCons (exprToPat b) xs
   BinOp _ _ _ -> error "invalid pattern: binop"
@@ -254,9 +261,17 @@ record_construct = do
   values <- braces (record_kv `sepBy` symbol ",")
   pure (Record recordName values)
 
+funL :: Parser (Int, Expr)
+funL = do
+  symbol "fun"
+  clauses <- clause `sepBy1` symbol ";"
+  symbol "end"
+  pure ((head clauses).pats.length, clausesToCase clauses)
+
 term :: Parser Expr
 term = choice
-  [ Fun <$> fun
+  [ Fun <$> try fun
+  , uncurry FunL <$> funL
   , Receive <$> receive
   , uncurry Case <$> case_
   , makeIf <$> if_
@@ -359,33 +374,44 @@ expr = makeExprParser term ([[mapUpdate, recordGet, recordUpdate]] ++ operatorTa
 exprs :: Parser Expr
 exprs = foldr1 Seq <$> expr `sepBy1` symbol ","
 
-funClause :: Parser (FunId, ([Pat], [[Expr]], Expr))
-funClause = do
-  (ns, name) <- qualifiedName
+data Clause = MkClause{pats :: [Pat], guards :: [[Expr]], body :: Expr}
+
+clausesToCase :: [Clause] -> Expr
+clausesToCase = \case
+  [] -> error "clauses should be nonempty"
+  -- one nullary clause
+  [MkClause{pats = [], guards = [], body}] -> body
+  -- some unary clauses
+  clauses@(MkClause{pats = [_]}:_) ->
+    Case (Arg 0)
+      [CaseBranch p guards body | MkClause{pats = [p], guards, body} <- clauses]
+  -- some n-ary clauses
+  clauses@(MkClause{pats}:_) ->
+    Case (Tuple [Arg i | i <- [0..pats.length - 1]])
+      [CaseBranch (PatTuple c.pats) c.guards c.body | c <- clauses]
+
+clause :: Parser Clause
+clause = do
   pats <- parens (pat `sepBy` symbol ",")
-  let funid = MkFunId ns name (length pats)
   guards <- whenGuards
   symbol "->"
   body <- exprs
-  pure (funid, (pats, guards, body))
+  pure MkClause{pats, guards, body}
+
+funClause :: Parser (FunId, Clause)
+funClause = do
+  (ns, name) <- qualifiedName
+  clause <- clause
+  let funid = MkFunId ns name clause.pats.length
+  pure (funid, clause)
 
 funDecl :: Parser Decl
 funDecl = do
   (sigs@(funid:_), clauses) <- unzip <$> funClause `sepBy1` symbol ";"
   symbol "."
   guard (all (== funid) sigs)
-  let body = case clauses of
-        -- one nullary clause
-        [([], [], expr)] -> expr
-        -- some unary clauses
-        ([_], _, _):_ ->
-          Case (Arg 0)
-            [CaseBranch p gs e | ([p], gs, e) <- clauses]
-        -- some n-ary clauses
-        clauses ->
-          Case (Tuple [Arg i | i <- [0..funid.arity - 1]])
-            [CaseBranch (PatTuple ps) gs e | (ps, gs, e) <- clauses]
-  pure FunDecl {funid, body}
+  let body = clausesToCase clauses
+  pure FunDecl{funid, body}
 
 pragma :: String -> Parser a -> Parser a
 pragma name body = try do
@@ -422,6 +448,6 @@ module_ = do
 
 parse :: FilePath -> Parser a -> String -> a
 parse path p s =
-  case evalState (runParserT (sc *> p <* eof) path s) undefined of
+  case evalState (runParserT (sc *> p <* eof) path s) "main" of
     Right x -> x
     Left err -> error (errorBundlePretty err)
