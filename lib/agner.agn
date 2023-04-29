@@ -1,4 +1,4 @@
--module(agner, primitive 0).
+-module(agner).
 
 -primitive(boxed_to_map/1).
 -primitive(map_to_boxed/1).
@@ -30,4 +30,3 @@
 -builtin(binary_greater_eq, greater_eq/2).
 -primitive(eq_less/2).
 -builtin(binary_eq_less, eq_less/2).
-

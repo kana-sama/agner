@@ -1,6 +1,4 @@
-module Language.Agner.Parser
-  -- (Ex(..), Parser, parse, expr, exprs, module_)
-  where
+module Language.Agner.Parser where
 
 import Language.Agner.Prelude hiding (try)
 
@@ -417,16 +415,10 @@ decl = funDecl <|> builtin <|> primitive <|> record where
 
 module_ :: Parser Module
 module_ = do
-  (name, primitive) <- pragma "module" do
-    name <- coerce <$> atom
-    primitive <- optional do
-      symbol ","
-      symbol "primitive"
-      lexeme L.decimal
-    pure (name, primitive)
+  name <- pragma "module" (coerce <$> atom)
   put name
   decls <- many decl
-  pure MkModule{name, primitive, decls}
+  pure MkModule{name, decls}
 
 parse :: FilePath -> Parser a -> String -> a
 parse path p s =

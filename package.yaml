@@ -20,6 +20,7 @@ default-extensions:
   - GeneralizedNewtypeDeriving
   - NoFieldSelectors
   - PartialTypeSignatures
+  - RecursiveDo
 
 ghc-options:
   - -Wincomplete-patterns

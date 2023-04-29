@@ -1,7 +1,5 @@
 # include "../../../runtime/tags.h"
 
-{-# LANGUAGE RecursiveDo #-}
-
 module Language.Agner.X64 (module Language.Agner.X64, module Data.X64) where
 
 import GHC.Exts (IsList(..))
@@ -25,6 +23,7 @@ data Ctx = MkCtx
   , variables :: Map Var Operand
   , atoms :: Set Atom
   , builtins :: Map String FunId
+  , builtins_total :: ~(Map String FunId)
   , records :: Map RecordName [RecordField]
   } deriving stock (Generic)
   
@@ -43,6 +42,7 @@ runM m = execWriter (evalStateT m initialCtx) where
     , variables = Map.empty
     , atoms = Set.empty
     , builtins = Map.empty
+    , builtins_total = error "builtins_total is not evaluated yet"
     , records = Map.empty
     }
 
@@ -97,9 +97,11 @@ argument ~arg = do
   pure (MemReg (base + arg * WORD_SIZE) vstack)
 
 builtin :: String -> M FunId
-builtin name = use (#builtins . at name) >>= \case
-  Just funid -> pure funid
-  Nothing -> error ("builtin " ++ name ++ " is not defined")
+builtin name = do
+  builtins <- use #builtins_total
+  pure case builtins Map.!? name of
+    Just funid -> funid
+    Nothing -> error ("builtin " ++ name ++ " is not defined")
 
 record :: RecordName -> M [RecordField]
 record name = use (#records . at name) >>= \case
@@ -616,27 +618,21 @@ module_ module_ = do
   for_ module_.decls decl
 
 project :: WithTarget => [Module] -> M ()
-project modules = do
+project modules = mdo
   tell [ _newline ]
   tell [ _text ]
   entryPoint
 
+  #builtins_total .= builtins
   for_ modules module_
+  builtins <- use #builtins
 
   tell [ _newline ]
   tell [ _data ]
   atoms
 
 compile :: Target -> [Module] -> Prog
-compile target modules =
-  let ?target = target in runM (project (sortModules modules))
-  where
-    sortModules = List.sortBy \a b ->
-      case (a.primitive, b.primitive) of
-        (Nothing, Nothing) -> EQ
-        (Just _, Nothing) -> LT
-        (Nothing, Just _) -> GT
-        (Just a, Just b) -> compare a b
+compile target modules = let ?target = target in runM (project modules)
 
 
 -- utils
