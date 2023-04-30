@@ -56,14 +56,14 @@ void action_wrapper(scheduler_t* scheduler, action_t action, jmp_buf* spawner, p
   if (setjmp(*process->context) == 0)
     longjmp(*spawner, 1);
 
-  action(arg);
+  action(process, arg);
   
   process->is_alive = false;
   list_append(scheduler->to_release, process);
   scheduler_switch(scheduler);
 }
 
-PID_t scheduler_spawn(scheduler_t* scheduler, action_t action, void* arg) {
+process_t* scheduler_spawn(scheduler_t* scheduler, action_t action, void* arg) {
   jmp_buf*   spawner = malloc(sizeof(jmp_buf));
   process_t* process = process_new();
 
@@ -92,7 +92,7 @@ PID_t scheduler_spawn(scheduler_t* scheduler, action_t action, void* arg) {
     : "rdi", "rsi", "rdx", "rcx", "memory", "r12", "r13"
   );
 
-  return process->pid;
+  return process;
 }
 
 void scheduler_next(scheduler_t* scheduler) {

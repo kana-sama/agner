@@ -5,6 +5,8 @@
 # include <time.h>
 
 # include "value.h"
+# include "heap.h"
+# include "process.h"
 # include "asserts.h"
 # include "runtime.h"
 # include "tags.h"
@@ -88,26 +90,38 @@ value_t _agner__put_str__1(bif_context_t ctx, value_t value) {
 //   }
 // }
 
-value_t _erlang__spawn__1(bif_context_t ctx, value_t value) {
+static void spawn_wrapper(process_t* self, value_t* value_) {
+  value_t  value = *value_;
   action_t action;
+
   switch (_assert__fun(value, 0)) {
     case FUN_KIND_STATIC:
       action = (action_t)value;
       break;
+
     case FUN_KIND_CLOSURE: {
       boxed_value_t* ref = cast_to_boxed_value(value);
-      asm(
-        " movq %[env], %%r13"
+      asm(" movq %[env], %%r13"
         :
         : [env] "r" (ref->closure.env)
         : "r13"
       );
       action = (action_t)(ref->closure.body);
+      break;
     }
   }
+
+  action(self, NULL);
+}
+
+value_t _erlang__spawn__1(bif_context_t ctx, value_t value) {
+  _assert__fun(value, -1);
+
+  value_t* copied_value = malloc(sizeof(value_t));
+  process_t* spawned = scheduler_spawn(scheduler, (action_t)spawn_wrapper, copied_value);
+  *copied_value = copy_to_heap(value, &spawned->heap, process_gc_ctx(spawned));
   
-  PID_t pid = scheduler_spawn(scheduler, action, NULL);
-  return pid << TAG_SIZE | PID_TAG;
+  return (spawned->pid) << TAG_SIZE | PID_TAG;
 }
 
 value_t _erlang__self__0(bif_context_t ctx) {

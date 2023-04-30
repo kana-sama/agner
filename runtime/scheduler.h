@@ -6,6 +6,8 @@
 # include "containers/list.h"
 # include "process.h"
 
+typedef void (*action_t)(process_t* process, void* arg);
+
 typedef struct scheduler_t {
   list_t*    queue;
   list_t*    to_release;
@@ -15,8 +17,8 @@ typedef struct scheduler_t {
 } scheduler_t;
 
 scheduler_t* scheduler_new();
-void  scheduler_free(scheduler_t*);
-PID_t scheduler_spawn(scheduler_t*, action_t, void*);
-void  scheduler_next(scheduler_t*);
-void  scheduler_yield(scheduler_t*);
-void  scheduler_run(scheduler_t*, action_t, void*);
+process_t*   scheduler_spawn(scheduler_t*, action_t, void*);
+void scheduler_free(scheduler_t*);
+void scheduler_next(scheduler_t*);
+void scheduler_yield(scheduler_t*);
+void scheduler_run(scheduler_t*, action_t, void*);

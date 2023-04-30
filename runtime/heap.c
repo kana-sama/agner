@@ -131,10 +131,10 @@ value_t copy_to_heap(value_t value, heap_t** heap, gc_ctx_t ctx) {
   void* dst = heap_allocate(heap, size, ctx);
   memcpy(dst, ref, size * sizeof(value_t));
 
-  boxed_value_children_t children = boxed_value_children(ref);
-  for (int i = 0; i < children.count; i++) {
-    children.values[i] = copy_to_heap(children.values[i], heap, ctx);
-  }
+  boxed_value_children_t ref_children = boxed_value_children(ref);
+  boxed_value_children_t dst_children = boxed_value_children(dst);
+  for (int i = 0; i < ref_children.count; i++)
+    dst_children.values[i] = copy_to_heap(ref_children.values[i], heap, ctx);
 
   return (value_t)(dst) | BOX_TAG;
 }
