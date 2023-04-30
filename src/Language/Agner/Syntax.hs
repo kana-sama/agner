@@ -46,9 +46,10 @@ data MapElemBind
   | (::=) Expr Expr
   deriving stock (Show, Data)
 
-data ListCompQualifier
-  = ListCompGenerator Pat Expr
-  | ListCompFilter Expr
+data CompQualifier
+  = CompListGenerator Pat Expr
+  | CompMapGenerator Pat Pat Expr
+  | CompFilter Expr
   deriving stock (Show, Data)
 
 data Expr
@@ -65,7 +66,8 @@ data Expr
   | Map [MapElemBind]
   | MapUpdate Expr [MapElemBind]
 
-  | ListComp Expr [ListCompQualifier]
+  | ListComp Expr [CompQualifier]
+  | MapComp Expr Expr [CompQualifier]
 
   | Var Var
   | Fun{funid :: FunId}

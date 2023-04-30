@@ -246,40 +246,50 @@ record_construct = do
   values <- braces (record_kv `sepBy` symbol ",")
   pure (Record recordName values)
 
-listComp :: Parser Expr
-listComp = brackets do
+comp_qualifier :: Parser CompQualifier
+comp_qualifier = choice
+  [ try do p <- pat; symbol "<-"; e <- expr; pure (CompListGenerator p e)
+  , try do k <- pat; symbol ":="; v <- pat; symbol "<-"; e <- expr; pure (CompMapGenerator k v e)
+  , do e <- expr; pure (CompFilter e) 
+  ]
+
+list_comp :: Parser Expr
+list_comp = brackets do
   e <- expr
   symbol "||"
-  qs <- listCompQualifier `sepBy1` symbol ","
+  qs <- comp_qualifier `sepBy1` symbol ","
   pure (ListComp e qs)
-  where
-    listCompQualifier = choice
-      [ try do p <- pat; symbol "<-"; e <- expr; pure (ListCompGenerator p e)
-      , do e <- expr; pure (ListCompFilter e) 
-      ]
+
+map_comp :: Parser Expr
+map_comp = symbol "#" *> braces do
+  k <- expr
+  symbol "=>"
+  v <- expr
+  symbol "||"
+  qs <- comp_qualifier `sepBy1` symbol ","
+  pure (MapComp k v qs)
 
 term :: Parser Expr
 term = choice
-  [ try fun
+  [ try do fun
   , funL
   , Receive <$> receive
   , uncurry Case <$> case_
   , makeIf <$> if_
-  , uncurry Apply <$> try apply
-  , uncurry DynApply <$> try dynApply
+  , try do uncurry Apply <$> apply
+  , try do uncurry DynApply <$> dynApply
   , begin
   , parens expr
   , Var <$> variable
   , Atom <$> atom
   , Integer <$> integer
   , Tuple <$> tuple
-  , try listComp
+  , try do list_comp
   , makeList <$> list
   , makeList . (, Nothing) <$> string_
-
-  , try record_construct
-
-  , Map <$> map_
+  , try do map_comp
+  , try do Map <$> map_
+  , try do record_construct
   ]
   where
     makeIf branches = Case Nil [CaseBranch PatWildcard gs body | (gs, body) <- branches]

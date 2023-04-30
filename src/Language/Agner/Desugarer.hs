@@ -6,7 +6,7 @@ import Language.Agner.Syntax
 import Data.Generics.Uniplate.Data (rewriteBi)
 
 desugar :: Module -> Module
-desugar = andAlso . orElse . listComp . send . maps . operators
+desugar = andAlso . orElse . comps . send . maps . operators
 
 andAlso :: Module -> Module
 andAlso = rewriteBi \case
@@ -24,19 +24,34 @@ orElse = rewriteBi \case
       , CaseBranch (PatAtom "false") [] [b] ]
   _ -> Nothing
 
-listComp :: Module -> Module
-listComp = rewriteBi \case
-  ListComp result [] -> Just do
+applyQualifiers :: Expr -> [CompQualifier] -> Expr
+applyQualifiers result = \case
+  [] ->
     Cons result Nil
-  ListComp result (ListCompGenerator p e : qualifiers) -> Just do
+
+  CompListGenerator p e : qualifiers ->
     Apply "lists:flatmap/2"
-      [ FunL [ MkClause [p] [] [ListComp result qualifiers]
+      [ FunL [ MkClause [p] [] [applyQualifiers result qualifiers]
              , MkClause [PatWildcard] [] [Nil] ]
       , e ]
-  ListComp result (ListCompFilter p : qualifiers) -> Just do
+
+  CompMapGenerator k v e : qualifiers ->
+    Apply "lists:flatmap/2"
+      [ FunL [ MkClause [PatTuple [k, v]] [] [applyQualifiers result qualifiers]
+             , MkClause [PatWildcard] [] [Nil] ]
+      , Apply "maps:to_list/1" [e] ]
+
+  CompFilter p : qualifiers ->
     Case p
-      [ CaseBranch (PatAtom "true") [] [ListComp result qualifiers]
+      [ CaseBranch (PatAtom "true") [] [applyQualifiers result qualifiers]
       , CaseBranch PatWildcard [] [Nil] ]
+
+comps :: Module -> Module
+comps = rewriteBi \case
+  ListComp result qualifiers -> Just do
+    applyQualifiers result qualifiers
+  MapComp k v qualifiers -> Just do
+    Apply "maps:from_list/1" [applyQualifiers (Tuple [k, v]) qualifiers]
   _ -> Nothing
 
 send :: Module -> Module

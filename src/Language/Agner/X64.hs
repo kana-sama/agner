@@ -440,6 +440,7 @@ expr result = \case
   e@Map{}       -> shouldBeDesugared e
   e@MapUpdate{} -> shouldBeDesugared e
   e@ListComp{}  -> shouldBeDesugared e
+  e@MapComp{}   -> shouldBeDesugared e
   e@AndAlso{}   -> shouldBeDesugared e
   e@OrElse{}    -> shouldBeDesugared e
   e@Send{}      -> shouldBeDesugared e
@@ -623,6 +624,17 @@ decl FunDecl{funid, clauses} = function funid clauses do
     tell [ movq UNBOUND_TAG slot ]
     pure (Map.singleton var slot)
 
+
+anonFun :: WithTarget => AnonFun -> M ()
+anonFun anon = function anon.funid anon.clauses do
+  Map.unions <$> ifor anon.env \i var -> do
+    slot <- alloc
+    tell [ _comment ("variable " ++ var.getString) ]
+    tell [ movq (MemReg (i * WORD_SIZE) closureEnv) rax ]
+    tell [ movq rax slot ]
+    pure (Map.singleton var slot)
+
+
 entryPoint :: WithTarget => M ()
 entryPoint = do
   tell [ _newline ]
@@ -666,15 +678,6 @@ module_ module_ = do
   tell [ _newline ]
   tell [ _comment ("module: " ++ module_.name.getString) ]
   for_ module_.decls decl
-
-anonFun :: WithTarget => AnonFun -> M ()
-anonFun anon = function anon.funid anon.clauses do
-  Map.unions <$> ifor anon.env \i var -> do
-    slot <- alloc
-    tell [ _comment ("variable " ++ var.getString) ]
-    tell [ movq (MemReg (i * WORD_SIZE) closureEnv) rax ]
-    tell [ movq rax slot ]
-    pure (Map.singleton var slot)
 
 project :: WithTarget => [Module] -> M ()
 project modules = mdo
