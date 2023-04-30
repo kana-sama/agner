@@ -8,25 +8,16 @@
 -primitive(println/1).
 
 -primitive(not/1).
--builtin(unary_not, not/1).
 -primitive(and/2).
--builtin(binary_and, and/2).
 
 -primitive(plus/2).
--builtin(binary_plus, plus/2).
 -primitive(minus/2).
--builtin(binary_minus, minus/2).
+-primitive(rem/2).
 
 -primitive(plus_plus/2).
--builtin(binary_plus_plus, plus_plus/2).
 
 -primitive(eq_eq/2).
--builtin(binary_eq_eq, eq_eq/2).
 -primitive(less/2).
--builtin(binary_less, less/2).
 -primitive(greater/2).
--builtin(binary_greater, greater/2).
 -primitive(greater_eq/2).
--builtin(binary_greater_eq, greater_eq/2).
 -primitive(eq_less/2).
--builtin(binary_eq_less, eq_less/2).

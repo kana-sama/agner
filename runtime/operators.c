@@ -77,10 +77,10 @@ value_t _agner__minus__2(bif_context_t ctx, value_t l, value_t r) {
 //   _throw__badarith(l, r, "div");
 // }
 
-// value_t _binop__rem(bif_context_t ctx, value_t l, value_t r) {
-//   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) % decode_integer(r));
-//   _throw__badarith(l, r, "rem");
-// }
+value_t _agner__rem__2(bif_context_t ctx, value_t l, value_t r) {
+  if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) % decode_integer(r));
+  _throw__badarith(l, r, "rem");
+}
 
 
 

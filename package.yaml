@@ -21,6 +21,7 @@ default-extensions:
   - NoFieldSelectors
   - PartialTypeSignatures
   - RecursiveDo
+  - DataKinds
 
 ghc-options:
   - -Wincomplete-patterns
@@ -28,6 +29,7 @@ ghc-options:
 
 dependencies:
   - base
+  - shower
 
 extra-source-files:
   - runtime/tags.h
@@ -62,4 +64,3 @@ executables:
       - filepath
       - directory
       - named
-      - shower

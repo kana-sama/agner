@@ -4,9 +4,21 @@ reverse(List) -> reverse(List, []).
 reverse([H|T], Acc) -> reverse(T, [H|Acc]);
 reverse([], Acc) -> Acc.
 
-map(F, List) -> reverse(map(F, List, Acc=[])).
+map(F, List) -> map(F, List, Acc=[]).
 map(F, [H|T], Acc) -> map(F, T, [F(H)|Acc]);
-map(F, [], Acc) -> Acc.
+map(F, [], Acc) -> reverse(Acc).
+
+flatmap(F, List) -> flatmap(F, List, Acc=[]).
+flatmap(F, [H|T], Acc) -> flatmap(F, T, F(H) ++ Acc);
+flatmap(F, [], Acc) -> reverse(Acc).
+
+filter(F, List) -> filter(F, List, Acc=[]).
+filter(F, [H|T], Acc) ->
+  case F(H) of
+    true -> filter(F, T, [H|Acc]);
+    false -> filter(F, T, Acc)
+  end;
+filter(F, [], Acc) -> reverse(Acc).
 
 words(S) -> reverse(words(S, [""])).
 words(" " ++ S, Acc=[""|_]) -> words(S, Acc);

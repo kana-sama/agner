@@ -13,8 +13,11 @@ resolveTailCalls = module_
       m{decls = map decl m.decls}
 
     decl = \case
-      FunDecl{funid, body} -> FunDecl{funid, body = expr funid body}
+      FunDecl{funid, clauses} -> FunDecl{funid, clauses = [clause funid c | c <- clauses]}
       d -> d
+
+    clause f MkClause{pats, guards, body} =
+      MkClause{pats, guards, body = expr f body}
 
     expr f = \case
       Apply funid es | f == funid -> TailApply funid es

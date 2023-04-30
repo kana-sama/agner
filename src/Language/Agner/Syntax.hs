@@ -46,6 +46,11 @@ data MapElemBind
   | (::=) Expr Expr
   deriving stock (Show, Data)
 
+data ListCompQualifier
+  = ListCompGenerator Pat Expr
+  | ListCompFilter Expr
+  deriving stock (Show, Data)
+
 data Expr
   = Integer Integer
   | Atom Atom
@@ -60,10 +65,11 @@ data Expr
   | Map [MapElemBind]
   | MapUpdate Expr [MapElemBind]
 
-  | Arg Int
+  | ListComp Expr [ListCompQualifier]
+
   | Var Var
-  | Fun FunId
-  | FunL Int Expr
+  | Fun{funid :: FunId}
+  | FunL{clauses :: [Clause]}
 
   | BinOp BinOp Expr Expr
   | UnOp UnOp Expr
@@ -76,6 +82,11 @@ data Expr
 
   | Case Expr [CaseBranch]
   | Receive [CaseBranch]
+
+  | AndAlso Expr Expr
+  | OrElse Expr Expr
+
+  | Send Expr Expr
 
   | Seq Expr Expr
   deriving stock (Show, Data)
@@ -92,10 +103,16 @@ data Pat
   | PatMatch Pat Pat
   deriving stock (Show, Data)
 
+data Clause = MkClause
+  { pats :: [Pat]
+  , guards :: GuardSeq
+  , body :: Expr
+  }
+  deriving stock (Show, Data)
+
 data Decl
-  = FunDecl{funid :: FunId, body :: Expr}
+  = FunDecl{funid :: FunId, clauses :: [Clause]}
   | Primitive{funid :: FunId}
-  | BuiltIn{funid :: FunId, name :: String}
   | RecordDecl{recordName :: RecordName, recordFields :: [RecordField]}
   deriving stock (Show, Data)
 
@@ -103,7 +120,7 @@ data Module = MkModule
   { name :: ModuleName
   , decls :: [Decl]
   }
-  deriving stock (Show)
+  deriving stock (Show, Data)
 
 
 -- utils

@@ -16,7 +16,7 @@ value_t _agner__plus__2(bif_context_t, value_t, value_t);
 value_t _agner__minus__2(bif_context_t, value_t, value_t);
 // value_t _binop__times(bif_context_t, value_t, value_t);
 // value_t _binop__div(bif_context_t, value_t, value_t);
-// value_t _binop__rem(bif_context_t, value_t, value_t);
+value_t _agner__rem__2(bif_context_t, value_t, value_t);
 
 // // bitwise
 // value_t _unop__bnot(bif_context_t, value_t);

@@ -17,7 +17,7 @@ import Language.Agner.Syntax
 data Target = Linux | MacOS
 type WithTarget = ?target :: Target
 
-data AnonFun = MkAnonFun{funid :: FunId, env :: [Var], body :: Expr}
+data AnonFun = MkAnonFun{funid :: FunId, env :: [Var], clauses :: [Clause]}
 
 data Ctx = MkCtx
   { uuid :: Int
@@ -26,8 +26,6 @@ data Ctx = MkCtx
   , stackframe :: ~Int
   , variables :: Map Var Operand
   , atoms :: Set Atom
-  , builtins :: Map String FunId
-  , builtins_total :: ~(Map String FunId)
   , records :: Map RecordName [RecordField]
   , anon_funs :: [AnonFun]
   } deriving stock (Generic)
@@ -36,6 +34,9 @@ type M = StateT Ctx (Writer Prog)
 
 defaultStackFrame :: Int
 defaultStackFrame = error "required_slots is not evaluated yet"
+
+shouldBeDesugared :: Show a => a -> b
+shouldBeDesugared a = error ("should be desugared: " ++ show a)
 
 runM :: M () -> Prog
 runM m = execWriter (evalStateT m initialCtx) where
@@ -46,8 +47,6 @@ runM m = execWriter (evalStateT m initialCtx) where
     , stackframe = defaultStackFrame
     , variables = Map.empty
     , atoms = Set.empty
-    , builtins = Map.empty
-    , builtins_total = error "builtins_total is not evaluated yet"
     , records = Map.empty
     , anon_funs = []
     }
@@ -107,13 +106,6 @@ argument ~arg = do
   ~base <- use #stackframe
   pure (MemReg (base + arg * WORD_SIZE) vstack)
 
-builtin :: String -> M FunId
-builtin name = do
-  builtins <- use #builtins_total
-  pure case builtins Map.!? name of
-    Just funid -> funid
-    Nothing -> error ("builtin " ++ name ++ " is not defined")
-
 record :: RecordName -> M [RecordField]
 record name = use (#records . at name) >>= \case
   Just fields -> pure fields
@@ -125,6 +117,7 @@ recordField name field = do
   case List.findIndex (== field) fields of
     Nothing -> error ("unknown field " ++ field.getString ++ " of record " ++ name.getString)
     Just ix -> pure ix
+
 
 data MatchOp = ByValue Operand | ByRef Operand
 
@@ -289,31 +282,6 @@ expr result = \case
       tell [ callq (runtime "alloc:cons") ]
       tell [ movq  rax result ]
 
-  Map [] -> do
-    funid <- builtin "maps_new"
-    apply result funid []
-
-  Map elems -> do
-    let tuples = elems >>= \case
-          (:=>) k v -> pure (Tuple [k, v])
-          (::=) k v -> error "unexpected := in map literal"
-    let list = foldr Cons Nil tuples
-    funid <- builtin "maps_from_list"
-    apply result funid [ApplyExpr list]
-
-  MapUpdate m [] -> do
-    result <~ m
-    tell [ movq  result rdi ]
-    tell [ callq (runtime "assert:map") ]
-
-  MapUpdate m elems -> do
-    result <~ m
-    put    <- builtin "maps_put"
-    update <- builtin "maps_update"
-    for_ elems \case
-      k :=> v -> apply result put    [ApplyExpr k, ApplyExpr v, ApplyOp result]
-      k ::= v -> apply result update [ApplyExpr k, ApplyExpr v, ApplyOp result]
-
   Record name values -> do
     fields <- record name
     result <~ Tuple (Atom (coerce name) : [getFieldValue f | f <- fields])
@@ -359,11 +327,6 @@ expr result = \case
         tell [ movq  field_value_ rdx ]
         tell [ callq (runtime "record:set") ]
         tell [ movq  rax result ]
-
-  Arg arg -> do
-    arg <- argument arg
-    tell [ movq arg rax ]
-    tell [ movq rax result ]
   
   Var var -> do
     var_op   <- variable var
@@ -373,16 +336,16 @@ expr result = \case
     tell [ callq (runtime "assert:bound") ]
     tell [ movq rdi result ]
   
-  Fun funid -> do
+  Fun{funid} -> do
     tell [ movq (Static (mkFunctionLabel funid)) rax ]
     tell [ movq rax result ]
 
-  FunL arity body -> do
-    let env = Set.toList (allVars body)
+  FunL{clauses} -> do
+    let env = Set.toList (allVars clauses)
     let size = length env
 
-    funid <- closureFunId arity
-    #anon_funs %= (MkAnonFun{funid, env, body}:)
+    funid <- closureFunId clauses.head.pats.length
+    #anon_funs %= (MkAnonFun{funid, env, clauses}:)
 
     when (odd size) do
       tell [ subq WORD_SIZE rsp ]
@@ -398,14 +361,6 @@ expr result = \case
 
     let restore = WORD_SIZE * if odd size then size + 1 else size
     tell [ addq (Imm (fromIntegral restore)) rsp ]
-  
-  BinOp op a b -> do
-    funid <- builtin ("binary_" ++ binOpName op)
-    apply result funid [ApplyExpr a, ApplyExpr b]
-  
-  UnOp op a -> do
-    funid <- builtin ("unary_" ++ unOpName op)
-    apply result funid [ApplyExpr a]
   
   Match p e -> do
     result <~ e
@@ -484,6 +439,15 @@ expr result = \case
     result <~ a
     result <~ b
 
+  e@Map{}       -> shouldBeDesugared e
+  e@MapUpdate{} -> shouldBeDesugared e
+  e@ListComp{}  -> shouldBeDesugared e
+  e@AndAlso{}   -> shouldBeDesugared e
+  e@OrElse{}    -> shouldBeDesugared e
+  e@Send{}      -> shouldBeDesugared e
+  e@BinOp{}     -> shouldBeDesugared e
+  e@UnOp{}      -> shouldBeDesugared e
+
   where
     (<~) = expr
 
@@ -541,9 +505,31 @@ funWrapper funid body = mdo
   unless (Set.null allocated) do
     error "local heap is not empty"
 
+clause :: WithTarget => FunId -> Clause -> Operand -> Label -> M ()
+clause funid clause result fail = do
+  tell [ _comment "function clause" ]
+  clauseLabel <- mkFunctionClauseLabel funid
+  tell [ _label clauseLabel ]
 
-function :: WithTarget => FunId -> Expr -> (M (Map Var Operand)) -> M ()
-function funid body init_scope = funWrapper funid mdo
+  tell [ _comment "unbound pats vars" ]
+  for_ (allVars clause.pats) \var -> do
+    var <- variable var
+    tell [ movq UNBOUND_TAG var ]
+
+  tell [ _comment "match clause patterns" ]
+  ifor_ clause.pats \arg p -> do
+    arg <- argument arg
+    pat arg p do tell [ jmp fail ]
+
+  tell [ _comment "check clause guards" ]
+  unless (null clause.guards) do
+    guardSeq clause.guards fail
+
+  tell [ _comment "clause body" ]
+  expr result clause.body
+
+function :: WithTarget => FunId -> [Clause] -> (M (Map Var Operand)) -> M ()
+function funid clauses init_scope = funWrapper funid mdo
   tell [ _comment "prologue" ]
   tell [ subq WORD_SIZE rsp ]
   tell [ addq  (Imm (requiredSlots * WORD_SIZE)) vstack ]
@@ -555,17 +541,32 @@ function funid body init_scope = funWrapper funid mdo
 
   tell [ _comment "initializing locals" ]
   #variables <~ init_scope
-
-  tell [ _comment "body" ]
+  
+  tell [ _comment "function clauses" ]
   withAlloc \result -> do
-    expr result body
-    tell [ movq result rbx ]
+    for_ clauses \c -> do
+      next_clause <- label
+      clause funid c result next_clause
+      tell [ movq   result rax ]
+      tell [ jmp    epilogue ]
+      tell [ _label next_clause ]
 
-  for_ (allVars body) \var -> do
+  tell [ _newline ]
+  tell [ _comment "failure clause" ]
+  fail_clause <- label
+  tell [ _label fail_clause ]
+  tell [ leaq   (MemRegL (mkFunctionMetaLabel funid) rip) rdi ]
+  tell [ leaq   args rsi ]; args <- argument 0
+  tell [ callq  (runtime "throw:function_clause") ]
+
+  for_ (allVars clauses) \var -> do
     free =<< variable var
     
+  epilogue <- label
   tell [ _comment "epilogue" ]
+  tell [ _label epilogue ]
   requiredSlots <- use #required_slots
+  tell [ movq  rax rbx ]
   tell [ subq  (Imm ((requiredSlots + funid.arity) * WORD_SIZE)) vstack ]
   tell [ callq (runtime "runtime:save_vstack") ]
   tell [ addq WORD_SIZE rsp ]
@@ -577,9 +578,6 @@ decl :: WithTarget => Decl -> M ()
 
 decl RecordDecl{recordName, recordFields} = do
   #records %= Map.insert recordName recordFields
-
-decl BuiltIn{name, funid} = do
-  #builtins . at name ?= funid
 
 decl Primitive{funid} = funWrapper funid do
   tell [ subq WORD_SIZE rsp ]
@@ -617,8 +615,8 @@ decl Primitive{funid} = funWrapper funid do
     prim_name funid =
       "_" ++ funid.ns.getString ++ "__" ++ funid.name.getString ++ "__" ++ show funid.arity
 
-decl FunDecl{funid, body} = function funid body do
-  Map.unions <$> for (Set.toList (allVars body)) \var -> do
+decl FunDecl{funid, clauses} = function funid clauses do
+  Map.unions <$> for (Set.toList (allVars clauses)) \var -> do
     slot <- alloc
     tell [ _comment ("variable " ++ var.getString) ]
     tell [ movq UNBOUND_TAG slot ]
@@ -669,7 +667,7 @@ module_ module_ = do
   for_ module_.decls decl
 
 anonFun :: WithTarget => AnonFun -> M ()
-anonFun anon = function anon.funid anon.body do
+anonFun anon = function anon.funid anon.clauses do
   Map.unions <$> ifor anon.env \i var -> do
     slot <- alloc
     tell [ _comment ("variable " ++ var.getString) ]
@@ -686,9 +684,7 @@ project modules = mdo
   tell [ _text ]
   entryPoint
 
-  #builtins_total .= builtins
   for_ modules module_
-  builtins <- use #builtins
 
   whileM (not . null <$> use #anon_funs) do
     anon <- #anon_funs %%= \(l:ls) -> (l, ls)
@@ -716,6 +712,11 @@ mkFunctionBodyLabel funid = mkFunctionLabel funid ++ ".body"
 mkFunctionEndLabel funid = mkFunctionLabel funid ++ ".end"
 mkFunctionMetaLabel funid = mkFunctionLabel funid ++ ".meta"
 mkFunctionMetaOptLabel funid field = mkFunctionMetaLabel funid ++ "." ++ field
+
+mkFunctionClauseLabel :: WithTarget => FunId -> M Label
+mkFunctionClauseLabel funid = do
+  uuid <- uuid
+  pure (mkFunctionLabel funid ++ ".clause" ++ show uuid)
 
 mkAtomLabel :: WithTarget => Atom -> Label
 mkAtomLabel atom = mkLabel ("_atom." ++ atom.getString)

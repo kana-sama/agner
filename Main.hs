@@ -20,6 +20,7 @@ import Language.Agner.X64 qualified as X64
 import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Parser qualified as Parser
 import Language.Agner.Optimizer qualified as Optimizer
+import Language.Agner.Desugarer qualified as Desugarer
 
 data Command
   = Example
@@ -83,6 +84,7 @@ compile (Arg target) (Arg sources) (Arg outputPath) (Arg asmPath) = do
   modules <- for sources \path -> do
     source <- readFile  path
     source <- parse     path source
+    source <- desugar   source
     source <- optimize  source
     pure source
   toBinary =<< compile modules
@@ -91,10 +93,13 @@ compile (Arg target) (Arg sources) (Arg outputPath) (Arg asmPath) = do
     parse path source = evaluate (Parser.parse path Parser.module_ source)
 
     optimize :: Syntax.Module -> IO Syntax.Module
-    optimize module_ = pure (Optimizer.optimize module_)
+    optimize module_ = evaluate (Optimizer.optimize module_)
+
+    desugar :: Syntax.Module -> IO Syntax.Module
+    desugar module_ = evaluate (Desugarer.desugar module_)
 
     compile :: [Syntax.Module] -> IO X64.Prog
-    compile modules = pure (X64.compile target modules)
+    compile modules = evaluate (X64.compile target modules)
 
     toBinary :: X64.Prog -> IO ()
     toBinary prog = do

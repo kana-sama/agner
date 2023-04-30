@@ -77,7 +77,7 @@ _align i = Meta (".align " ++ show i)
 _skip i = Meta (".skip " ++ show i)
 _quad s = Meta (".quad " ++ s)
 _asciz s = Meta (".asciz " ++ s)
-_comment comm = Meta ("// " ++ comm)
+_comment comm = Meta ("\n// " ++ comm)
 _include path = Meta ("#include " ++ show path)
 
 prettyOperand :: Operand -> String

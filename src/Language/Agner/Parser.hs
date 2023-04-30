@@ -1,13 +1,10 @@
-{-# LANGUAGE DataKinds #-}
-
 module Language.Agner.Parser where
 
 import Language.Agner.Prelude hiding (try)
 
 import Data.Char qualified as Char
-import GHC.Records (HasField(getField))
 
-import Text.Megaparsec (ParsecT, label, satisfy, between, choice, runParserT, eof, oneOf, some, notFollowedBy, many, empty, (<|>), try, sepBy, sepBy1, optional, anySingle, manyTill)
+import Text.Megaparsec (ParsecT, lookAhead, label, satisfy, between, choice, runParserT, eof, oneOf, some, notFollowedBy, many, empty, (<|>), try, sepBy, sepBy1, optional, anySingle, manyTill)
 import Text.Megaparsec.Char (char, string, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
@@ -16,9 +13,6 @@ import Control.Monad.Combinators.Expr (makeExprParser, Operator(..))
 import Language.Agner.Syntax
 
 type Parser = ParsecT Void String (State ModuleName)
-
-instance HasField "length" [a] Int where
-  getField = length
 
 ord :: Integral a => Char -> a
 ord = fromIntegral . Char.ord
@@ -96,32 +90,15 @@ exprToPat = \case
   Tuple es -> PatTuple [exprToPat e | e <- es]
   Nil -> PatNil
   Cons a b -> PatCons (exprToPat a) (exprToPat b)
-
   Map elems -> error "unimplemented: maps in patterns"
-  MapUpdate _ _ -> error "illegal pattern: map update"
-
   Record recordName values -> PatRecord recordName [(f, exprToPat e) | (f, e) <- values]
-  RecordGet _ _ _ -> error "invalid pattern: record_get"
-  RecordUpdate _ _ _ -> error "invalid pattern: record_set"
-
-  Arg _ -> error "invalid pattern: arg"
   Var "_" -> PatWildcard
   Var v -> PatVar v
-  Fun _ -> error "invalid pattern: function"
-  FunL _ _ -> error "invalid pattern: lambda"
-  BinOp Plus_Plus a b | Just xs <- isKnownList a ->
-    foldr PatCons (exprToPat b) xs
-  BinOp _ _ _ -> error "invalid pattern: binop"
+  BinOp Plus_Plus a b | Just xs <- isKnownList a -> foldr PatCons (exprToPat b) xs
   UnOp Minus' a | Just i <- isKnownInteger a -> PatInteger i
   UnOp Plus' a | Just i <- isKnownInteger a -> PatInteger i
-  UnOp _ _ -> error "invalid pattern: unop"
   Match a b -> PatMatch a (exprToPat b)
-  Apply _ _ -> error "invalid pattern: apply"
-  TailApply _ _ -> error "invalid pattern: tailapply"
-  DynApply _ _ -> error "invalid pattern: dynapply"
-  Case _ _ -> error "invalid pattern: case"
-  Receive _ -> error "invalid pattern: receive"
-  Seq _ _ -> error "invalid pattern: seq"
+  pat -> error ("invalid pattern: " ++ show pat)
   where
     isKnownList = \case
       Nil -> Just []
@@ -155,13 +132,21 @@ qualifiedName = do
       pure (moduleName, coerce a)
     (a, Just b) -> pure (coerce a, coerce b)
 
-fun :: Parser FunId
+fun :: Parser Expr
 fun = do
   symbol "fun"
   (ns, f) <- qualifiedName
   symbol "/"
   arity <- integer
-  pure (MkFunId ns f (fromInteger arity))
+  let funid = MkFunId ns f (fromInteger arity)
+  pure Fun{funid}
+
+funL :: Parser Expr
+funL = do
+  symbol "fun"
+  clauses <- clause `sepBy1` symbol ";"
+  symbol "end"
+  pure FunL{clauses}
 
 tuple :: Parser [Expr]
 tuple = braces (expr `sepBy` symbol ",")
@@ -261,17 +246,22 @@ record_construct = do
   values <- braces (record_kv `sepBy` symbol ",")
   pure (Record recordName values)
 
-funL :: Parser (Int, Expr)
-funL = do
-  symbol "fun"
-  clauses <- clause `sepBy1` symbol ";"
-  symbol "end"
-  pure ((head clauses).pats.length, clausesToCase clauses)
+listComp :: Parser Expr
+listComp = brackets do
+  e <- expr
+  symbol "||"
+  qs <- listCompQualifier `sepBy1` symbol ","
+  pure (ListComp e qs)
+  where
+    listCompQualifier = choice
+      [ try do p <- pat; symbol "<-"; e <- expr; pure (ListCompGenerator p e)
+      , do e <- expr; pure (ListCompFilter e) 
+      ]
 
 term :: Parser Expr
 term = choice
-  [ Fun <$> try fun
-  , uncurry FunL <$> funL
+  [ try fun
+  , funL
   , Receive <$> receive
   , uncurry Case <$> case_
   , makeIf <$> if_
@@ -283,6 +273,7 @@ term = choice
   , Atom <$> atom
   , Integer <$> integer
   , Tuple <$> tuple
+  , try listComp
   , makeList <$> list
   , makeList . (, Nothing) <$> string_
 
@@ -327,26 +318,18 @@ operatorTable unary binary = concat
   ,  1 *  [ binary "=="      []         do BinOp Eq_Eq
           , binary "/="      []         do BinOp Slash_Eq
           , binary "=<"      []         do BinOp Eq_Less
-          , binary "<"       []         do BinOp Less
+          , binary "<"       ["-"]      do BinOp Less
           , binary ">="      []         do BinOp Greater_Eq
           , binary ">"       []         do BinOp Greater
           , binary "=:="     []         do BinOp Eq_Colon_Eq
           , binary "=/="     []         do BinOp Eq_Slash_Eq ]
-  ,  1 *  [ binary "andalso" []         do andAlso ]
-  ,  1 *  [ binary "orelse"  []         do orElse  ]
-  ,  1 *  [ binary "!"       []         do send
-          , binary "="       [">"]      do match ]
+  ,  1 *  [ binary "andalso" []         do AndAlso ]
+  ,  1 *  [ binary "orelse"  []         do OrElse ]
+  ,  1 *  [ binary "!"       []         do Send
+          , binary "="       [">"]      \a b -> Match (exprToPat a) b ]
   ]
   where
     (*) = replicate
-    andAlso a b = Case a
-      [ CaseBranch (PatAtom "true")  [] b
-      , CaseBranch (PatAtom "false") [] (Atom "false") ]
-    orElse a b = Case a
-      [ CaseBranch (PatAtom "true")  [] (Atom "true")
-      , CaseBranch (PatAtom "false") [] b ]
-    match a b = Match (exprToPat a) b
-    send  a b = Apply "erlang:send/2" [a, b]
 
 expr :: Parser Expr
 expr = makeExprParser term ([[mapUpdate, recordGet, recordUpdate]] ++ operatorTable unary binary) where
@@ -374,22 +357,6 @@ expr = makeExprParser term ([[mapUpdate, recordGet, recordUpdate]] ++ operatorTa
 exprs :: Parser Expr
 exprs = foldr1 Seq <$> expr `sepBy1` symbol ","
 
-data Clause = MkClause{pats :: [Pat], guards :: [[Expr]], body :: Expr}
-
-clausesToCase :: [Clause] -> Expr
-clausesToCase = \case
-  [] -> error "clauses should be nonempty"
-  -- one nullary clause
-  [MkClause{pats = [], guards = [], body}] -> body
-  -- some unary clauses
-  clauses@(MkClause{pats = [_]}:_) ->
-    Case (Arg 0)
-      [CaseBranch p guards body | MkClause{pats = [p], guards, body} <- clauses]
-  -- some n-ary clauses
-  clauses@(MkClause{pats}:_) ->
-    Case (Tuple [Arg i | i <- [0..pats.length - 1]])
-      [CaseBranch (PatTuple c.pats) c.guards c.body | c <- clauses]
-
 clause :: Parser Clause
 clause = do
   pats <- parens (pat `sepBy` symbol ",")
@@ -398,20 +365,14 @@ clause = do
   body <- exprs
   pure MkClause{pats, guards, body}
 
-funClause :: Parser (FunId, Clause)
-funClause = do
-  (ns, name) <- qualifiedName
-  clause <- clause
-  let funid = MkFunId ns name clause.pats.length
-  pure (funid, clause)
-
 funDecl :: Parser Decl
 funDecl = do
-  (sigs@(funid:_), clauses) <- unzip <$> funClause `sepBy1` symbol ";"
+  name <- coerce <$> lookAhead atom
+  clauses <- (symbol name.getString *> clause) `sepBy1` symbol ";"
   symbol "."
-  guard (all (== funid) sigs)
-  let body = clausesToCase clauses
-  pure FunDecl{funid, body}
+  moduleName <- get
+  let funid = MkFunId moduleName name clauses.head.pats.length
+  pure FunDecl{funid, clauses}
 
 pragma :: String -> Parser a -> Parser a
 pragma name body = try do
@@ -422,13 +383,7 @@ pragma name body = try do
   pure value
 
 decl :: Parser Decl
-decl = funDecl <|> builtin <|> primitive <|> record where
-  builtin = pragma "builtin" do
-    name <- (.getString) <$> atom
-    symbol ","
-    funid <- localName
-    pure BuiltIn{name, funid}
-
+decl = funDecl <|> primitive <|> record where
   primitive = pragma "primitive" do
     funid <- localName
     pure Primitive{funid}

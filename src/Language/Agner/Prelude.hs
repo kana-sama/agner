@@ -11,6 +11,7 @@ import Data.Traversable as X (for)
 import Data.Maybe as X (fromMaybe, fromJust)
 import Data.Functor as X (($>))
 import Data.Coerce as X (coerce)
+import GHC.Records as X (HasField(getField))
 
 import Data.Foldable.WithIndex as X (ifor_)
 import Data.Traversable.WithIndex as X (ifor)
@@ -34,3 +35,9 @@ whileM cond body =
         True -> do body; loop
         False -> pure ()
    in loop
+
+instance HasField "length" [a] Int where
+  getField = length
+
+instance HasField "head" [a] a where
+  getField = head
