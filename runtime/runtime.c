@@ -30,7 +30,7 @@ void _runtime__start(value_t entry) {
 
   if ((entry & TAG_MASK) != FUN_TAG) _throw__badfun(entry);
   scheduler = scheduler_new();
-  scheduler_run(scheduler, (action_t)entry);
+  scheduler_run(scheduler, (action_t)entry, NULL);
   scheduler_free(scheduler);
 
   clock_gettime(CLOCK_MONOTONIC_RAW, &rt_end);

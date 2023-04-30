@@ -106,7 +106,7 @@ value_t _erlang__spawn__1(bif_context_t ctx, value_t value) {
     }
   }
   
-  PID_t pid = scheduler_spawn(scheduler, action);
+  PID_t pid = scheduler_spawn(scheduler, action, NULL);
   return pid << TAG_SIZE | PID_TAG;
 }
 

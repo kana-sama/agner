@@ -11,7 +11,7 @@
 # include "scopes.h"
 
 typedef int64_t PID_t;
-typedef void (*action_t)();
+typedef void (*action_t)(void* arg);
 
 typedef struct process_t {
   PID_t      pid;

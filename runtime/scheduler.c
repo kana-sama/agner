@@ -50,20 +50,20 @@ void scheduler_switch(scheduler_t* scheduler) {
 }
 
 static _Noreturn
-void action_wrapper(scheduler_t* scheduler, action_t action, jmp_buf* spawner, process_t* process) {
+void action_wrapper(scheduler_t* scheduler, action_t action, jmp_buf* spawner, process_t* process, void* arg) {
   list_append(scheduler->queue, process);
 
   if (setjmp(*process->context) == 0)
     longjmp(*spawner, 1);
 
-  action();
+  action(arg);
   
   process->is_alive = false;
   list_append(scheduler->to_release, process);
   scheduler_switch(scheduler);
 }
 
-PID_t scheduler_spawn(scheduler_t* scheduler, action_t action) {
+PID_t scheduler_spawn(scheduler_t* scheduler, action_t action, void* arg) {
   jmp_buf*   spawner = malloc(sizeof(jmp_buf));
   process_t* process = process_new();
 
@@ -75,16 +75,19 @@ PID_t scheduler_spawn(scheduler_t* scheduler, action_t action) {
     "movq  %[action]   , %%rsi \n"
     "movq  %[spawner]  , %%rdx \n"
     "movq  %[process]  , %%rcx \n"
+    "movq  %[arg]      , %%r8  \n"
     
     "jmpq *%[action_wrapper]   \n"
     :
-    : [stack_beg]      "r" (process->stack_beg)
-    , [vstack]         "r" (process->vstack)
+    : [stack_beg] "r" (process->stack_beg)
+    , [vstack]    "r" (process->vstack)
 
-    , [scheduler]      "r" (scheduler)
-    , [action]         "r" (action)
-    , [spawner]        "r" (spawner)
-    , [process]        "r" (process)
+    , [scheduler] "r" (scheduler)
+    , [action]    "r" (action)
+    , [spawner]   "r" (spawner)
+    , [process]   "r" (process)
+    , [arg]       "r" (arg)
+
     , [action_wrapper] "r" (action_wrapper)
     : "rdi", "rsi", "rdx", "rcx", "memory", "r12", "r13"
   );
@@ -110,9 +113,9 @@ void scheduler_yield(scheduler_t* scheduler) {
   }
 }
 
-void scheduler_run(scheduler_t* scheduler, action_t action) {
+void scheduler_run(scheduler_t* scheduler, action_t action, void* arg) {
   if (setjmp(*scheduler->exit) == 0) {
-    scheduler_spawn(scheduler, action);
+    scheduler_spawn(scheduler, action, arg);
     scheduler_switch(scheduler);
   }
 
