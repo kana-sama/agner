@@ -12,16 +12,16 @@ andAlso :: Module -> Module
 andAlso = rewriteBi \case
   AndAlso a b -> Just do
     Case a
-      [ CaseBranch (PatAtom "true")  [] b
-      , CaseBranch (PatAtom "false") [] (Atom "false") ]
+      [ CaseBranch (PatAtom "true")  [] [b]
+      , CaseBranch (PatAtom "false") [] [Atom "false"] ]
   _ -> Nothing
 
 orElse :: Module -> Module
 orElse = rewriteBi \case
   OrElse a b -> Just do
     Case a
-      [ CaseBranch (PatAtom "true")  [] (Atom "true")
-      , CaseBranch (PatAtom "false") [] b ]
+      [ CaseBranch (PatAtom "true")  [] [Atom "true"]
+      , CaseBranch (PatAtom "false") [] [b] ]
   _ -> Nothing
 
 listComp :: Module -> Module
@@ -30,13 +30,13 @@ listComp = rewriteBi \case
     Cons result Nil
   ListComp result (ListCompGenerator p e : qualifiers) -> Just do
     Apply "lists:flatmap/2"
-      [ FunL [ MkClause [p] [] (ListComp result qualifiers)
-             , MkClause [PatWildcard] [] Nil ]
+      [ FunL [ MkClause [p] [] [ListComp result qualifiers]
+             , MkClause [PatWildcard] [] [Nil] ]
       , e ]
   ListComp result (ListCompFilter p : qualifiers) -> Just do
     Case p
-      [ CaseBranch (PatAtom "true") [] (ListComp result qualifiers)
-      , CaseBranch PatWildcard [] Nil ]
+      [ CaseBranch (PatAtom "true") [] [ListComp result qualifiers]
+      , CaseBranch PatWildcard [] [Nil] ]
   _ -> Nothing
 
 send :: Module -> Module

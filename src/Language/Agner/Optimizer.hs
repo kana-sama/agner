@@ -17,14 +17,17 @@ resolveTailCalls = module_
       d -> d
 
     clause f MkClause{pats, guards, body} =
-      MkClause{pats, guards, body = expr f body}
+      MkClause{pats, guards, body = exprs f body}
 
     expr f = \case
       Apply funid es | f == funid -> TailApply funid es
       Case e bs -> Case e (map (branch f) bs)
       Receive bs -> Receive (map (branch f) bs)
-      Seq a b -> Seq a (expr f b)
+      Begin es -> Begin (exprs f es)
       e -> e
 
-    branch f (CaseBranch p gs e) =
-      CaseBranch p gs (expr f e)
+    exprs f es =
+      init es ++ [expr f (last es)]
+
+    branch f (CaseBranch p gs es) =
+      CaseBranch p gs (exprs f es)

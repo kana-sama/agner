@@ -214,7 +214,7 @@ caseBranch value result afterMatch done branch = do
 
   afterMatch
 
-  expr result branch.body
+  exprs result branch.body
   tell [ jmp    done ]
 
   tell [ _label fail ]
@@ -435,9 +435,7 @@ expr result = \case
 
       tell [ _label done]
 
-  Seq a b -> do
-    result <~ a
-    result <~ b
+  Begin es -> exprs result es
 
   e@Map{}       -> shouldBeDesugared e
   e@MapUpdate{} -> shouldBeDesugared e
@@ -450,6 +448,9 @@ expr result = \case
 
   where
     (<~) = expr
+
+exprs :: WithTarget => Operand -> Exprs -> M ()
+exprs result es = for_ es (expr result)
 
 
 data ApplyArg = ApplyExpr Expr | ApplyOp Operand
@@ -526,7 +527,7 @@ clause funid clause result fail = do
     guardSeq clause.guards fail
 
   tell [ _comment "clause body" ]
-  expr result clause.body
+  exprs result clause.body
 
 function :: WithTarget => FunId -> [Clause] -> (M (Map Var Operand)) -> M ()
 function funid clauses init_scope = funWrapper funid mdo

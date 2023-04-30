@@ -37,7 +37,7 @@ type GuardExp = [Expr]
 data CaseBranch = CaseBranch
   { pat    :: Pat
   , guards :: GuardSeq
-  , body   :: Expr
+  , body   :: Exprs
   }
   deriving stock (Show, Data)
   
@@ -88,8 +88,10 @@ data Expr
 
   | Send Expr Expr
 
-  | Seq Expr Expr
+  | Begin Exprs
   deriving stock (Show, Data)
+
+type Exprs = [Expr]
 
 data Pat
   = PatVar Var
@@ -106,7 +108,7 @@ data Pat
 data Clause = MkClause
   { pats :: [Pat]
   , guards :: GuardSeq
-  , body :: Expr
+  , body :: Exprs
   }
   deriving stock (Show, Data)
 

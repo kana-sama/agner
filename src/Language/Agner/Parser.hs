@@ -214,7 +214,7 @@ case_ = do
   symbol "end"
   pure (e, bs)
 
-if_ :: Parser [(GuardSeq, Expr)]
+if_ :: Parser [(GuardSeq, Exprs)]
 if_ = symbol "if" *> (if_branch `sepBy1` symbol ";") <* symbol "end" where
   if_branch = do
     g <- guard_seq
@@ -230,7 +230,7 @@ receive = do
   pure bs
 
 begin :: Parser Expr
-begin = between (symbol "begin") (symbol "end") exprs
+begin = Begin <$> between (symbol "begin") (symbol "end") exprs
 
 record_kv :: Parser (RecordField, Expr)
 record_kv = do
@@ -354,8 +354,8 @@ expr = makeExprParser term ([[mapUpdate, recordGet, recordUpdate]] ++ operatorTa
     kvs <- braces (record_kv `sepBy` symbol ",")
     pure \e -> RecordUpdate e recordName kvs
 
-exprs :: Parser Expr
-exprs = foldr1 Seq <$> expr `sepBy1` symbol ","
+exprs :: Parser Exprs
+exprs = expr `sepBy1` symbol ","
 
 clause :: Parser Clause
 clause = do
