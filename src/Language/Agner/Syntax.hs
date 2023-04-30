@@ -14,6 +14,7 @@ newtype ModuleName  = MkModuleName  {getString :: String} deriving stock (Data) 
 newtype RecordName  = MkRecordName  {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
 newtype RecordField = MkRecordField {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
 
+pattern MkUnresolvedFunId{name, arity} = MkFunId{ns = "", name, arity}
 data FunId = MkFunId { ns :: ModuleName, name :: FunName, arity :: Int }
   deriving stock (Eq, Ord, Data)
 

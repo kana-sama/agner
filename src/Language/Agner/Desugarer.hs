@@ -3,10 +3,11 @@ module Language.Agner.Desugarer (desugar) where
 import Language.Agner.Prelude
 import Language.Agner.Syntax
 
-import Data.Generics.Uniplate.Data (rewriteBi)
+import Data.Set qualified as Set
+import Data.Generics.Uniplate.Data (rewriteBi, transformBi)
 
 desugar :: Module -> Module
-desugar = andAlso . orElse . comps . send . maps . operators
+desugar = andAlso . orElse . comps . send . maps . operators . resolve
 
 andAlso :: Module -> Module
 andAlso = rewriteBi \case
@@ -91,3 +92,17 @@ operators = rewriteBi \case
     Apply (fromString ("agner:" ++ binOpName op ++ "/2")) [a, b]
 
   _ -> Nothing
+
+resolve :: Module -> Module
+resolve module_ = module_ & transformBi \case
+  funid@MkUnresolvedFunId{} ->
+    if funid `Set.member` localNames
+      then funid{ns = module_.name}
+      else funid{ns = "erlang"}
+  funid -> funid
+  where
+    localNames = foldMap getDeclName module_.decls
+    getDeclName = \case
+      Primitive{funid} -> Set.singleton MkUnresolvedFunId{name=funid.name, arity=funid.arity}
+      FunDecl{funid} -> Set.singleton MkUnresolvedFunId{name=funid.name, arity=funid.arity}
+      RecordDecl{} -> Set.empty

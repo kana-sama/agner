@@ -8,13 +8,13 @@ ref(X) ->
   end.
 
 new_ref(X) ->
-  erlang:spawn(fun () -> ref(X) end).
+  spawn(fun () -> ref(X) end).
 
 set_ref(Ref, X) ->
   Ref ! {set, X}.
 
 get_ref(Ref) ->
-  Ref ! {get, erlang:self()},
+  Ref ! {get, self()},
   receive X -> X end.
 
 kill_ref(Ref) ->
