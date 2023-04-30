@@ -17,6 +17,8 @@ import Language.Agner.Syntax
 data Target = Linux | MacOS
 type WithTarget = ?target :: Target
 
+data AnonFun = MkAnonFun{funid :: FunId, env :: [Var], body :: Expr}
+
 data Ctx = MkCtx
   { uuid :: Int
   , allocated :: Set Operand
@@ -27,7 +29,7 @@ data Ctx = MkCtx
   , builtins :: Map String FunId
   , builtins_total :: ~(Map String FunId)
   , records :: Map RecordName [RecordField]
-  , lambdas :: [(FunId, Int, [Var], Expr)]
+  , anon_funs :: [AnonFun]
   } deriving stock (Generic)
   
 type M = StateT Ctx (Writer Prog)
@@ -47,7 +49,7 @@ runM m = execWriter (evalStateT m initialCtx) where
     , builtins = Map.empty
     , builtins_total = error "builtins_total is not evaluated yet"
     , records = Map.empty
-    , lambdas = []
+    , anon_funs = []
     }
 
 runtime :: WithTarget => String -> Label
@@ -380,7 +382,7 @@ expr result = \case
     let size = length env
 
     funid <- closureFunId arity
-    #lambdas %= ((funid, arity, env, body):)
+    #anon_funs %= (MkAnonFun{funid, env, body}:)
 
     when (odd size) do
       tell [ subq WORD_SIZE rsp ]
@@ -512,6 +514,7 @@ apply result f args = do
 funWrapper :: WithTarget => FunId -> M () -> M ()
 funWrapper funid body = mdo
   tell [ _newline ]
+  tell [ _text ]
   tell [ _globl (mkFunctionLabel funid) ]
   tell [ _align WORD_SIZE ]
   tell [ _skip  FUN_TAG ]
@@ -537,6 +540,38 @@ funWrapper funid body = mdo
   allocated <- use #allocated
   unless (Set.null allocated) do
     error "local heap is not empty"
+
+
+function :: WithTarget => FunId -> Expr -> (M (Map Var Operand)) -> M ()
+function funid body init_scope = funWrapper funid mdo
+  tell [ _comment "prologue" ]
+  tell [ subq WORD_SIZE rsp ]
+  tell [ addq  (Imm (requiredSlots * WORD_SIZE)) vstack ]
+  tell [ callq (runtime "runtime:save_vstack") ]
+
+  tell [ _label (mkFunctionBodyLabel funid) ]
+  tell [ leaq  (MemRegL (mkFunctionMetaOptLabel funid "name_a") rip) rdi ]
+  tell [ callq (runtime "runtime:yield") ]
+
+  tell [ _comment "initializing locals" ]
+  #variables <~ init_scope
+
+  tell [ _comment "body" ]
+  withAlloc \result -> do
+    expr result body
+    tell [ movq result rbx ]
+
+  for_ (allVars body) \var -> do
+    free =<< variable var
+    
+  tell [ _comment "epilogue" ]
+  requiredSlots <- use #required_slots
+  tell [ subq  (Imm ((requiredSlots + funid.arity) * WORD_SIZE)) vstack ]
+  tell [ callq (runtime "runtime:save_vstack") ]
+  tell [ addq WORD_SIZE rsp ]
+  tell [ movq rbx rax ]
+  tell [ retq ]
+
 
 decl :: WithTarget => Decl -> M ()
 
@@ -582,39 +617,12 @@ decl Primitive{funid} = funWrapper funid do
     prim_name funid =
       "_" ++ funid.ns.getString ++ "__" ++ funid.name.getString ++ "__" ++ show funid.arity
 
-decl FunDecl{funid, body} = funWrapper funid mdo
-  tell [ _comment "prologue" ]
-  tell [ subq WORD_SIZE rsp ]
-  tell [ addq  (Imm (requiredSlots * WORD_SIZE)) vstack ]
-  tell [ callq (runtime "runtime:save_vstack") ]
-
-  tell [ _label (mkFunctionBodyLabel funid) ]
-  tell [ leaq  (MemRegL (mkFunctionMetaOptLabel funid "name_a") rip) rdi ]
-  tell [ callq (runtime "runtime:yield") ]
-
-  tell [ _comment "initializing locals" ]
-  #variables <~ Map.unions <$> for (Set.toList (allVars body)) \var -> do
+decl FunDecl{funid, body} = function funid body do
+  Map.unions <$> for (Set.toList (allVars body)) \var -> do
     slot <- alloc
     tell [ _comment ("variable " ++ var.getString) ]
     tell [ movq UNBOUND_TAG slot ]
     pure (Map.singleton var slot)
-
-  tell [ _comment "body" ]
-  withAlloc \result -> do
-    expr result body
-    tell [ movq result rbx ]
-
-  for_ (allVars body) \var -> do
-    free =<< variable var
-    
-  tell [ _comment "epilogue" ]
-  requiredSlots <- use #required_slots
-  tell [ subq  (Imm ((requiredSlots + funid.arity) * WORD_SIZE)) vstack ]
-  tell [ callq (runtime "runtime:save_vstack") ]
-  tell [ addq WORD_SIZE rsp ]
-  tell [ movq rbx rax ]
-  tell [ retq ]
-
 
 entryPoint :: WithTarget => M ()
 entryPoint = do
@@ -658,43 +666,16 @@ module_ module_ = do
   tell [ _newline ]
   tell [ _newline ]
   tell [ _comment ("module: " ++ module_.name.getString) ]
-  tell [ _text ]
   for_ module_.decls decl
 
-anonFun :: WithTarget => FunId -> Int -> [Var] -> Expr -> M ()
-anonFun funid arity env body = funWrapper funid mdo
-  tell [ _comment "prologue" ]
-  tell [ subq WORD_SIZE rsp ]
-  tell [ addq  (Imm (requiredSlots * WORD_SIZE)) vstack ]
-  tell [ callq (runtime "runtime:save_vstack") ]
-
-  tell [ _label (mkFunctionBodyLabel funid) ]
-  tell [ leaq  (MemRegL (mkFunctionMetaOptLabel funid "name_a") rip) rdi ]
-  tell [ callq (runtime "runtime:yield") ]
-
-  tell [ _comment "initializing locals" ]
-  #variables <~ Map.unions <$> ifor env \i var -> do
+anonFun :: WithTarget => AnonFun -> M ()
+anonFun anon = function anon.funid anon.body do
+  Map.unions <$> ifor anon.env \i var -> do
     slot <- alloc
     tell [ _comment ("variable " ++ var.getString) ]
     tell [ movq (MemReg (i * WORD_SIZE) closureEnv) rax ]
     tell [ movq rax slot ]
     pure (Map.singleton var slot)
-
-  tell [ _comment "body" ]
-  withAlloc \result -> do
-    expr result body
-    tell [ movq result rbx ]
-
-  for_ (allVars body) \var -> do
-    free =<< variable var
-    
-  tell [ _comment "epilogue" ]
-  requiredSlots <- use #required_slots
-  tell [ subq  (Imm ((requiredSlots + funid.arity) * WORD_SIZE)) vstack ]
-  tell [ callq (runtime "runtime:save_vstack") ]
-  tell [ addq WORD_SIZE rsp ]
-  tell [ movq rbx rax ]
-  tell [ retq ]
 
 project :: WithTarget => [Module] -> M ()
 project modules = mdo
@@ -709,11 +690,9 @@ project modules = mdo
   for_ modules module_
   builtins <- use #builtins
 
-  whileM (not . null <$> use #lambdas) do
-    (funid, arity, env, body) <- #lambdas %%= \(l:ls) -> (l, ls)
-    tell [ _newline ]
-    tell [ _text ]
-    anonFun funid arity env body
+  whileM (not . null <$> use #anon_funs) do
+    anon <- #anon_funs %%= \(l:ls) -> (l, ls)
+    anonFun anon
 
   tell [ _newline ]
   tell [ _data ]
