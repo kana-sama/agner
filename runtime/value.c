@@ -120,6 +120,11 @@ static void print_cons(boxed_value_t* ref) {
   printf("]");
 }
 
+static void print_closure(boxed_closure_t* closure) {
+  fun_meta_t* meta = get_fun_meta(closure->body);
+  printf("#Fun<%s/%lld>", meta->name, meta->arity);
+}
+
 void print_value_(value_t value, bool trancated, int available_depth) {
   switch (value & TAG_MASK) {
     case UNBOUND_TAG:
@@ -165,12 +170,9 @@ void print_value_(value_t value, bool trancated, int available_depth) {
             print_cons(ref);
           break;
         }
-        case CLOSURE_HEADER: {
-          puts("unimplemted: closures printed");
-          exit(-1);
-
+        case CLOSURE_HEADER:
+          print_closure(&ref->closure);
           break;
-        }
       }
 
       break;

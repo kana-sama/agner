@@ -22,6 +22,7 @@ kill_ref(Ref) ->
 
 main() ->
   A = new_ref(42),
+  agner:println(fun () -> ok end),
   agner:println(get_ref(A)),
   set_ref(A, 10),
   agner:println(get_ref(A)),
