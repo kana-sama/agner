@@ -1,0 +1,7 @@
+#! /usr/bin/env bash
+
+rm examples/*.s
+rm examples/*.o
+
+rm runtime/**/*.o
+rm runtime/**/*.s
