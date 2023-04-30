@@ -3,17 +3,14 @@
 Для сборки нужен ghc 9.6.1 и hpack
 ```
 hpack
-cabal install
+cabal install --overwrite-policy=always
 ```
 
 ### Использование
 ```bash
-# собрать в example
-agner example.erl -o example
+# собрать стдлибу и пример в example
+agner example lib/*.erl example.erl
 ./example
-
-# притипринтинг
-agner pretty example.erl
 ```
 
 # TODO:
