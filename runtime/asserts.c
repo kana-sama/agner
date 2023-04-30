@@ -18,12 +18,16 @@ void _assert__bool(value_t value) {
 }
 
 fun_kind_t _assert__fun(value_t value, int64_t arity) {
-  if ((value & TAG_MASK) == FUN_TAG && get_fun_meta(value)->arity == arity)
-    return FUN_KIND_STATIC;
+  bool should_check_arity = arity != -1;
+
+  if ((value & TAG_MASK) == FUN_TAG)
+    if (!should_check_arity || should_check_arity && get_fun_meta(value)->arity == arity)
+      return FUN_KIND_STATIC;
 
   boxed_value_t* ref = cast_to_boxed_value(value);
-  if (ref && ref->super.header == CLOSURE_HEADER && get_fun_meta(ref->closure.body)->arity == arity)
-    return FUN_KIND_CLOSURE;
+  if (ref && ref->super.header == CLOSURE_HEADER)
+    if (!should_check_arity || should_check_arity && get_fun_meta(ref->closure.body)->arity == arity)
+      return FUN_KIND_CLOSURE;
   
   _throw__badfun(value);
 }
