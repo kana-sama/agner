@@ -207,8 +207,8 @@ guardSeq or_guards fail = do
   tell [ _label guards_done ]
 
 
-caseBranch :: WithTarget => Operand -> Operand -> Label -> CaseBranch -> M ()
-caseBranch value result done branch = do
+caseBranch :: WithTarget => Operand -> Operand -> M () -> Label -> CaseBranch -> M ()
+caseBranch value result afterMatch done branch = do
   fail  <- label
   saved <- saveVars branch.pat
   pat value branch.pat do
@@ -216,7 +216,9 @@ caseBranch value result done branch = do
 
   unless (null branch.guards) do
     guardSeq branch.guards fail
-  
+
+  afterMatch
+
   expr result branch.body
   tell [ jmp    done ]
 
@@ -458,19 +460,18 @@ expr result = \case
 
       tell [ callq  (runtime "receive:pick") ]
       tell [ movq   rax msg ]
-      for_ cases (caseBranch msg result done)
-
+      for_ cases \branch -> do
+        let afterMatch = tell [ callq (runtime "receive:success") ]
+        caseBranch msg result afterMatch done branch
       tell [ jmp    loop ]
-
       tell [ _label done ]
-      tell [ callq  (runtime "receive:success") ]
   
   Case e cases -> do
     done <- label
 
     withAlloc \value -> do
       value <~ e
-      for_ cases (caseBranch value result done)
+      for_ cases (caseBranch value result (pure ()) done)
       
       tell [ movq  value rdi ]
       tell [ callq (runtime "throw:case_clause") ]
