@@ -12,7 +12,7 @@ runtime/**/*.s
 log_*.csv
 
 examples/*
-!examples/*.agn
+!examples/*.erl
 !examples/run_*
 
 .DS_Store

@@ -20,10 +20,15 @@ get_ref(Ref) ->
 kill_ref(Ref) ->
   Ref ! kill.
 
+with_ref(Value, Body) ->
+  Ref = new_ref(Value),
+  Result = Body(Ref),
+  kill_ref(Ref),
+  Result.
+
 main() ->
-  A = new_ref(42),
-  agner:println(fun () -> ok end),
-  agner:println(get_ref(A)),
-  set_ref(A, 10),
-  agner:println(get_ref(A)),
-  kill_ref(A).
+  with_ref(42, fun(A) ->
+    agner:println(get_ref(A)),
+    set_ref(A, 10),
+    agner:println(get_ref(A))
+  end).

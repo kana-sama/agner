@@ -71,7 +71,7 @@ gcc (Arg target) (Arg source) (Arg output) = case target of
 stdLib :: IO [FilePath]
 stdLib = do
   files <- getDirectoryContents "lib"
-  pure ["lib" </> file | file <- files, "agn" `isExtensionOf` file]
+  pure ["lib" </> file | file <- files, "erl" `isExtensionOf` file]
 
 compile ::  
   "target" :! X64.Target ->
@@ -108,9 +108,9 @@ compile (Arg target) (Arg sources) (Arg outputPath) (Arg asmPath) = do
 example :: X64.Target -> IO ()
 example target = do
   sourceLib <- stdLib
-  let source = "example.agn"
+  let source = "example.erl"
   compile ! param #target target
-          ! param #sources (sourceLib ++ ["example.agn"])
+          ! param #sources (sourceLib ++ ["example.erl"])
           ! param #output "example"
           ! param #asm    "example.s"
   setEnv "ARTS_FUEL" "10"

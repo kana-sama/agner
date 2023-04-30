@@ -9,11 +9,11 @@ cabal install
 ### Использование
 ```bash
 # собрать в example
-agner example.agn -o example
+agner example.erl -o example
 ./example
 
 # притипринтинг
-agner pretty example.agn
+agner pretty example.erl
 ```
 
 # TODO:
