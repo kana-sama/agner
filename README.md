@@ -63,6 +63,7 @@ agner example lib/*.erl example.erl
 - [ ] мультикор
 - [ ] parse transformations
 - [ ] рекорд-геттеры #RecordName.FieldName
+- [ ] падение гарды при матчинге должно фейлить матчинг, а не бросать эксепшен
 
 # Когда будет нефиг делать:
 - [ ] типы
