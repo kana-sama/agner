@@ -111,6 +111,9 @@ exprToPat = \case
       UnOp Plus' a -> isKnownInteger a
       _ -> Nothing
 
+guardExpr :: Parser GuardExpr
+guardExpr = MkGuardExpr <$> expr
+
 pat :: Parser Pat
 pat = exprToPat <$> expr
 
@@ -174,7 +177,7 @@ string_ :: Parser [Expr]
 string_ = lexeme do
   map (Integer . ord) <$> stringLit
 
-map_ :: Parser [MapElemBind]
+map_ :: Parser [MapElemBind Expr Expr]
 map_ = between (symbol "#{") (symbol "}") (elem `sepBy` symbol ",") where
   bind = choice [ (:=>) <$ symbol "=>", (::=) <$ symbol ":=" ]
   elem = do key <- expr; b <- bind; val <- expr; pure (b key val)
@@ -185,7 +188,7 @@ makeList ([], Nothing) = Nil
 makeList (e:es, rest) = Cons e (makeList (es, rest))
 
 guard_seq :: Parser GuardSeq
-guard_seq = (expr `sepBy1` symbol ",") `sepBy1` symbol ";"
+guard_seq = (guardExpr `sepBy1` symbol ",") `sepBy1` symbol ";"
 
 whenGuards :: Parser GuardSeq
 whenGuards = do

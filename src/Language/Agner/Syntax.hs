@@ -32,8 +32,11 @@ data UnOp = Plus' | Minus' | BNot | Not
 data Operator = Unary UnOp | Binary BinOp
   deriving stock (Show, Eq, Ord, Data)
 
-type GuardSeq = [GuardExp]
-type GuardExp = [Expr]
+newtype GuardExpr = MkGuardExpr{getExpr :: Expr}
+  deriving stock (Show, Data)
+
+type Guard = [GuardExpr]
+type GuardSeq = [Guard]
 
 data CaseBranch = CaseBranch
   { pat    :: Pat
@@ -42,9 +45,9 @@ data CaseBranch = CaseBranch
   }
   deriving stock (Show, Data)
   
-data MapElemBind
-  = (:=>) Expr Expr
-  | (::=) Expr Expr
+data MapElemBind lhs rhs
+  = (:=>) lhs rhs
+  | (::=) lhs rhs
   deriving stock (Show, Data)
 
 data CompQualifier
@@ -69,8 +72,8 @@ data Expr
   | RecordGet Expr RecordName RecordField
   | RecordUpdate Expr RecordName [(RecordField, Expr)]
 
-  | Map [MapElemBind]
-  | MapUpdate Expr [MapElemBind]
+  | Map [MapElemBind Expr Expr]
+  | MapUpdate Expr [MapElemBind Expr Expr]
 
   | ListComp Expr [CompQualifier]
   | MapComp Expr Expr [CompQualifier]

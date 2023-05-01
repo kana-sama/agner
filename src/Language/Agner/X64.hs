@@ -184,7 +184,11 @@ pat value p on_match_fail = case p of
               pat child p on_match_fail
       
 
-guardSeq :: WithTarget => [[Expr]] -> Label -> M ()
+guardExpr :: WithTarget => Operand -> GuardExpr -> M ()
+guardExpr = coerce expr
+
+
+guardSeq :: WithTarget => GuardSeq -> Label -> M ()
 guardSeq or_guards fail = do
   guards_done <- label
   true <- atom "true"
@@ -192,7 +196,7 @@ guardSeq or_guards fail = do
     next_or_guard <- label
     for_ and_guards \guard -> do
       withAlloc \value -> do
-        expr value guard
+        guardExpr value guard
         tell [ movq value rax ]
         tell [ cmpq rax true ]
         tell [ jne next_or_guard ]
