@@ -12,8 +12,11 @@ parse_ctor(Raw) -> #ctor{raw=Raw}.
 pretty_ctor(unwrap) -> [{fg, magenta, ["_"]}];
 pretty_ctor(#ctor{raw=Raw}) -> [{fg, magenta, [Raw]}].
 
-parse_point(Raw=[C|_]) when chars:is_upper(C) -> #entity{raw=Raw};
-parse_point(Raw) -> #termin{raw=Raw}.
+parse_point(Raw=[C|_]) ->
+  case chars:is_upper(C) of
+    true -> #entity{raw=Raw};
+    false -> #termin{raw=Raw}
+  end.
 
 pretty_point(#termin{raw=Raw}) -> [{fg,  blue, [Raw]}];
 pretty_point(#entity{raw=Raw}) -> [{fg, green, [Raw]}].

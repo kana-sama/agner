@@ -62,7 +62,7 @@ agner example lib/*.erl example.erl
 - [ ] раздельная компиляция
 - [ ] мультикор
 - [ ] parse transformations
-- [ ] ограничить гарды только безопасными функциями
+- [ ] рекорд-геттеры #RecordName.FieldName
 
 # Когда будет нефиг делать:
 - [ ] типы

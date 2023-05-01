@@ -92,7 +92,6 @@ prettyOperand = \case
 
 prettyInstr :: Instr -> String
 prettyInstr = \case
-  -- TODO: cringe
   Op CALLQ [Reg r] ->
     "    " ++ lower (show CALLQ) ++ " \t" ++ ("*" ++ prettyOperand (Reg r))
   Op op ops ->

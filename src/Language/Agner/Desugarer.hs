@@ -8,7 +8,14 @@ import Data.Generics.Uniplate.Data (rewriteBi, rewriteBiM, transformBi)
 
 
 desugar :: Module -> Module
-desugar = andAlso . orElse . comps . send . maps . operators . maybe_ . resolve
+desugar module_ = module_
+  & resolve
+  & validateGuards
+  & (andAlso . orElse)
+  & (operators . send)
+  & comps
+  & maps
+  & maybe_
 
 
 andAlso :: Module -> Module
@@ -169,3 +176,51 @@ maybe_ = flip evalState 0 . rewriteBiM \case
     fresh = do
       uuid <- id <<+= 1
       pure (MkVar ("_MaybeVar" ++ show uuid))
+
+-- https://www.erlang.org/doc/reference_manual/expressions.html#guard-expressions
+-- TODO: Expressions that construct atoms, integer, floats, lists, tuples, records, binaries, and maps
+-- TODO: #Name.Field
+isGuardExpr :: Expr -> Bool
+isGuardExpr = \case
+  Var _ -> True
+  Atom _ -> True
+  Integer _ -> True
+  Nil -> True
+  Cons a b -> isGuardExpr a && isGuardExpr b
+  Tuple es -> all isGuardExpr es
+  Record _ fields -> all isGuardExpr [e | (_, e) <- fields]
+  Map kvs -> all (\case (:=>) k v -> isGuardExpr k && isGuardExpr v; (::=) _ _ -> False) kvs
+  UnOp _ a -> isGuardExpr a
+  BinOp _ a b -> isGuardExpr a && isGuardExpr b
+  AndAlso a b -> isGuardExpr a && isGuardExpr b
+  OrElse a b -> isGuardExpr a && isGuardExpr b
+  Apply f es -> all isGuardExpr es && f `elem` funs
+  RecordGet e _ _ -> isGuardExpr e
+  MapUpdate e upds -> isGuardExpr e && all (\case (:=>) k v -> isGuardExpr k && isGuardExpr v; (::=) k v -> isGuardExpr k && isGuardExpr v) upds
+  _ -> False
+  where
+    funs :: [FunId]
+    funs = mconcat
+      [ -- type tests
+        [ "erlang:is_atom/1", "erlang:is_binary/1", "erlang:is_bitstring/1"
+        , "erlang:is_boolean/1", "erlang:is_float/1", "erlang:is_function/1"
+        , "erlang:is_function/2", "erlang:is_integer/1", "erlang:is_list/1"
+        , "erlang:is_map/1", "erlang:is_number/1", "erlang:is_pid/1"
+        , "erlang:is_port/1", "erlang:is_record/2", "erlang:is_record/3"
+        , "erlang:is_reference/1", "erlang:is_tuple/1"
+        ],
+
+        -- other
+        [ "erlang:abs/1", "erlang:bit_size/1", "erlang:byte_size/1"
+        , "erlang:element/2", "erlang:float/1", "erlang:hd/1", "erlang:is_map_key/2"
+        , "erlang:length/1", "erlang:map_get/2", "erlang:map_size/1", "erlang:node/0"
+        , "erlang:node/1", "erlang:round/1", "erlang:self/0", "erlang:size/1"
+        , "erlang:tl/1", "erlang:trunc/1", "erlang:tuple_size/1"
+        ]
+      ]
+
+validateGuards :: Module -> Module
+validateGuards = transformBi \(MkGuardExpr e) ->
+  if isGuardExpr e
+    then MkGuardExpr e
+    else error ("invalid guard expression: " ++ show e)
