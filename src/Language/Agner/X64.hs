@@ -437,15 +437,16 @@ expr result = \case
 
   Begin es -> exprs result es
 
-  e@Map{}       -> shouldBeDesugared e
-  e@MapUpdate{} -> shouldBeDesugared e
-  e@ListComp{}  -> shouldBeDesugared e
-  e@MapComp{}   -> shouldBeDesugared e
-  e@AndAlso{}   -> shouldBeDesugared e
-  e@OrElse{}    -> shouldBeDesugared e
-  e@Send{}      -> shouldBeDesugared e
-  e@BinOp{}     -> shouldBeDesugared e
-  e@UnOp{}      -> shouldBeDesugared e
+  e@Map{}        -> shouldBeDesugared e
+  e@MapUpdate{}  -> shouldBeDesugared e
+  e@ListComp{}   -> shouldBeDesugared e
+  e@MapComp{}    -> shouldBeDesugared e
+  e@AndAlso{}    -> shouldBeDesugared e
+  e@OrElse{}     -> shouldBeDesugared e
+  e@Send{}       -> shouldBeDesugared e
+  e@BinOp{}      -> shouldBeDesugared e
+  e@UnOp{}       -> shouldBeDesugared e
+  e@Maybe{}      -> shouldBeDesugared e
 
   where
     (<~) = expr

@@ -265,6 +265,21 @@ map_comp = symbol "#" *> braces do
   qs <- comp_qualifier `sepBy1` symbol ","
   pure (MapComp k v qs)
 
+maybe_ :: Parser Expr
+maybe_ = do
+  symbol "maybe"
+  es <- maybeExpr `sepBy1` symbol ","
+  else_branches <- fromMaybe [] <$> optional do
+    symbol "else"
+    caseBranch `sepBy1` symbol ";"
+  symbol "end"
+  pure (Maybe es else_branches)
+  where
+    maybeExpr = choice
+      [ try do p <- pat; symbol "?="; e <- expr; pure (MaybeBind p e)
+      , MaybeExpr <$> expr
+      ]
+
 term :: Parser Expr
 term = choice
   [ try do fun
@@ -275,6 +290,7 @@ term = choice
   , try do uncurry Apply <$> apply
   , try do uncurry DynApply <$> dynApply
   , begin
+  , maybe_
   , parens expr
   , Var <$> variable
   , Atom <$> atom

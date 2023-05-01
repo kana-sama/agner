@@ -53,6 +53,11 @@ data CompQualifier
   | CompFilter Expr
   deriving stock (Show, Data)
 
+data MaybeExpr
+  = MaybeExpr Expr
+  | MaybeBind Pat Expr
+  deriving stock (Show, Data)
+
 data Expr
   = Integer Integer
   | Atom Atom
@@ -92,6 +97,7 @@ data Expr
   | Send Expr Expr
 
   | Begin Exprs
+  | Maybe [MaybeExpr] [CaseBranch]
   deriving stock (Show, Data)
 
 type Exprs = [Expr]

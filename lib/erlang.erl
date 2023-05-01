@@ -10,3 +10,5 @@
 -primitive(self/0).
 -primitive(send/2).
 -primitive(spawn/1).
+
+-primitive(error/1).
