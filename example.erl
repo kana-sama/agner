@@ -1,7 +1,5 @@
 -module(main).
-
 -export([main/0]).
-
 -import(lists, [map/2]).
 
 main() ->
