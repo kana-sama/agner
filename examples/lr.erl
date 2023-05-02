@@ -1,4 +1,5 @@
--module(lr).
+-module(main).
+-export([main/0]).
 
 -record(ctor, {raw}).
 -record(termin, {raw}).

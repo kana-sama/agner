@@ -1,4 +1,5 @@
 -module(main).
+-export([main/0]).
 
 f(N) -> f(N, 0).
 f(0, Acc) -> Acc;

@@ -1,16 +1,5 @@
-% -import(erlang, [is_list/1, is_integer/1, is_atom/1, is_tuple/1, is_function/1, is_pid/1]).
-% -import(erlang, [integer_to_list/1, atom_to_list/1, tuple_to_list/1, pid_to_list/1]).
-
-is_integer(Integer) -> erlang:is_integer(Integer).
-is_atom(Atom) -> erlang:is_atom(Atom).
-is_list(List) -> erlang:is_list(List).
-is_tuple(Tuple) -> erlang:is_tuple(Tuple).
-is_function(Function) -> erlang:is_function(Function).
-is_pid(Pid) -> erlang:is_pid(Pid).
-atom_to_list(Atom) -> erlang:atom_to_list(Atom).
-integer_to_list(Integer) -> erlang:integer_to_list(Integer).
-tuple_to_list(Tuple) -> erlang:tuple_to_list(Tuple).
-pid_to_list(Pid) -> erlang:pid_to_list(Pid).
+-module(main).
+-export([main/0]).
 
 printable_latin1_list([C|Cs]) when is_integer(C), C >= $\040, C =< $\176 ->
   printable_latin1_list(Cs);
@@ -49,10 +38,11 @@ show(Atom) when is_atom(Atom) ->
   atom_to_list(Atom);
 show(Integer) when is_integer(Integer) ->
   integer_to_list(Integer);
-show(String) when printable_latin1_list(String) ->
-  "\"" ++ show_string(String) ++ "\"";
 show(List) when is_list(List) ->
-  "[" ++ show_values(List) ++ "]";
+  case printable_latin1_list(String) of
+    true -> "\"" ++ show_string(List) ++ "\"";
+    false -> "[" ++ show_values(List) ++ "]"
+  end;
 show(Tuple) when is_tuple(Tuple) ->
   "{" ++ show_values(tuple_to_list(Tuple)) ++ "}";
 show(Pid) when is_pid(Pid) ->

@@ -1,4 +1,5 @@
 -module(main).
+-export([main/0]).
 
 -record(user, {name, age}).
 
