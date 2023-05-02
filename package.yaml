@@ -37,6 +37,7 @@ extra-source-files:
 data-files:
   - runtime/**/*.c
   - runtime/**/*.h
+  - stdlib/**/*.erl
 
 library:
   source-dirs: src
@@ -60,7 +61,8 @@ executables:
     main: Main.hs
     dependencies:
       - agner
+      - named
       - typed-process
       - filepath
       - directory
-      - named
+      - Glob
