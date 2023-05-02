@@ -3,7 +3,7 @@ module Language.Agner.Desugarer (desugar) where
 import Language.Agner.Prelude
 import Language.Agner.Syntax
 
-import Data.Set qualified as Set
+import Data.Map.Strict qualified as Map
 import Data.Generics.Uniplate.Data (rewriteBi, rewriteBiM, transformBi)
 
 
@@ -114,16 +114,21 @@ operators = rewriteBi \case
 resolve :: Module -> Module
 resolve module_ = module_ & transformBi \case
   funid@MkUnresolvedFunId{} ->
-    if funid `Set.member` localNames
-      then funid{ns = module_.name}
-      else funid{ns = "erlang"}
+    case localNames Map.!? funid of
+      Just funid -> funid
+      Nothing -> funid{ns = "erlang"}
   funid -> funid
   where
+    u MkFunId{name, arity} = MkUnresolvedFunId{name, arity} -- unresolved
+    ns %: MkFunId{name, arity} = MkFunId{ns, name, arity}   -- resolved
+    
     localNames = foldMap getDeclName module_.decls
     getDeclName = \case
-      Primitive{funid} -> Set.singleton MkUnresolvedFunId{name=funid.name, arity=funid.arity}
-      FunDecl{funid} -> Set.singleton MkUnresolvedFunId{name=funid.name, arity=funid.arity}
-      RecordDecl{} -> Set.empty
+      Primitive{funid} -> Map.singleton (u funid) (module_.name %: funid)
+      FunDecl  {funid} -> Map.singleton (u funid) (module_.name %: funid)
+      RecordDecl{} -> Map.empty
+      ExportDecl{} -> Map.empty
+      ImportDecl{moduleName, names} -> Map.fromList [ (u funid, moduleName %: funid) | funid <- names ]
 
 
 maybe_ :: Module -> Module

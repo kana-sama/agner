@@ -26,10 +26,12 @@ default-extensions:
 ghc-options:
   - -Wincomplete-patterns
   - -Wno-partial-type-signatures
+  - -Wno-ambiguous-fields
 
 dependencies:
   - base
   - shower
+  - indexed-traversable
 
 extra-source-files:
   - runtime/tags.h
@@ -49,7 +51,6 @@ library:
     - mtl
     - transformers
     - lens
-    - indexed-traversable
     - generic-lens
     - uniplate
 
@@ -65,4 +66,5 @@ executables:
       - typed-process
       - filepath
       - directory
+      - temporary
       - Glob

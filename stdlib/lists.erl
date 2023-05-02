@@ -1,5 +1,7 @@
 -module(lists).
 
+-export([reverse/1, map/2, flatmap/2, filter/2, words/1, lines/1, intersperse/2, foldl/3]).
+
 reverse(List) -> reverse(List, []).
 reverse([H|T], Acc) -> reverse(T, [H|Acc]);
 reverse([], Acc) -> Acc.

@@ -5,3 +5,10 @@ rm examples/*.o
 
 rm runtime/**/*.o
 rm runtime/**/*.s
+
+rm example
+rm example.s
+rm log_*.csv
+
+rm -rf dist_newstyle
+rm agner.cabal

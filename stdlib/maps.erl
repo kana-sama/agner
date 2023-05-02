@@ -1,5 +1,7 @@
 -module(maps).
 
+-export([assert/1, new/0, put/3, update/3, from_list/1, to_list/1]).
+
 wrap(M) -> agner:boxed_to_map({M}).
 unwrap(M) -> {M_} = agner:map_to_boxed(M), M_.
 

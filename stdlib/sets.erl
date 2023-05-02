@@ -1,5 +1,7 @@
 -module(sets).
 
+-export([new/0, is_element/2, add_element/2, union/2]).
+
 new() -> [].
 
 is_element(X, [X|_]) -> true;

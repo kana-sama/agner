@@ -407,7 +407,7 @@ pragma name body = try do
   pure value
 
 decl :: Parser Decl
-decl = funDecl <|> primitive <|> record where
+decl = funDecl <|> primitive <|> record <|> import_ <|> export_ where
   primitive = pragma "primitive" do
     funid <- localName
     pure Primitive{funid}
@@ -417,6 +417,16 @@ decl = funDecl <|> primitive <|> record where
     symbol ","
     recordFields <- coerce <$> braces (atom `sepBy` symbol ",")
     pure RecordDecl{recordName, recordFields}
+
+  import_ = pragma "import" do
+    moduleName <- coerce <$> atom
+    symbol ","
+    names <- brackets (localName `sepBy` symbol ",")
+    pure ImportDecl{moduleName, names}
+
+  export_ = pragma "export" do
+    names <- brackets (localName `sepBy` symbol ",")
+    pure ExportDecl{names}
 
 module_ :: Parser Module
 module_ = do

@@ -1,0 +1,5 @@
+#! /usr/bin/env bash
+
+clear
+cabal run agner -- -o example example.erl &&
+./example

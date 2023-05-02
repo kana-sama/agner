@@ -3,16 +3,18 @@
 import Named
 import Shower (printer)
 
-import Paths_agner (getDataFileName)
+import Paths_agner (getDataDir)
 
 import Data.Traversable (for)
+import Data.Traversable.WithIndex (ifor)
 
 import System.Process.Typed (runProcess, shell, proc)
 import System.Exit (ExitCode(..), exitFailure)
-import System.FilePath ((</>), (<.>), stripExtension, isExtensionOf)
-import System.Directory (getDirectoryContents)
+import System.FilePath ((</>), (<.>), stripExtension, isExtensionOf, takeFileName)
+import System.FilePath.Glob (globDir1)
 import System.Environment (getArgs, setEnv)
 import System.Info (os)
+import System.IO.Temp (withSystemTempDirectory)
 
 import Control.Exception (evaluate, try, displayException)
 
@@ -23,118 +25,59 @@ import Language.Agner.Optimizer qualified as Optimizer
 import Language.Agner.Desugarer qualified as Desugarer
 
 data Command
-  = Example
-  | Compile{source :: [FilePath], output :: FilePath}
+  = Compile{source :: [FilePath], output :: FilePath}
 
 parseArgs :: IO Command
 parseArgs = do
   getArgs >>= \case
-    [] -> pure Example
-    output : source -> pure Compile{source, output}
+    "-o" : output : source -> pure Compile{source, output}
+    _ -> error "wrong arguments"
 
-runtimeSource :: IO [FilePath]
-runtimeSource = traverse runtimeFile sources
-  where
-    runtimeFile f = getDataFileName ("." </> "runtime" </> f <.> "c")
-    sources =
-      [ "containers/list"
-      , "options"
-      , "value"
-      , "throw"
-      , "heap"
-      , "mailbox"
-      , "process"
-      , "scheduler"
-      , "runtime"
-      , "primitives"
-      , "operators"
-      , "shared"
-      , "matches"
-      , "asserts"
-      , "scopes"
-      ]
+getRuntimeSourceFiles :: IO [FilePath]
+getRuntimeSourceFiles = do
+  dataDir <- getDataDir
+  globDir1 "**/*.c" (dataDir </> "runtime")
 
-gcc ::
-  "target" :! X64.Target ->
-  "source" :! [FilePath] ->
-  "output" :! FilePath ->
-  IO ()
-gcc (Arg target) (Arg source) (Arg output) = case target of
-  X64.MacOS -> gcc' []
-  X64.Linux -> gcc' ["-z", "noexecstack"]
-  where
-    gcc' extraArgs = do
-      code <- runProcess (proc "gcc" (["-o", output] ++ extraArgs ++ source))
-      case code of
-        ExitSuccess -> pure ()
-        ExitFailure i -> error ("gcc failied with " ++ show i)
+getStdLibSourceFiles :: IO [FilePath]
+getStdLibSourceFiles = do
+  dataDir <- getDataDir
+  globDir1 "**/*.erl" (dataDir </> "stdlib")
 
-stdLib :: IO [FilePath]
-stdLib = do
-  files <- getDirectoryContents "lib"
-  pure ["lib" </> file | file <- files, "erl" `isExtensionOf` file]
-
-compile ::  
-  "target" :! X64.Target ->
-  "sources" :! [FilePath] ->
-  "output" :! FilePath ->
-  "asm"    :! FilePath ->
-  IO ()
-compile (Arg target) (Arg sources) (Arg outputPath) (Arg asmPath) = do
-  modules <- for sources \path -> do
-    source <- readFile  path
-    source <- parse     path source
-    source <- desugar   source
-    source <- optimize  source
-    pure source
-  toBinary =<< compile modules
-  where
-    parse :: FilePath -> String -> IO Syntax.Module
-    parse path source = evaluate (Parser.parse path Parser.module_ source)
-
-    optimize :: Syntax.Module -> IO Syntax.Module
-    optimize module_ = evaluate (Optimizer.optimize module_)
-
-    desugar :: Syntax.Module -> IO Syntax.Module
-    desugar module_ = evaluate (Desugarer.desugar module_)
-
-    compile :: [Syntax.Module] -> IO X64.Prog
-    compile modules = evaluate (X64.compile target modules)
-
-    toBinary :: X64.Prog -> IO ()
-    toBinary prog = do
-      writeFile asmPath (X64.prettyProg prog)
-      runtime <- runtimeSource
-      gcc ! param #target target
-          ! param #source (asmPath : runtime)
-          ! param #output outputPath
-      pure ()
-
-example :: X64.Target -> IO ()
-example target = do
-  sourceLib <- stdLib
-  let source = "example.erl"
-  compile ! param #target target
-          ! param #sources (sourceLib ++ ["example.erl"])
-          ! param #output "example"
-          ! param #asm    "example.s"
-  setEnv "ARTS_FUEL" "10"
-  setEnv "ARTS_YLOG" "log_x64.csv"
-  runProcess (shell "./example") >>= \case
-    ExitFailure (-11) -> putStrLn "сегфолт"
-    ExitFailure i -> putStrLn ("ExitCode = " ++ show i)
-    ExitSuccess -> pure ()
+target :: X64.Target
+target = case os of
+  "linux" -> X64.Linux
+  "darwin" -> X64.MacOS
+  _ -> error "Иди отсюда, пёс"
 
 main :: IO ()
-main = parseArgs >>= \case
-  Example -> example target
-  Compile{output, source} ->
-    compile ! param #target target
-            ! param #sources source
-            ! param #output output
-            ! param #asm    (output <.> "s")
-  where
-    target = case os of
-      "linux" -> X64.Linux
-      "darwin" -> X64.MacOS
-      _ -> error "Иди отсюда, пёс"
+main = do
+  Compile{source, output} <- parseArgs
+  stdLibSourceFiles <- getStdLibSourceFiles
+  let sourceFiles = source ++ stdLibSourceFiles
+  withSystemTempDirectory "dist" \temp -> do
+    (ctx, asmFiles) <- mconcat <$> ifor sourceFiles \index sourceFile -> do
+      putStrLn ("compiling " ++ takeFileName sourceFile)
+
+      module_ <- readFile sourceFile
+      module_ <- evaluate (Parser.parse sourceFile Parser.module_ module_)
+      module_ <- evaluate (Desugarer.desugar module_)
+      module_ <- evaluate (Optimizer.optimize module_)
+
+      (ctx, module_) <- pure (X64.compileModule target module_)
+      module_ <- evaluate module_
+
+      let file_asm = temp </> show index <.> "s"
+      writeFile file_asm module_
+      
+      pure (ctx, [file_asm])
+    
+    putStrLn "compiling entry point"
+    entry <- evaluate (X64.compileEntryPoint target ctx)
+    let entryFile = temp </> "entry" <.> "s"
+    writeFile entryFile entry
+
+    putStrLn "building executable"
+    runtimeSourceFiles <- getRuntimeSourceFiles
+    let files_to_compile = [entryFile] ++ runtimeSourceFiles ++ asmFiles
+    ExitSuccess <- runProcess do proc "gcc" ("-o" : output : files_to_compile)
+    putStrLn "compilation done"

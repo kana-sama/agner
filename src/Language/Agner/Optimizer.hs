@@ -1,4 +1,4 @@
-module Language.Agner.Optimizer where
+module Language.Agner.Optimizer (optimize) where
 
 import Language.Agner.Syntax
 

@@ -1,5 +1,7 @@
 -module(sgr).
 
+-export([println/1, build/1]).
+
 color_number(black) -> 0;
 color_number(red) -> 1;
 color_number(green) -> 2;

@@ -1,5 +1,7 @@
 -module(maps_bintree).
 
+-export([new/0, put/3, update/3, from_list/1, to_list/1]).
+
 new() ->
   empty.
 

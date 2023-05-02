@@ -14,9 +14,12 @@ newtype ModuleName  = MkModuleName  {getString :: String} deriving stock (Data) 
 newtype RecordName  = MkRecordName  {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
 newtype RecordField = MkRecordField {getString :: String} deriving stock (Data) deriving newtype (Show, Eq, Ord, IsString)
 
-pattern MkUnresolvedFunId{name, arity} = MkFunId{ns = "", name, arity}
-data FunId = MkFunId { ns :: ModuleName, name :: FunName, arity :: Int }
+type Arity = Int
+
+data FunId = MkFunId { ns :: ModuleName, name :: FunName, arity :: Arity }
   deriving stock (Eq, Ord, Data)
+
+pattern MkUnresolvedFunId{name, arity} = MkFunId{ns = "", name, arity}
 
 data BinOp
   = Plus | Minus | Times | Div | Rem
@@ -126,15 +129,17 @@ data Clause = MkClause
 
 data Decl
   = FunDecl{funid :: FunId, clauses :: [Clause]}
-  | Primitive{funid :: FunId}
   | RecordDecl{recordName :: RecordName, recordFields :: [RecordField]}
-  deriving stock (Show, Data)
+  | Primitive{funid :: FunId}
+  | ImportDecl{moduleName :: ModuleName, names :: [FunId]}
+  | ExportDecl{names :: [FunId]}
+  deriving stock (Show, Data, Generic)
 
 data Module = MkModule
   { name :: ModuleName
   , decls :: [Decl]
   }
-  deriving stock (Show, Data)
+  deriving stock (Show, Data, Generic)
 
 
 -- utils

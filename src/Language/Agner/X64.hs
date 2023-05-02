@@ -1,6 +1,11 @@
 # include "../../../runtime/tags.h"
 
-module Language.Agner.X64 (module Language.Agner.X64, module Data.X64) where
+module Language.Agner.X64
+  ( Target(..)
+  , EntryPointCtx
+  , compileModule
+  , compileEntryPoint
+  ) where
 
 import GHC.Exts (IsList(..))
 import Paths_agner (getDataFileName)
@@ -38,18 +43,20 @@ defaultStackFrame = error "required_slots is not evaluated yet"
 shouldBeDesugared :: Show a => a -> b
 shouldBeDesugared a = error ("should be desugared: " ++ show a)
 
-runM :: M () -> Prog
-runM m = execWriter (evalStateT m initialCtx) where
-  initialCtx = MkCtx
-    { uuid = 0
-    , allocated = Set.empty
-    , required_slots = 0
-    , stackframe = defaultStackFrame
-    , variables = Map.empty
-    , atoms = Set.empty
-    , records = Map.empty
-    , anon_funs = []
-    }
+emptyCtx :: Ctx
+emptyCtx = MkCtx
+  { uuid = 0
+  , allocated = Set.empty
+  , required_slots = 0
+  , stackframe = defaultStackFrame
+  , variables = Map.empty
+  , atoms = Set.empty
+  , records = Map.empty
+  , anon_funs = []
+  }
+
+runM :: Ctx -> M () -> (Ctx, Prog)
+runM ctx m = runWriter (execStateT m ctx)
 
 runtime :: WithTarget => String -> Label
 runtime name =
@@ -486,7 +493,6 @@ funWrapper :: WithTarget => FunId -> M () -> M ()
 funWrapper funid body = mdo
   tell [ _newline ]
   tell [ _text ]
-  tell [ _globl (mkFunctionLabel funid) ]
   tell [ _align WORD_SIZE ]
   tell [ _skip  FUN_TAG ]
   let size = mkFunctionEndLabel funid ++ " - " ++ mkFunctionLabel funid
@@ -629,6 +635,11 @@ decl FunDecl{funid, clauses} = function funid clauses do
     tell [ movq UNBOUND_TAG slot ]
     pure (Map.singleton var slot)
 
+decl ImportDecl{} = pure ()
+
+decl ExportDecl{names} = do
+  for_ names \name -> do
+    tell [ _globl (mkFunctionLabel name) ]
 
 anonFun :: WithTarget => AnonFun -> M ()
 anonFun anon = function anon.funid anon.clauses do
@@ -643,6 +654,7 @@ anonFun anon = function anon.funid anon.clauses do
 entryPoint :: WithTarget => M ()
 entryPoint = do
   tell [ _newline ]
+  tell [ _text ]
   tell [ _globl (mkLabel "main") ]
   tell [ _label (mkLabel "main") ]
   tell [ subq   WORD_SIZE rsp ]
@@ -659,6 +671,17 @@ entryPoint = do
   tell [ movq   0 rax ]
   tell [ retq ]
 
+  tell [ _newline ]
+  tell [ _comment "atoms" ]
+  tell [ _data ]
+  atoms <- use #atoms
+  for_ atoms \atom -> do
+    tell [ _newline ]
+    tell [ _align WORD_SIZE ]
+    tell [ _skip  ATOM_TAG ]
+    tell [ _globl (mkAtomLabel atom) ]
+    tell [ _label (mkAtomLabel atom), _asciz (show atom) ]
+
   where
     share_atom :: Atom -> M ()
     share_atom a = do
@@ -666,46 +689,47 @@ entryPoint = do
       tell [ movq a' rdi ]
       tell [ callq (mkLabel ("share_" ++ a.getString)) ]
 
-atoms :: WithTarget => M ()
-atoms = do
-  tell [ _newline ]
-  tell [ _comment "atoms" ]
-  atoms <- use #atoms
-  for_ atoms \atom -> do
-    tell [ _newline ]
-    tell [ _align WORD_SIZE ]
-    tell [ _skip  ATOM_TAG ]
-    tell [ _label (mkAtomLabel atom), _asciz (show atom) ]
 
 module_ :: WithTarget => Module -> M ()
 module_ module_ = do
-  tell [ _newline ]
+  tell [ _include do unsafePerformIO (getDataFileName "runtime/tags.h") ]
+
   tell [ _newline ]
   tell [ _comment ("module: " ++ module_.name.getString) ]
+  tell [ _newline ]
   for_ module_.decls decl
 
-project :: WithTarget => [Module] -> M ()
-project modules = mdo
-  tell [ _include do unsafePerformIO (getDataFileName "runtime/tags.h") ]
   tell [ _newline ]
-
+  tell [ _comment "anon functions"]
   tell [ _newline ]
-  tell [ _text ]
-  entryPoint
-
-  for_ modules module_
-
   whileM (not . null <$> use #anon_funs) do
     anon <- #anon_funs %%= \(l:ls) -> (l, ls)
     anonFun anon
 
-  tell [ _newline ]
-  tell [ _data ]
-  atoms
 
-compile :: Target -> [Module] -> Prog
-compile target modules = let ?target = target in runM (project modules)
+data EntryPointCtx = MkEntryPointCtx {atoms :: Set Atom}
+instance Semigroup EntryPointCtx where
+  a <> b = MkEntryPointCtx{atoms = a.atoms <> b.atoms}
+instance Monoid EntryPointCtx where
+  mempty = MkEntryPointCtx{atoms = mempty}
 
+
+compileModule :: Target -> Module -> (EntryPointCtx, String)
+compileModule target m = do
+  let ?target = target
+  let (ctx, prog) = runM emptyCtx (module_ m)
+  (toEntryPointCtx ctx, prettyProg prog)
+  where
+    toEntryPointCtx MkCtx{atoms} = MkEntryPointCtx{atoms}
+
+compileEntryPoint :: Target -> EntryPointCtx -> String
+compileEntryPoint target ctx = do
+  let ?target = target
+  let (_, prog) = runM (fromEntryPointCtx ctx) entryPoint
+  prettyProg prog
+  where
+    fromEntryPointCtx MkEntryPointCtx{atoms} =
+      emptyCtx{atoms} :: Ctx
 
 -- utils
 
