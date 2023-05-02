@@ -4,7 +4,6 @@ module Data.X64 where
 
 import Data.List qualified as List
 import Data.Char qualified as Char
-import Control.Monad.Writer (Writer, MonadWriter, tell)
 
 type Label = String
 
@@ -40,8 +39,6 @@ instance FromReg Operand where fromReg = Reg
 
 
 [rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9, r10, r11, r12, r13] = [fromReg r | r <- [RAX ..]]
-
-type X64 = Writer Prog
 
 leaq a b = Op LEAQ [a, b]
 movq a b = Op MOVQ [a, b]

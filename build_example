@@ -1,5 +1,7 @@
 #! /usr/bin/env bash
 
-clear
+hpack &&
+cabal build &&
+clear &&
 cabal run agner -- -o example example.erl &&
 ./example

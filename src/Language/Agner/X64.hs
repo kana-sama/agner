@@ -7,7 +7,6 @@ module Language.Agner.X64
   , compileEntryPoint
   ) where
 
-import GHC.Exts (IsList(..))
 import Paths_agner (getDataFileName)
 import System.IO.Unsafe (unsafePerformIO)
 

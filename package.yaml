@@ -27,11 +27,15 @@ ghc-options:
   - -Wincomplete-patterns
   - -Wno-partial-type-signatures
   - -Wno-ambiguous-fields
+  - -Wunused-imports
+  - -Wdodgy-exports
+  - -Wdodgy-imports
 
 dependencies:
   - base
-  - shower
-  - indexed-traversable
+  - lens
+  - mtl
+  - containers
 
 extra-source-files:
   - runtime/tags.h
@@ -44,16 +48,8 @@ data-files:
 library:
   source-dirs: src
   dependencies:
-    - ghc-prim
-
-    - containers
-
-    - mtl
-    - transformers
-    - lens
     - generic-lens
     - uniplate
-
     - megaparsec
     - parser-combinators
 
@@ -62,9 +58,7 @@ executables:
     main: Main.hs
     dependencies:
       - agner
-      - named
       - typed-process
       - filepath
-      - directory
       - temporary
       - Glob

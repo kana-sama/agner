@@ -1,25 +1,21 @@
 {-# LANGUAGE DataKinds #-}
 
-import Named
-import Shower (printer)
-
 import Paths_agner (getDataDir)
 
-import Data.Traversable (for)
-import Data.Traversable.WithIndex (ifor)
+import Data.IORef (atomicModifyIORef', newIORef)
 
-import System.Process.Typed (runProcess, shell, proc)
-import System.Exit (ExitCode(..), exitFailure)
-import System.FilePath ((</>), (<.>), stripExtension, isExtensionOf, takeFileName)
+import System.Process.Typed (runProcess, proc)
+import System.Exit (ExitCode(..))
+import System.FilePath ((</>), (<.>), takeFileName)
 import System.FilePath.Glob (globDir1)
-import System.Environment (getArgs, setEnv)
+import System.Environment (getArgs)
 import System.Info (os)
 import System.IO.Temp (withSystemTempDirectory)
 
-import Control.Exception (evaluate, try, displayException)
+import Control.Exception (evaluate)
+import Control.Lens (ifor)
 
 import Language.Agner.X64 qualified as X64
-import Language.Agner.Syntax qualified as Syntax
 import Language.Agner.Parser qualified as Parser
 import Language.Agner.Optimizer qualified as Optimizer
 import Language.Agner.Desugarer qualified as Desugarer
@@ -54,9 +50,17 @@ main = do
   Compile{source, output} <- parseArgs
   stdLibSourceFiles <- getStdLibSourceFiles
   let sourceFiles = source ++ stdLibSourceFiles
+
+  stepIndex <- newIORef 1
+  let totalSteps = length sourceFiles + 2 -- entry point + executable
+  let printStep = do
+        step <- atomicModifyIORef' stepIndex \i -> (i + 1, i)
+        let padding = length (show totalSteps) - length (show step)
+        putStr ("[" ++ replicate padding ' ' ++ show step ++ " of " ++ show totalSteps ++ "] ")
+
   withSystemTempDirectory "dist" \temp -> do
     (ctx, asmFiles) <- mconcat <$> ifor sourceFiles \index sourceFile -> do
-      putStrLn ("compiling " ++ takeFileName sourceFile)
+      printStep; putStrLn ("Compiling " ++ takeFileName sourceFile)
 
       module_ <- readFile sourceFile
       module_ <- evaluate (Parser.parse sourceFile Parser.module_ module_)
@@ -71,13 +75,13 @@ main = do
       
       pure (ctx, [file_asm])
     
-    putStrLn "compiling entry point"
+    printStep; putStrLn "Compiling entry point"
     entry <- evaluate (X64.compileEntryPoint target ctx)
     let entryFile = temp </> "entry" <.> "s"
     writeFile entryFile entry
 
-    putStrLn "building executable"
+    printStep; putStrLn "Building executable"
     runtimeSourceFiles <- getRuntimeSourceFiles
     let files_to_compile = [entryFile] ++ runtimeSourceFiles ++ asmFiles
     ExitSuccess <- runProcess do proc "gcc" ("-o" : output : files_to_compile)
-    putStrLn "compilation done"
+    pure ()

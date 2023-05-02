@@ -10,5 +10,5 @@ rm example
 rm example.s
 rm log_*.csv
 
-rm -rf dist_newstyle
+rm -rf dist-newstyle
 rm agner.cabal

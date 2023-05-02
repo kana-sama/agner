@@ -13,9 +13,6 @@ import Data.Functor as X (($>))
 import Data.Coerce as X (coerce)
 import GHC.Records as X (HasField(getField))
 
-import Data.Foldable.WithIndex as X (ifor_)
-import Data.Traversable.WithIndex as X (ifor)
-
 import Debug.Trace as X
 
 import Control.Monad as X (void, forever, (>=>), when, unless, replicateM, replicateM_, guard)

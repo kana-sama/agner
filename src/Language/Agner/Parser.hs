@@ -4,7 +4,7 @@ import Language.Agner.Prelude hiding (try)
 
 import Data.Char qualified as Char
 
-import Text.Megaparsec (Parsec, lookAhead, label, satisfy, between, choice, runParser, eof, oneOf, some, notFollowedBy, many, empty, (<|>), try, sepBy, sepBy1, optional, anySingle, manyTill)
+import Text.Megaparsec (Parsec, lookAhead, label, satisfy, between, choice, runParser, eof, oneOf, notFollowedBy, many, empty, (<|>), try, sepBy, sepBy1, optional, manyTill)
 import Text.Megaparsec.Char (char, string, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
