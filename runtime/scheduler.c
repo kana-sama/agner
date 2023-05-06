@@ -56,8 +56,13 @@ void action_wrapper_wrapper(process_t*, void*, value_t*, action_t);
 
 asm(
   ".align 16 \n"
+#ifdef __APPLE__
+  ".globl _action_wrapper_wrapper \n"
+    "_action_wrapper_wrapper: \n"
+#else
   ".globl action_wrapper_wrapper \n"
     "action_wrapper_wrapper: \n"
+#endif
     "pushq %rbx \n"
     "pushq %r12 \n"
     "pushq %r13 \n"
