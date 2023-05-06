@@ -13,6 +13,6 @@ main() ->
   agner:println(#user.age),
   agner:println(A#user.name),
   agner:println(A#user.age),
-  agner:println({user, 1, 2}#user{name = "NOT NAME", age = "NOT AGE"}),
+  agner:println({user, 1, 2}#user{age = "NOT AGE", name = "NOT NAME"}),
   agner:println(f(A)),
   ok.

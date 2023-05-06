@@ -246,28 +246,22 @@ unrecord module_ = module_
         pure (Tuple (Atom (coerce record_name) : values))
 
       RecordGet expr record_name record_field -> Just <$> do
-        exprVar <- fresh
-        let fields = length (recordFields record_name)
-        let ix = recordField record_name record_field
-        pure do Begin
-                  [ Match (PatVar exprVar) expr
-                  , Apply "agner:assert_record/3" [Var exprVar, Atom (coerce record_name), Integer (fromIntegral fields)]
-                  , Apply "erlang:element/2" [Integer ix, Var exprVar]
-                  ]
+        assertRecord record_name expr \vars -> do
+          let ix = recordField record_name record_field
+          Var (vars !! ix)
 
       RecordUpdate expr record_name kvs -> Just <$> do
-        exprVar <- fresh
-        let fields = length (recordFields record_name)
-        pure do Begin
-                  [ Match (PatVar exprVar) expr
-                  , Apply "agner:assert_record/3" [Var exprVar, Atom (coerce record_name), Integer (fromIntegral fields)]
-                  , foldr
-                      (\(field, val) r -> Apply "agner:update_element/3" [Integer (recordField record_name field), r, val])
-                      (Var exprVar) kvs
-                  ]
+        let !() = checkFields record_name [k | (k, v) <- kvs]
+        assertRecord record_name expr \vars -> do
+          let values = do
+                (f, v) <- zip (recordFields record_name) vars
+                pure case List.lookup f kvs of
+                  Just e -> e
+                  Nothing -> Var v
+          Tuple (Atom (coerce record_name) : values)
 
       RecordSelector record_name record_field -> Just <$> do
-        pure (Integer (recordField record_name record_field))
+        pure (Integer (recordField record_name record_field + 2))
 
       _ -> pure Nothing
 
@@ -301,4 +295,17 @@ unrecord module_ = module_
     recordField record_name record_field =
       case List.findIndex (== record_field) (recordFields record_name) of
         Nothing -> error ("field " ++ record_field.getString ++ " undefined in record " ++ record_name.getString)
-        Just i -> fromIntegral (i + 2)
+        Just i -> fromIntegral i
+
+    assertRecord :: RecordName -> Expr -> ([Var] -> Expr) -> State Int Expr
+    assertRecord record_name expr next = do
+      rec_var <- fresh
+      let fields = recordFields record_name
+      vars <- replicateM (length fields) fresh
+      let record_pat = PatTuple (PatAtom (coerce record_name) : [PatVar v | v <- vars])
+      pure do
+        Case expr
+          [ CaseBranch record_pat []
+              [next vars]
+          , CaseBranch (PatVar rec_var) []
+              [Apply "erlang:error/1" [Tuple [Atom "badrecord", Var rec_var]]] ]
