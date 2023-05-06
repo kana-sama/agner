@@ -70,14 +70,14 @@ main = do
       (ctx, module_) <- pure (X64.compileModule target module_)
       module_ <- evaluate module_
 
-      let file_asm = temp </> show index <.> "s"
+      let file_asm = temp </> show index <.> "S"
       writeFile file_asm module_
       
       pure (ctx, [file_asm])
     
     printStep; putStrLn "Compiling entry point"
     entry <- evaluate (X64.compileEntryPoint target ctx)
-    let entryFile = temp </> "entry" <.> "s"
+    let entryFile = temp </> "entry" <.> "S"
     writeFile entryFile entry
 
     printStep; putStrLn "Building executable"
