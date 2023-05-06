@@ -18,3 +18,6 @@
 -primitive(spawn/1).
 
 -primitive(error/1).
+
+-export([element/2]).
+-primitive(element/2).

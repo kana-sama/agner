@@ -28,7 +28,7 @@ fun_kind_t _assert__fun(value_t value, int64_t arity) {
   if (ref && ref->super.header == CLOSURE_HEADER)
     if (!should_check_arity || should_check_arity && get_fun_meta(ref->closure.body)->arity == arity)
       return FUN_KIND_CLOSURE;
-  
+
   _throw__badfun(value);
 }
 
@@ -39,7 +39,7 @@ void _assert__map(value_t value) {
 
 void _assert__record(value_t value, char* record_name, int64_t record_size) {
   boxed_value_t* ref = cast_to_boxed_value(value);
-  
+
   if (!ref)
     _throw__badrecord(value);
 

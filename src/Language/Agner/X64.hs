@@ -12,7 +12,6 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import Data.X64
 import Data.Set qualified as Set
-import Data.List qualified as List
 import Data.Map.Strict qualified as Map
 
 import Language.Agner.Prelude
@@ -30,7 +29,6 @@ data Ctx = MkCtx
   , stackframe :: ~Int
   , variables :: Map Var Operand
   , atoms :: Set Atom
-  , records :: Map RecordName [RecordField]
   , anon_funs :: [AnonFun]
   } deriving stock (Generic)
 
@@ -50,7 +48,6 @@ emptyCtx = MkCtx
   , stackframe = defaultStackFrame
   , variables = Map.empty
   , atoms = Set.empty
-  , records = Map.empty
   , anon_funs = []
   }
 
@@ -112,18 +109,6 @@ argument ~arg = do
   ~base <- use #stackframe
   pure (MemReg (base + arg * WORD_SIZE) vstack)
 
-record :: RecordName -> M [RecordField]
-record name = use (#records . at name) >>= \case
-  Just fields -> pure fields
-  Nothing -> error ("record " ++ name.getString ++ " is not defined")
-
-recordField :: RecordName -> RecordField -> M Int
-recordField name field = do
-  fields <- record name
-  case List.findIndex (== field) fields of
-    Nothing -> error ("unknown field " ++ field.getString ++ " of record " ++ name.getString)
-    Just ix -> pure ix
-
 
 data MatchOp = ByValue Operand | ByRef Operand
 
@@ -156,14 +141,7 @@ pat value p on_match_fail = case p of
     pat value p1 on_match_fail
     pat value p2 on_match_fail
 
-  PatRecord name values -> do
-    fields <- record name
-    pat value (PatTuple (PatAtom (coerce name) : [getFieldValue f | f <- fields])) on_match_fail
-    where
-      getFieldValue field =
-        case List.lookup field values of
-          Nothing -> PatWildcard
-          Just p  -> p
+  p@PatRecord{} -> shouldBeDesugared p
 
   where
     match fun ops children | length ops > 4 = error "to many args for match"
@@ -292,56 +270,6 @@ expr result = \case
       tell [ callq (runtime "alloc:cons") ]
       tell [ movq  rax result ]
 
-  Record name values -> do
-    fields <- record name
-    result <~ Tuple (Atom (coerce name) : [getFieldValue f | f <- fields])
-    where
-      getFieldValue field =
-        case List.lookup field values of
-          Nothing    -> Atom "undefined"
-          Just value -> value
-
-  RecordGet expr name field -> do
-    field_ix <- recordField name field
-    withAlloc \value -> do
-      value <~ expr
-
-      fields    <- record name
-      name_atom <- atom (coerce name)
-      tell [ movq  value rdi]
-      tell [ movq  name_atom rsi ]
-      tell [ movq  (Imm (length fields)) rdx ]
-      tell [ callq (runtime "assert:record") ]
-
-      tell [ movq  value rdi ]
-      tell [ movq  (Imm field_ix) rsi ]
-      tell [ callq (runtime "record:get") ]
-      tell [ movq  rax result ]
-
-  RecordUpdate expr name values -> do
-    result <~ expr
-
-    fields    <- record name
-    name_atom <- atom (coerce name)
-    tell [ movq  result rdi]
-    tell [ movq  name_atom rsi ]
-    tell [ movq  (Imm (length fields)) rdx ]
-    tell [ callq (runtime "assert:record") ]
-
-    for_ values \(field, field_value) -> do
-      withAlloc \field_value_ -> do
-        field_ix     <- recordField name field
-        field_value_ <~ field_value
-        tell [ movq  result rdi ]
-        tell [ movq  (Imm field_ix) rsi ]
-        tell [ movq  field_value_ rdx ]
-        tell [ callq (runtime "record:set") ]
-        tell [ movq  rax result ]
-
-  RecordSelector record_name record_field -> do
-    ix <- recordField record_name record_field
-    result <~ Integer (fromIntegral ix + 1)
-
   Var var -> do
     var_op   <- variable var
     var_atom <- atom (MkAtom var.getString)
@@ -451,16 +379,20 @@ expr result = \case
 
   Begin es -> exprs result es
 
-  e@Map{}        -> shouldBeDesugared e
-  e@MapUpdate{}  -> shouldBeDesugared e
-  e@ListComp{}   -> shouldBeDesugared e
-  e@MapComp{}    -> shouldBeDesugared e
-  e@AndAlso{}    -> shouldBeDesugared e
-  e@OrElse{}     -> shouldBeDesugared e
-  e@Send{}       -> shouldBeDesugared e
-  e@BinOp{}      -> shouldBeDesugared e
-  e@UnOp{}       -> shouldBeDesugared e
-  e@Maybe{}      -> shouldBeDesugared e
+  e@MapUpdate{}      -> shouldBeDesugared e
+  e@ListComp{}       -> shouldBeDesugared e
+  e@MapComp{}        -> shouldBeDesugared e
+  e@AndAlso{}        -> shouldBeDesugared e
+  e@OrElse{}         -> shouldBeDesugared e
+  e@BinOp{}          -> shouldBeDesugared e
+  e@Send{}           -> shouldBeDesugared e
+  e@Map{}            -> shouldBeDesugared e
+  e@UnOp{}           -> shouldBeDesugared e
+  e@Maybe{}          -> shouldBeDesugared e
+  e@Record{}         -> shouldBeDesugared e
+  e@RecordGet{}      -> shouldBeDesugared e
+  e@RecordUpdate{}   -> shouldBeDesugared e
+  e@RecordSelector{} -> shouldBeDesugared e
 
   where
     (<~) = expr
@@ -592,9 +524,6 @@ function funid clauses init_scope = funWrapper funid mdo
 
 decl :: WithTarget => Decl -> M ()
 
-decl RecordDecl{recordName, recordFields} = do
-  #records %= Map.insert recordName recordFields
-
 decl Primitive{funid} = funWrapper funid do
   tell [ subq WORD_SIZE rsp ]
 
@@ -638,11 +567,12 @@ decl FunDecl{funid, clauses} = function funid clauses do
     tell [ movq UNBOUND_TAG slot ]
     pure (Map.singleton var slot)
 
-decl ImportDecl{} = pure ()
-
 decl ExportDecl{names} = do
   for_ names \name -> do
     tell [ _globl (mkFunctionLabel name) ]
+
+decl d@ImportDecl{} = shouldBeDesugared d
+decl d@RecordDecl{} = shouldBeDesugared d
 
 anonFun :: WithTarget => AnonFun -> M ()
 anonFun anon = function anon.funid anon.clauses do

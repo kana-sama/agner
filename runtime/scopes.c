@@ -12,6 +12,22 @@ scopes_t* scopes_new() {
   return scopes;
 }
 
+void dump_scopes(scopes_t* scopes) {
+  printf("\nscopes: ");
+  node_t* values = scopes->values->beg;
+  node_t* frames = scopes->frames->beg;
+  while (frames) {
+    int64_t x = (int64_t)(frames->value);
+    printf("|");
+    while (x--) {
+      printf("["); print_value(*(value_t*)(values->value)); printf("] ");
+      values = values->next;
+    }
+    frames = frames->next;
+  }
+  puts(" end of scope");
+}
+
 void scopes_free(scopes_t* scopes) {
   list_foreach(scopes->values, free);
   list_free(scopes->values);
@@ -33,6 +49,7 @@ value_t* scopes_declare(scopes_t* scopes, value_t value) {
 
   value_t* value_ref = malloc(sizeof(value_t));
   *value_ref = value;
-  list_append(scopes->values, value_ref);
+  list_prepend(scopes->values, value_ref);
+
   return value_ref;
 }

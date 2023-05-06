@@ -30,6 +30,10 @@ value_t _erlang__integer_to_list__1(bif_context_t, value_t);
 // value_t _erlang__fun_to_list(bif_context_t, value_t);
 // value_t _erlang__pid_to_list(bif_context_t, value_t);
 
+value_t _erlang__element__2(bif_context_t, value_t n, value_t tuple);
+value_t _agner__update_element__3(bif_context_t, value_t n, value_t tuple, value_t value);
 
 value_t _agner__map_to_boxed__1(bif_context_t, value_t);
 value_t _agner__boxed_to_map__1(bif_context_t, value_t);
+
+value_t _agner__assert_record__3(bif_context_t, value_t e, value_t record_name, value_t record_size);

@@ -36,7 +36,7 @@ void _runtime__start(value_t entry) {
   clock_gettime(CLOCK_MONOTONIC_RAW, &rt_end);
 
   if (ylog) fclose(ylog);
-  
+
   if (options.stat) {
     uint64_t total_time = (rt_end.tv_sec - rt_start.tv_sec) * 1000 + (rt_end.tv_nsec - rt_start.tv_nsec) / 1000000;
     printf("total time: %lldms\n"
@@ -69,7 +69,7 @@ void _runtime__yield(char* name) {
 void _runtime__save_vstack() {
   asm(
     "movq %%r12, %[stack_head]"
-    : [stack_head] "=m" (scheduler->current->vstack_head) 
+    : [stack_head] "=m" (scheduler->current->vstack_head)
     :
     : "rdi", "rsi", "rdx", "rcx", "memory", "r12", "r13"
   );
@@ -161,18 +161,6 @@ value_t _receive__pick() {
 void _receive__success() {
   mailbox_drop_picked(scheduler->current->mailbox);
   mailbox_unpick(scheduler->current->mailbox);
-}
-
-
-value_t _record__get(value_t value, int64_t field_ix) {
-  return cast_to_boxed_value(value)->tuple.values[field_ix + 1];
-}
-
-value_t _record__set(value_t value, int64_t field_ix, value_t field_value) {
-  boxed_value_t* ref = cast_to_boxed_value(value);
-  value_t new_value = _alloc__tuple(ref->tuple.size, ref->tuple.values);
-  cast_to_boxed_value(new_value)->tuple.values[field_ix + 1] = field_value;
-  return new_value;
 }
 
 

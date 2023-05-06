@@ -28,3 +28,9 @@
 -primitive(greater/2).
 -primitive(greater_eq/2).
 -primitive(eq_less/2).
+
+-export([assert_record/3]).
+-primitive(assert_record/3).
+
+-export([update_element/3]).
+-primitive(update_element/3).

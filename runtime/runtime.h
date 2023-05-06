@@ -23,8 +23,5 @@ value_t _alloc__closure(value_t body, int64_t env_size, value_t* env);
 value_t _receive__pick();
 void    _receive__success();
 
-value_t _record__get(value_t, int64_t field_ix);
-value_t _record__set(value_t, int64_t field_ix, value_t field_value);
-
 value_t* _closure__get_env(value_t);
 value_t  _closure__get_fun(value_t);

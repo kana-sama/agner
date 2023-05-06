@@ -4,7 +4,15 @@
 
 -record(user, {name, age}).
 
+f(#user{age = Age}) -> {Age, Name = 1}.
+
 main() ->
+  A = #user{name = "NAME", age = "AGE"},
+  agner:println(A),
   agner:println(#user.name),
   agner:println(#user.age),
-  agner:println(map(fun(X) -> X + 1 end, [1, 2, 3])).
+  agner:println(A#user.name),
+  agner:println(A#user.age),
+  agner:println({user, 1, 2}#user{name = "NOT NAME", age = "NOT AGE"}),
+  agner:println(f(A)),
+  ok.

@@ -120,7 +120,7 @@ value_t _erlang__spawn__1(bif_context_t ctx, value_t value) {
   value_t* copied_value = malloc(sizeof(value_t));
   process_t* spawned = scheduler_spawn(scheduler, (action_t)spawn_wrapper, copied_value);
   *copied_value = copy_to_heap(value, &spawned->heap, process_gc_ctx(spawned));
-  
+
   return (spawned->pid) << TAG_SIZE | PID_TAG;
 }
 
@@ -294,4 +294,65 @@ value_t _agner__boxed_to_map__1(bif_context_t ctx, value_t value) {
     puts("expected boxed value");
     exit(-1);
   }
+}
+
+
+value_t _erlang__element__2(bif_context_t ctx, value_t n, value_t value) {
+  value_t args[] = {n, value};
+
+  if ((n & TAG_MASK) != INTEGER_TAG)
+    _throw__badarg(get_meta(ctx), args);
+
+  boxed_value_t* ref = cast_to_boxed_value(value);
+
+  if (!ref)
+    _throw__badarg(get_meta(ctx), args);
+
+  if (ref->super.header != TUPLE_HEADER)
+    _throw__badarg(get_meta(ctx), args);
+
+  int64_t index = n >> TAG_SIZE;
+  if (index <= 0 || index > ref->tuple.size)
+    _throw__badarg(get_meta(ctx), args);
+
+  return ref->tuple.values[index - 1];
+}
+
+value_t _agner__update_element__3(bif_context_t ctx, value_t n, value_t tuple, value_t value) {
+  value_t args[] = {n, tuple, value};
+
+  if ((n & TAG_MASK) != INTEGER_TAG)
+    _throw__badarg(get_meta(ctx), args);
+
+  boxed_value_t* ref = cast_to_boxed_value(tuple);
+
+  if (!ref)
+    _throw__badarg(get_meta(ctx), args);
+
+  if (ref->super.header != TUPLE_HEADER)
+    _throw__badarg(get_meta(ctx), args);
+
+  int64_t index = n >> TAG_SIZE;
+  if (index <= 0 || index > ref->tuple.size)
+    _throw__badarg(get_meta(ctx), args);
+
+
+  value_t* new_values = malloc(sizeof(value_t) * ref->tuple.size);
+
+  for (int i = 0; i < ref->tuple.size; i++)
+    if (i == index - 1)
+      new_values[i] = value;
+    else
+      new_values[i] = ref->tuple.values[i];
+
+  value_t new_value = _alloc__tuple(ref->tuple.size, new_values);
+
+  free(new_values);
+
+  return new_value;
+}
+
+value_t _agner__assert_record__3(bif_context_t ctx, value_t e, value_t record_name, value_t record_size) {
+  _assert__record(e, (char*)record_name, decode_integer(record_size));
+  return shared_ok();
 }

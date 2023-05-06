@@ -3,6 +3,7 @@ module Language.Agner.Desugarer (desugar) where
 import Language.Agner.Prelude
 import Language.Agner.Syntax
 
+import Data.List qualified as List
 import Data.Map.Strict qualified as Map
 import Data.Generics.Uniplate.Data (rewriteBi, rewriteBiM, transformBi)
 
@@ -10,6 +11,7 @@ import Data.Generics.Uniplate.Data (rewriteBi, rewriteBiM, transformBi)
 desugar :: Module -> Module
 desugar module_ = module_
   & resolve
+  & unrecord
   & validateGuards
   & (andAlso . orElse)
   & (operators . send)
@@ -112,16 +114,18 @@ operators = rewriteBi \case
 
 
 resolve :: Module -> Module
-resolve module_ = module_ & transformBi \case
-  funid@MkUnresolvedFunId{} ->
-    case localNames Map.!? funid of
-      Just funid -> funid
-      Nothing -> funid{ns = "erlang"}
-  funid -> funid
+resolve module_ = module_
+  & #decls %~ filter (isn't #_ImportDecl)
+  & transformBi \case
+      funid@MkUnresolvedFunId{} ->
+        case localNames Map.!? funid of
+          Just funid -> funid
+          Nothing -> funid{ns = "erlang"}
+      funid -> funid
   where
     u MkFunId{name, arity} = MkUnresolvedFunId{name, arity} -- unresolved
     ns %: MkFunId{name, arity} = MkFunId{ns, name, arity}   -- resolved
-    
+
     localNames = foldMap getDeclName module_.decls
     getDeclName = \case
       Primitive{funid} -> Map.singleton (u funid) (module_.name %: funid)
@@ -140,7 +144,7 @@ maybe_ = flip evalState 0 . rewriteBiM \case
       Case (DynApply (FunL [MkClause [] [] [body]]) [])
         [ CaseBranch (PatTuple [PatAtom  "ok", PatVar var]) [] [Var var]
         , CaseBranch (PatTuple [PatAtom "err", PatVar var]) [] [Var var] ]
-  
+
   Maybe es else_branches -> Just <$> do
     body <- go es
     var <- fresh
@@ -229,3 +233,72 @@ validateGuards = transformBi \(MkGuardExpr e) ->
   if isGuardExpr e
     then MkGuardExpr e
     else error ("invalid guard expression: " ++ show e)
+
+unrecord :: Module -> Module
+unrecord module_ = module_
+  & #decls %~ filter (isn't #_RecordDecl)
+
+  & flip evalState 0 . rewriteBiM \case
+      Record record_name kvs -> Just <$> do
+        let fields = recordFields record_name
+        let !()    = checkFields record_name [k | (k, v) <- kvs]
+        let values = [case List.lookup f kvs of Nothing -> Atom "undefined"; Just e -> e | f <- fields]
+        pure (Tuple (Atom (coerce record_name) : values))
+
+      RecordGet expr record_name record_field -> Just <$> do
+        exprVar <- fresh
+        let fields = length (recordFields record_name)
+        let ix = recordField record_name record_field
+        pure do Begin
+                  [ Match (PatVar exprVar) expr
+                  , Apply "agner:assert_record/3" [Var exprVar, Atom (coerce record_name), Integer (fromIntegral fields)]
+                  , Apply "erlang:element/2" [Integer ix, Var exprVar]
+                  ]
+
+      RecordUpdate expr record_name kvs -> Just <$> do
+        exprVar <- fresh
+        let fields = length (recordFields record_name)
+        pure do Begin
+                  [ Match (PatVar exprVar) expr
+                  , Apply "agner:assert_record/3" [Var exprVar, Atom (coerce record_name), Integer (fromIntegral fields)]
+                  , foldr
+                      (\(field, val) r -> Apply "agner:update_element/3" [Integer (recordField record_name field), r, val])
+                      (Var exprVar) kvs
+                  ]
+
+      RecordSelector record_name record_field -> Just <$> do
+        pure (Integer (recordField record_name record_field))
+
+      _ -> pure Nothing
+
+  & rewriteBi \case
+      PatRecord record_name kvs -> Just do
+        let fields = recordFields record_name
+        let !()    = checkFields record_name [k | (k, v) <- kvs]
+        let values = [case List.lookup f kvs of Nothing -> PatWildcard; Just p -> p | f <- fields]
+        PatTuple (PatAtom (coerce record_name) : values)
+
+      _ -> Nothing
+  where
+    fresh :: State Int Var
+    fresh = do
+      uuid <- id <<+= 1
+      pure (MkVar ("_RecordVar" ++ show uuid))
+
+    records = Map.fromList [(name, fields) | RecordDecl name fields <- module_.decls]
+
+    checkFields record_name fields =
+      let valid_fields = recordFields record_name
+       in case List.find (`notElem` valid_fields) fields of
+            Nothing -> ()
+            Just f -> error ("field " ++ f.getString ++ " undefined in record " ++ record_name.getString)
+
+    recordFields record_name =
+      case records Map.!? record_name of
+        Just fields -> fields
+        Nothing -> error ("record " ++ record_name.getString ++ " undefined")
+
+    recordField record_name record_field =
+      case List.findIndex (== record_field) (recordFields record_name) of
+        Nothing -> error ("field " ++ record_field.getString ++ " undefined in record " ++ record_name.getString)
+        Just i -> fromIntegral (i + 2)
