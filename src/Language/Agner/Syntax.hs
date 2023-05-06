@@ -74,6 +74,7 @@ data Expr
   | Record RecordName [(RecordField, Expr)]
   | RecordGet Expr RecordName RecordField
   | RecordUpdate Expr RecordName [(RecordField, Expr)]
+  | RecordSelector RecordName RecordField
 
   | Map [MapElemBind Expr Expr]
   | MapUpdate Expr [MapElemBind Expr Expr]

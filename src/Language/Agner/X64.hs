@@ -33,7 +33,7 @@ data Ctx = MkCtx
   , records :: Map RecordName [RecordField]
   , anon_funs :: [AnonFun]
   } deriving stock (Generic)
-  
+
 type M = StateT Ctx (Writer Prog)
 
 defaultStackFrame :: Int
@@ -138,7 +138,7 @@ pat value p on_match_fail = case p of
 
   PatInteger i -> do
     match "match:integer" [ByValue value, ByValue (fromInteger i)] []
-  
+
   PatAtom a -> do
     a <- atom a
     match "match:atom" [ByValue value, ByValue a] []
@@ -177,7 +177,7 @@ pat value p on_match_fail = case p of
       tell [ jne    done ]
       on_match_fail
       tell [ _label done]
-      
+
       -- match children
       unless (null children) do
         withAlloc \values -> do
@@ -188,7 +188,7 @@ pat value p on_match_fail = case p of
               tell [ movq (MemReg (i * WORD_SIZE) rax) rax ]
               tell [ movq rax child ]
               pat child p on_match_fail
-      
+
 
 guardExpr :: WithTarget => Operand -> GuardExpr -> M ()
 guardExpr = coerce expr
@@ -252,12 +252,12 @@ expr result = \case
     tell [ movq  (fromInteger i) rdi ]
     tell [ callq (runtime "alloc:integer") ]
     tell [ movq  rax result ]
-  
+
   Atom a -> do
     a <- atom a
     tell [ movq a rax ]
     tell [ movq rax result ]
-  
+
   Tuple es -> do
     let size = length es
 
@@ -270,7 +270,7 @@ expr result = \case
       tell [ subq WORD_SIZE rsp ]
     for_ (reverse values) \value -> do
       tell [ pushq value ]
-    
+
     tell [ movq  (fromIntegral size) rdi ]
     tell [ movq  rsp rsi ]
     tell [ callq (runtime "alloc:tuple") ]
@@ -280,10 +280,10 @@ expr result = \case
     tell [ addq (Imm (fromIntegral restore)) rsp ]
 
     for_ values free
-  
+
   Nil ->
     tell [ movq NIL_TAG result ]
-  
+
   Cons a b -> do
     withAlloc \a_ -> withAlloc \b_ -> do
       a_ <~ a; b_ <~ b
@@ -337,7 +337,11 @@ expr result = \case
         tell [ movq  field_value_ rdx ]
         tell [ callq (runtime "record:set") ]
         tell [ movq  rax result ]
-  
+
+  RecordSelector record_name record_field -> do
+    ix <- recordField record_name record_field
+    result <~ Integer (fromIntegral ix + 1)
+
   Var var -> do
     var_op   <- variable var
     var_atom <- atom (MkAtom var.getString)
@@ -345,7 +349,7 @@ expr result = \case
     tell [ movq var_atom rsi ]
     tell [ callq (runtime "assert:bound") ]
     tell [ movq rdi result ]
-  
+
   Fun{funid} -> do
     tell [ movq (Static (mkFunctionLabel funid)) rax ]
     tell [ movq rax result ]
@@ -371,16 +375,16 @@ expr result = \case
 
     let restore = WORD_SIZE * if odd size then size + 1 else size
     tell [ addq (Imm (fromIntegral restore)) rsp ]
-  
+
   Match p e -> do
     result <~ e
     pat result p do
       tell [ movq result rdi ]
       tell [ callq (runtime "throw:badmatch") ]
-  
+
   Apply f es -> do
     apply result f [ApplyExpr e | e <- es]
-  
+
   TailApply f es -> do
     values <- for es \e -> do
       value <- alloc
@@ -392,7 +396,7 @@ expr result = \case
       tell [ movq rax arg ]
     for_ values free
     tell [ jmp (mkFunctionBodyLabel f) ]
-  
+
   DynApply f es ->
     withAlloc \f' -> do
       call_lbl <- label
@@ -418,7 +422,7 @@ expr result = \case
       tell [ addq   (Imm (length es * WORD_SIZE)) vstack ]
       tell [ callq' rax ]
       tell [ movq   rax result ]
-  
+
   Receive cases -> do
     loop <- label; done <- label
 
@@ -432,14 +436,14 @@ expr result = \case
         caseBranch msg result afterMatch done branch
       tell [ jmp    loop ]
       tell [ _label done ]
-  
+
   Case e cases -> do
     done <- label
 
     withAlloc \value -> do
       value <~ e
       for_ cases (caseBranch value result (pure ()) done)
-      
+
       tell [ movq  value rdi ]
       tell [ callq (runtime "throw:case_clause") ]
 
@@ -500,7 +504,7 @@ funWrapper funid body = mdo
   #allocated .= Set.empty
   #required_slots .= 0
   #stackframe .= stackframe
-  
+
   tell [ _label (mkFunctionLabel funid) ]
   body
   tell [ _label (mkFunctionEndLabel funid) ]
@@ -553,7 +557,7 @@ function funid clauses init_scope = funWrapper funid mdo
 
   tell [ _comment "initializing locals" ]
   #variables <~ init_scope
-  
+
   tell [ _comment "function clauses" ]
   withAlloc \result -> do
     for_ clauses \c -> do
@@ -573,7 +577,7 @@ function funid clauses init_scope = funWrapper funid mdo
 
   for_ (allVars clauses) \var -> do
     free =<< variable var
-    
+
   epilogue <- label
   tell [ _comment "epilogue" ]
   tell [ _label epilogue ]
@@ -596,7 +600,7 @@ decl Primitive{funid} = funWrapper funid do
 
   tell [ leaq  (MemRegL (mkFunctionMetaOptLabel funid "name_a") rip) rdi ]
   tell [ callq (runtime "runtime:yield") ]
-  
+
   let args = [0..funid.arity - 1]
   let argsOnStack = max 0 (funid.arity - length fast_args)
 
@@ -740,7 +744,7 @@ mkLabel name = case ?target of
 mkFunctionLabel, mkFunctionBodyLabel, mkFunctionEndLabel, mkFunctionMetaLabel :: WithTarget => FunId -> Label
 mkFunctionMetaOptLabel :: WithTarget => FunId -> String -> Label
 mkFunctionLabel (MkFunId ns f arity) = mkLabel (ns.getString ++ "." ++ f.getString ++ "." ++ show arity)
-mkFunctionBodyLabel funid = mkFunctionLabel funid ++ ".body" 
+mkFunctionBodyLabel funid = mkFunctionLabel funid ++ ".body"
 mkFunctionEndLabel funid = mkFunctionLabel funid ++ ".end"
 mkFunctionMetaLabel funid = mkFunctionLabel funid ++ ".meta"
 mkFunctionMetaOptLabel funid field = mkFunctionMetaLabel funid ++ "." ++ field

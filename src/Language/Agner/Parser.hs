@@ -236,7 +236,7 @@ record_kv = do
   field <- coerce <$> atom
   symbol "="
   value <- expr
-  pure (field, value) 
+  pure (field, value)
 
 record_construct :: Parser Expr
 record_construct = do
@@ -245,11 +245,19 @@ record_construct = do
   values <- braces (record_kv `sepBy` symbol ",")
   pure (Record recordName values)
 
+record_selector :: Parser (RecordName, RecordField)
+record_selector = do
+  symbol "#"
+  recordName <- coerce <$> atom
+  symbol "."
+  recordField <- coerce <$> atom
+  pure (recordName, recordField)
+
 comp_qualifier :: Parser CompQualifier
 comp_qualifier = choice
   [ try do p <- pat; symbol "<-"; e <- expr; pure (CompListGenerator p e)
   , try do k <- pat; symbol ":="; v <- pat; symbol "<-"; e <- expr; pure (CompMapGenerator k v e)
-  , do e <- expr; pure (CompFilter e) 
+  , do e <- expr; pure (CompFilter e)
   ]
 
 list_comp :: Parser Expr
@@ -302,6 +310,7 @@ term = choice
   , try do list_comp
   , makeList <$> list
   , makeList . (, Nothing) <$> string_
+  , try do uncurry RecordSelector <$> record_selector
   , try do map_comp
   , try do Map <$> map_
   , try do record_construct
@@ -367,10 +376,7 @@ expr = makeExprParser term ([[mapUpdate, recordGet, recordUpdate]] ++ operatorTa
     pure \e -> MapUpdate e update
 
   recordGet = (Postfix . try) do
-    symbol "#"
-    recordName <- coerce <$> atom
-    symbol "."
-    recordField <- coerce <$> atom
+    (recordName, recordField) <- record_selector
     pure \e -> RecordGet e recordName recordField
 
   recordUpdate = Postfix do
