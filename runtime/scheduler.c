@@ -49,6 +49,9 @@ void scheduler_switch(scheduler_t* scheduler) {
   }
 }
 
+// This inline assembler should clobber all caller-saved registers and some callee-saved registers
+// (currently r12 and r13), but simply mentioning them in 'clobbered' argument of asm() does not
+// work as there are not enough registers to pass arguments to asm, hence top-level inline assembler.
 void action_wrapper_wrapper(process_t*, void*, value_t*, action_t);
 
 asm(
