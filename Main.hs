@@ -1,5 +1,3 @@
-{-# LANGUAGE DataKinds #-}
-
 import Paths_agner (getDataDir)
 
 import Data.IORef (atomicModifyIORef', newIORef)
@@ -17,8 +15,7 @@ import Control.Lens (ifor)
 
 import Language.Agner.X64 qualified as X64
 import Language.Agner.Parser qualified as Parser
-import Language.Agner.Optimizer qualified as Optimizer
-import Language.Agner.Desugarer qualified as Desugarer
+import Language.Agner.Process qualified as Process
 
 data Command
   = Compile{source :: [FilePath], output :: FilePath}
@@ -64,17 +61,16 @@ main = do
 
       module_ <- readFile sourceFile
       module_ <- evaluate (Parser.parse sourceFile Parser.module_ module_)
-      module_ <- evaluate (Desugarer.desugar module_)
-      module_ <- evaluate (Optimizer.optimize module_)
+      module_ <- evaluate (Process.process module_)
 
       (ctx, module_) <- pure (X64.compileModule target module_)
       module_ <- evaluate module_
 
       let file_asm = temp </> show index <.> "s"
       writeFile file_asm module_
-      
+
       pure (ctx, [file_asm])
-    
+
     printStep; putStrLn "Compiling entry point"
     entry <- evaluate (X64.compileEntryPoint target ctx)
     let entryFile = temp </> "entry" <.> "s"
@@ -83,5 +79,5 @@ main = do
     printStep; putStrLn "Building executable"
     runtimeSourceFiles <- getRuntimeSourceFiles
     let files_to_compile = [entryFile] ++ runtimeSourceFiles ++ asmFiles
-    ExitSuccess <- runProcess do proc "gcc" ("-o" : output : files_to_compile)
+    ExitSuccess <- runProcess do proc "clang" ("-o" : output : files_to_compile)
     pure ()

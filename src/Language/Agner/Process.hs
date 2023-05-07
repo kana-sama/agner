@@ -1,4 +1,4 @@
-module Language.Agner.Desugarer (desugar) where
+module Language.Agner.Process (process) where
 
 import Language.Agner.Prelude
 import Language.Agner.Syntax
@@ -8,8 +8,8 @@ import Data.Map.Strict qualified as Map
 import Data.Generics.Uniplate.Data (rewriteBi, rewriteBiM, transformBi)
 
 
-desugar :: Module -> Module
-desugar module_ = module_
+process :: Module -> Module
+process module_ = module_
   & resolve
   & unrecord
   & validateGuards
@@ -18,6 +18,7 @@ desugar module_ = module_
   & comps
   & maps
   & maybe_
+  & resolveTailCalls
 
 
 andAlso :: Module -> Module
@@ -309,3 +310,29 @@ unrecord module_ = module_
               [next vars]
           , CaseBranch (PatVar rec_var) []
               [Apply "erlang:error/1" [Tuple [Atom "badrecord", Var rec_var]]] ]
+
+resolveTailCalls :: Module -> Module
+resolveTailCalls = module_
+  where
+    module_ m =
+      m{decls = map decl m.decls}
+
+    decl = \case
+      FunDecl{funid, clauses} -> FunDecl{funid, clauses = [clause funid c | c <- clauses]}
+      d -> d
+
+    clause f MkClause{pats, guards, body} =
+      MkClause{pats, guards, body = exprs f body}
+
+    expr f = \case
+      Apply funid es | f == funid -> TailApply funid es
+      Case e bs -> Case e (map (branch f) bs)
+      Receive bs -> Receive (map (branch f) bs)
+      Begin es -> Begin (exprs f es)
+      e -> e
+
+    exprs f es =
+      init es ++ [expr f (last es)]
+
+    branch f (CaseBranch p gs es) =
+      CaseBranch p gs (exprs f es)
