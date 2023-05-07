@@ -373,7 +373,12 @@ expr :: Parser Expr
 expr = makeExprParser term ([[mapUpdate, recordGet, recordUpdate]] ++ operatorTable unary binary) where
   unary  name notNext f = Prefix (f <$ op name notNext)
   binary name notNext f = InfixL (f <$ op name notNext)
-  op n notNext = (lexeme . try) (string n <* notFollowedBy (choice (map string notNext)))
+  op n notNext = (lexeme . try) (ops n <* notFollowedBy (choice (map string notNext)))
+
+  ops :: String -> Parser String
+  ops n
+    | Char.isAlpha (head n) = string n <* notFollowedBy (alphaNumChar <|> char '_')
+    | otherwise = string n
 
   mapUpdate = (Postfix . try) do
     update <- map_
