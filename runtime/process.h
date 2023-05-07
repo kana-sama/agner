@@ -34,5 +34,6 @@ process_t* process_lookup(PID_t);
 gc_ctx_t   process_gc_ctx(process_t*);
 void       process_send(PID_t, value_t);
 
-void process_add_handle(process_t*, handler_action_t);
+void process_add_handler(process_t*, handler_action_t, void* stack_head);
+void process_remove_handler(process_t*);
 void process_throw(process_t*, value_t);

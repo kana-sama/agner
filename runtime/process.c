@@ -9,6 +9,7 @@
 # include "containers/list.h"
 # include "mailbox.h"
 # include "scopes.h"
+# include "macros.h"
 
 # define MB (1024 * 1024)
 
@@ -87,27 +88,34 @@ void process_send(PID_t pid, value_t message) {
 typedef struct handler_t {
   handler_action_t handler_action;
   value_t*         vstack_head;
+  void*            stack_head;
 } handler_t;
 
-void process_add_handle(process_t* process, handler_action_t handler_action) {
+void process_add_handler(process_t* process, handler_action_t handler_action, void* stack_head) {
   handler_t* handler = malloc(sizeof(handler_t));
   handler->handler_action = handler_action;
   handler->vstack_head = process->vstack_head;
+  handler->stack_head  = stack_head;
   list_prepend(process->handlers, handler);
-};
+}
 
-void process_throw_wrapper(value_t exception, value_t* vstack_head, handler_action_t handler_action); asm(
-  ".globl _process_throw_wrapper \n"
-  "_process_throw_wrapper: \n"
-  "  addq $8, %rsp   \n"
-  "  movq %rsi, %r12 \n"
-  // rdi is exception
-  "  jmpq *%rdx \n"
+void process_remove_handler(process_t* process) {
+  list_shift(process->handlers);
+}
+
+void process_throw_wrapper(value_t exception, handler_action_t handler_action, value_t* vstack_head, void* stack_head); asm(
+  ASM_FUN(process_throw_wrapper)
+    "movq %rdx, %r12  \n"
+    "movq %rcx, %rsp  \n"
+    // rdi is exception
+    "jmpq *%rsi       \n"
 );
 
 void process_throw(process_t* process, value_t value) {
   if (list_null(process->handlers)) {
-    printf("error");
+    printf("** exception error: ");
+    print_value(value);
+    printf("\n");
     exit(-1);
   }
 
@@ -115,6 +123,5 @@ void process_throw(process_t* process, value_t value) {
   handler_t handler = *handler_;
   free(handler_);
 
-  printf("%lld\n", __builtin_frame_address(0));
-  return process_throw_wrapper(value, handler.vstack_head, handler.handler_action);
+  return process_throw_wrapper(value, handler.handler_action, handler.vstack_head, handler.stack_head);
 }

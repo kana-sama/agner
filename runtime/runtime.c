@@ -173,7 +173,10 @@ value_t _closure__get_fun(value_t value) {
 }
 
 
-void _runtime__catch(handler_action_t handler_action) {
-  printf("%lld\n", __builtin_frame_address(0));
-  process_add_handle(scheduler->current, handler_action);
+void _runtime__catch(handler_action_t handler_action, void* stack_head) {
+  process_add_handler(scheduler->current, handler_action, stack_head);
+}
+
+void _runtime__uncatch() {
+  process_remove_handler(scheduler->current);
 }

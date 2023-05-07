@@ -383,10 +383,12 @@ expr result = \case
     done <- label; on_exception <- label
 
     tell [ leaq  (MemRegL on_exception rip) rdi]
+    tell [ movq  rsp rsi ]
     tell [ callq (runtime "runtime:catch") ]
-
     result <~ e
-    tell [ jmp done]
+    tell [ callq (runtime "runtime:uncatch")]
+
+    tell [ jmp done ]
 
     tell [ _label on_exception ]
     tell [ movq rdi result ]
