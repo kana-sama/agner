@@ -12,6 +12,6 @@ typedef struct options_t {
   char*    ylog;
 } options_t;
 
-options_t options;
+extern options_t options;
 
 void read_env_options();

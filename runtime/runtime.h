@@ -4,7 +4,7 @@
 # include "value.h"
 # include "scheduler.h"
 
-scheduler_t* scheduler;
+extern scheduler_t* scheduler;
 
 void     enter_scope();
 void     leave_scope();
