@@ -91,27 +91,32 @@ value_t _erlang__error__1(bif_context_t ctx, value_t value) {
 // }
 
 static void spawn_wrapper(process_t* self, value_t* value_) {
-  value_t  value = *value_;
-  action_t action;
+  value_t value = *value_;
 
   switch (_assert__fun(value, 0)) {
-    case FUN_KIND_STATIC:
-      action = (action_t)value;
-      break;
+    case FUN_KIND_STATIC: {
+      action_t action = (action_t)value;
+      action(self, NULL);
+
+      return;
+    }
 
     case FUN_KIND_CLOSURE: {
       boxed_value_t* ref = cast_to_boxed_value(value);
-      asm(" movq %[env], %%r13"
+      asm(
+        " movq   %[env],  %%r13 \n"
+        " movq   %[self], %%rdi \n"
+        " callq *%[closure] \n"
         :
-        : [env] "r" (ref->closure.env)
-        : "r13"
+        : [env]     "r" (ref->closure.env)
+        , [self]    "r" (self)
+        , [closure] "r" (ref->closure.body)
+        : "r13", "rdi"
       );
-      action = (action_t)(ref->closure.body);
-      break;
+
+      return;
     }
   }
-
-  action(self, NULL);
 }
 
 value_t _erlang__spawn__1(bif_context_t ctx, value_t value) {
