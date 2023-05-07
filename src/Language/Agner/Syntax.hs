@@ -41,13 +41,19 @@ newtype GuardExpr = MkGuardExpr{getExpr :: Expr}
 type Guard = [GuardExpr]
 type GuardSeq = [Guard]
 
-data CaseBranch = CaseBranch
+data CaseBranch = MkCaseBranch
   { pat    :: Pat
   , guards :: GuardSeq
   , body   :: Exprs
   }
   deriving stock (Show, Data)
-  
+
+data IfBranch = MkIfBranch
+  { guards :: GuardSeq
+  , body :: Exprs
+  }
+  deriving stock (Show, Data)
+
 data MapElemBind lhs rhs
   = (:=>) lhs rhs
   | (::=) lhs rhs
@@ -70,7 +76,7 @@ data Expr
   | Tuple [Expr]
   | Nil
   | Cons Expr Expr
-  
+
   | Record RecordName [(RecordField, Expr)]
   | RecordGet Expr RecordName RecordField
   | RecordUpdate Expr RecordName [(RecordField, Expr)]
@@ -95,6 +101,7 @@ data Expr
   | TailApply FunId [Expr]
   | DynApply Expr [Expr]
 
+  | If [IfBranch]
   | Case Expr [CaseBranch]
   | Receive [CaseBranch]
 

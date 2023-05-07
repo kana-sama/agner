@@ -387,6 +387,7 @@ expr result = \case
   e@BinOp{}          -> shouldBeDesugared e
   e@Send{}           -> shouldBeDesugared e
   e@Map{}            -> shouldBeDesugared e
+  e@If{}             -> shouldBeDesugared e
   e@UnOp{}           -> shouldBeDesugared e
   e@Maybe{}          -> shouldBeDesugared e
   e@Record{}         -> shouldBeDesugared e

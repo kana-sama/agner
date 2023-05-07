@@ -15,4 +15,8 @@ main() ->
   agner:println(A#user.age),
   agner:println({user, 1, 2}#user{age = "NOT AGE", name = "NOT NAME"}),
   agner:println(f(A)),
+  if
+    A#user.name == "NAME2" -> agner:println("first");
+    A#user.name == "NAME", A#user.age == "AGE", #user.age == 3 -> agner:println("second")
+  end,
   ok.

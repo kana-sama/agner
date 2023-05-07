@@ -202,7 +202,7 @@ caseBranch = do
   guards <- whenGuards
   symbol "->"
   body <- exprs
-  pure CaseBranch{pat, guards, body}
+  pure MkCaseBranch{pat, guards, body}
 
 case_ :: Parser (Expr, [CaseBranch])
 case_ = do
@@ -213,13 +213,13 @@ case_ = do
   symbol "end"
   pure (e, bs)
 
-if_ :: Parser [(GuardSeq, Exprs)]
+if_ :: Parser [IfBranch]
 if_ = symbol "if" *> (if_branch `sepBy1` symbol ";") <* symbol "end" where
   if_branch = do
     g <- guard_seq
     symbol "->"
     b <- exprs
-    pure (g, b)
+    pure (MkIfBranch g b)
 
 receive :: Parser [CaseBranch]
 receive = do
@@ -297,7 +297,7 @@ term = choice
   , funL
   , Receive <$> receive
   , uncurry Case <$> case_
-  , makeIf <$> if_
+  , If <$> if_
   , try do uncurry Apply <$> apply
   , try do uncurry DynApply <$> dynApply
   , begin
@@ -315,8 +315,6 @@ term = choice
   , try do Map <$> map_
   , try do record_construct
   ]
-  where
-    makeIf branches = Case Nil [CaseBranch PatWildcard gs body | (gs, body) <- branches]
 
 operatorName :: Parser Language.Agner.Syntax.Operator
 operatorName = choice (concat (operatorTable unary binary)) where

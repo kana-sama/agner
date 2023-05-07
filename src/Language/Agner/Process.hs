@@ -11,22 +11,24 @@ import Data.Generics.Uniplate.Data (rewriteBi, rewriteBiM, transformBi)
 process :: Module -> Module
 process module_ = module_
   & resolve
-  & unrecord
   & validateGuards
+  & unrecord
   & (andAlso . orElse)
   & (operators . send)
   & comps
   & maps
   & maybe_
+  & if_
   & resolveTailCalls
+  & validateFunNames
 
 
 andAlso :: Module -> Module
 andAlso = rewriteBi \case
   AndAlso a b -> Just do
     Case a
-      [ CaseBranch (PatAtom "true")  [] [b]
-      , CaseBranch (PatAtom "false") [] [Atom "false"] ]
+      [ MkCaseBranch (PatAtom "true")  [] [b]
+      , MkCaseBranch (PatAtom "false") [] [Atom "false"] ]
   _ -> Nothing
 
 
@@ -34,8 +36,8 @@ orElse :: Module -> Module
 orElse = rewriteBi \case
   OrElse a b -> Just do
     Case a
-      [ CaseBranch (PatAtom "true")  [] [Atom "true"]
-      , CaseBranch (PatAtom "false") [] [b] ]
+      [ MkCaseBranch (PatAtom "true")  [] [Atom "true"]
+      , MkCaseBranch (PatAtom "false") [] [b] ]
   _ -> Nothing
 
 
@@ -59,9 +61,9 @@ applyQualifiers result = \case
 
   CompFilter p : qualifiers ->
     Case p
-      [ CaseBranch (PatAtom "true") []
+      [ MkCaseBranch (PatAtom "true") []
           [applyQualifiers result qualifiers]
-      , CaseBranch PatWildcard [] [Nil] ]
+      , MkCaseBranch PatWildcard [] [Nil] ]
 
 
 comps :: Module -> Module
@@ -143,20 +145,20 @@ maybe_ = flip evalState 0 . rewriteBiM \case
     var <- fresh
     pure do
       Case (DynApply (FunL [MkClause [] [] [body]]) [])
-        [ CaseBranch (PatTuple [PatAtom  "ok", PatVar var]) [] [Var var]
-        , CaseBranch (PatTuple [PatAtom "err", PatVar var]) [] [Var var] ]
+        [ MkCaseBranch (PatTuple [PatAtom  "ok", PatVar var]) [] [Var var]
+        , MkCaseBranch (PatTuple [PatAtom "err", PatVar var]) [] [Var var] ]
 
   Maybe es else_branches -> Just <$> do
     body <- go es
     var <- fresh
-    else_branches <- for else_branches \CaseBranch{pat, guards, body} ->
-      pure CaseBranch{pat = PatTuple [PatAtom "err", pat], guards, body}
+    else_branches <- for else_branches \MkCaseBranch{pat, guards, body} ->
+      pure MkCaseBranch{pat = PatTuple [PatAtom "err", pat], guards, body}
     pure do
       Case (DynApply (FunL [MkClause [] [] [body]]) []) do
         mconcat
-          [ [ CaseBranch (PatTuple [PatAtom  "ok", PatVar var]) [] [Var var] ]
+          [ [ MkCaseBranch (PatTuple [PatAtom  "ok", PatVar var]) [] [Var var] ]
           , else_branches
-          , [ CaseBranch (PatTuple [PatAtom "err", PatVar var]) []
+          , [ MkCaseBranch (PatTuple [PatAtom "err", PatVar var]) []
                 [Apply "erlang:error/1" [Tuple [Atom "else_clause", Var var]]] ]
           ]
   _ -> pure Nothing
@@ -170,8 +172,8 @@ maybe_ = flip evalState 0 . rewriteBiM \case
       wc <- fresh
       pure do
         Case e
-          [ CaseBranch p [] [ok_ e]
-          , CaseBranch (PatVar wc) [] [err_ (Var wc)] ]
+          [ MkCaseBranch p [] [ok_ e]
+          , MkCaseBranch (PatVar wc) [] [err_ (Var wc)] ]
     go (MaybeExpr e : es) = do
       es <- go es
       pure (Begin [e, es])
@@ -180,16 +182,21 @@ maybe_ = flip evalState 0 . rewriteBiM \case
       es <- go es
       pure do
         Case e
-          [ CaseBranch p [] [es]
-          , CaseBranch (PatVar wc) [] [err_ (Var wc)] ]
+          [ MkCaseBranch p [] [es]
+          , MkCaseBranch (PatVar wc) [] [err_ (Var wc)] ]
 
     fresh = do
       uuid <- id <<+= 1
       pure (MkVar ("_MaybeVar" ++ show uuid))
 
+if_ :: Module -> Module
+if_ = rewriteBi \case
+  If branches -> Just do
+    Case (Atom "none") [ MkCaseBranch PatWildcard b.guards b.body | b <- branches ]
+  _ -> Nothing
+
 -- https://www.erlang.org/doc/reference_manual/expressions.html#guard-expressions
 -- TODO: Expressions that construct atoms, integer, floats, lists, tuples, records, binaries, and maps
--- TODO: #Name.Field
 isGuardExpr :: Expr -> Bool
 isGuardExpr = \case
   Var _ -> True
@@ -207,6 +214,7 @@ isGuardExpr = \case
   Apply f es -> all isGuardExpr es && f `elem` funs
   RecordGet e _ _ -> isGuardExpr e
   MapUpdate e upds -> isGuardExpr e && all (\case (:=>) k v -> isGuardExpr k && isGuardExpr v; (::=) k v -> isGuardExpr k && isGuardExpr v) upds
+  RecordSelector _ _ -> True
   _ -> False
   where
     funs :: [FunId]
@@ -306,9 +314,9 @@ unrecord module_ = module_
       let record_pat = PatTuple (PatAtom (coerce record_name) : [PatVar v | v <- vars])
       pure do
         Case expr
-          [ CaseBranch record_pat []
+          [ MkCaseBranch record_pat []
               [next vars]
-          , CaseBranch (PatVar rec_var) []
+          , MkCaseBranch (PatVar rec_var) []
               [Apply "erlang:error/1" [Tuple [Atom "badrecord", Var rec_var]]] ]
 
 resolveTailCalls :: Module -> Module
@@ -334,5 +342,10 @@ resolveTailCalls = module_
     exprs f es =
       init es ++ [expr f (last es)]
 
-    branch f (CaseBranch p gs es) =
-      CaseBranch p gs (exprs f es)
+    branch f (MkCaseBranch p gs es) =
+      MkCaseBranch p gs (exprs f es)
+
+validateFunNames :: Module -> Module
+validateFunNames = transformBi \case
+  funid@MkUnresolvedFunId{} -> error ("Unresolved funid " ++ prettyFunId funid)
+  funid -> funid
