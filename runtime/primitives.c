@@ -300,3 +300,8 @@ value_t _agner__boxed_to_map__1(bif_context_t ctx, value_t value) {
     exit(-1);
   }
 }
+
+
+void _erlang__throw__1(bif_context_t ctx, value_t value) {
+  return process_throw(scheduler->current, value);
+}

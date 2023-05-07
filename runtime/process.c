@@ -37,6 +37,7 @@ process_t* process_new() {
   process->mailbox     = mailbox_new();
   process->scopes      = scopes_new();
   process->context     = malloc(sizeof(jmp_buf));
+  process->handlers    = list_new();
   process->is_alive    = true;
 
   reg(process);
@@ -53,6 +54,7 @@ void process_free(process_t* process) {
   free(process->stack);
   free(process->vstack);
   free(process->context);
+  list_free(process->handlers);
   free(process);
 }
 
@@ -80,4 +82,39 @@ void process_send(PID_t pid, value_t message) {
   if (process == NULL || !process->is_alive) return;
   value_t message_copy = copy_to_heap(message, &process->heap, process_gc_ctx(process));
   mailbox_push(process->mailbox, message_copy);
+}
+
+typedef struct handler_t {
+  handler_action_t handler_action;
+  value_t*         vstack_head;
+} handler_t;
+
+void process_add_handle(process_t* process, handler_action_t handler_action) {
+  handler_t* handler = malloc(sizeof(handler_t));
+  handler->handler_action = handler_action;
+  handler->vstack_head = process->vstack_head;
+  list_prepend(process->handlers, handler);
+};
+
+void process_throw_wrapper(value_t exception, value_t* vstack_head, handler_action_t handler_action); asm(
+  ".globl _process_throw_wrapper \n"
+  "_process_throw_wrapper: \n"
+  "  addq $8, %rsp   \n"
+  "  movq %rsi, %r12 \n"
+  // rdi is exception
+  "  jmpq *%rdx \n"
+);
+
+void process_throw(process_t* process, value_t value) {
+  if (list_null(process->handlers)) {
+    printf("error");
+    exit(-1);
+  }
+
+  handler_t* handler_ = list_shift(process->handlers);
+  handler_t handler = *handler_;
+  free(handler_);
+
+  printf("%lld\n", __builtin_frame_address(0));
+  return process_throw_wrapper(value, handler.vstack_head, handler.handler_action);
 }

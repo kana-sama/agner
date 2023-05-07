@@ -112,6 +112,8 @@ data Expr
 
   | Begin Exprs
   | Maybe [MaybeExpr] [CaseBranch]
+
+  | Catch Expr
   deriving stock (Show, Data)
 
 type Exprs = [Expr]

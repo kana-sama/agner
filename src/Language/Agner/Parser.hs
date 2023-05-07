@@ -291,6 +291,11 @@ maybe_ = do
       , MaybeExpr <$> expr
       ]
 
+catch_ :: Parser Expr
+catch_ = do
+  symbol "catch"
+  Catch <$> expr
+
 term :: Parser Expr
 term = choice
   [ try do fun
@@ -300,6 +305,7 @@ term = choice
   , If <$> if_
   , try do uncurry Apply <$> apply
   , try do uncurry DynApply <$> dynApply
+  , catch_
   , begin
   , maybe_
   , parens expr

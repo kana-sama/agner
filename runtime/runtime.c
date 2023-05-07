@@ -171,3 +171,9 @@ value_t* _closure__get_env(value_t value) {
 value_t _closure__get_fun(value_t value) {
   return cast_to_boxed_value(value)->closure.body;
 }
+
+
+void _runtime__catch(handler_action_t handler_action) {
+  printf("%lld\n", __builtin_frame_address(0));
+  process_add_handle(scheduler->current, handler_action);
+}

@@ -3,10 +3,14 @@ agner.cabal
 cabal.project.local
 
 example.s
+example.S
 example
 
 runtime/**/*.o
 runtime/**/*.s
+runtime/**/*.S
+
+out
 
 *.dSYM
 log_*.csv

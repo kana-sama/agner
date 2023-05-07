@@ -25,3 +25,5 @@ void    _receive__success();
 
 value_t* _closure__get_env(value_t);
 value_t  _closure__get_fun(value_t);
+
+void _runtime__catch(handler_action_t);

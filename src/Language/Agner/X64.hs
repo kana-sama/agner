@@ -379,6 +379,20 @@ expr result = \case
 
   Begin es -> exprs result es
 
+  Catch e -> do
+    done <- label; on_exception <- label
+
+    tell [ leaq  (MemRegL on_exception rip) rdi]
+    tell [ callq (runtime "runtime:catch") ]
+
+    result <~ e
+    tell [ jmp done]
+
+    tell [ _label on_exception ]
+    tell [ movq rdi result ]
+
+    tell [ _label done ]
+
   e@MapUpdate{}      -> shouldBeDesugared e
   e@ListComp{}       -> shouldBeDesugared e
   e@MapComp{}        -> shouldBeDesugared e
