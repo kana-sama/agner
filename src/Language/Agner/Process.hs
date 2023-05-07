@@ -7,7 +7,6 @@ import Data.List qualified as List
 import Data.Map.Strict qualified as Map
 import Data.Generics.Uniplate.Data (rewriteBi, rewriteBiM, transformBi)
 
-
 process :: Module -> Module
 process module_ = module_
   & resolve
@@ -349,3 +348,17 @@ validateFunNames :: Module -> Module
 validateFunNames = transformBi \case
   funid@MkUnresolvedFunId{} -> error ("Unresolved funid " ++ prettyFunId funid)
   funid -> funid
+
+-- TODO:
+-- GUARD_EXPR
+-- ~>
+-- try GUARD_EXPR case error:_ -> false end
+
+-- TODO:
+-- catch E
+-- ~>
+-- try E
+-- catch
+--   error:Err -> {'EXIT', {Err, []}};
+--   throw:Err -> Err
+-- end
