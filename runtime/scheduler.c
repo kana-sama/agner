@@ -66,25 +66,29 @@ asm(
     "pushq %rbx \n"
     "pushq %r12 \n"
     "pushq %r13 \n"
+
+    "movq %rdx, %r12 \n"
+
     // process in rdi
     // arg     in rsi
-    "movq %rdx, %r12 \n"
     "call *%rcx \n"
+
     "popq %r13 \n"
     "popq %r12 \n"
     "popq %rbx \n"
+
     "ret"
 );
 
 static _Noreturn
-void action_wrapper(scheduler_t* scheduler, action_t action, jmp_buf* spawner, process_t* process, void* arg, char* vstack) {
+void action_wrapper(scheduler_t* scheduler, action_t action, jmp_buf* spawner, process_t* process, void* arg) {
   list_append(scheduler->queue, process);
 
   if (setjmp(*process->context) == 0)
     longjmp(*spawner, 1);
 
   action_wrapper_wrapper(process, arg, process->vstack, action);
-  
+
   process->is_alive = false;
   list_append(scheduler->to_release, process);
   scheduler_switch(scheduler);
@@ -97,13 +101,11 @@ process_t* scheduler_spawn(scheduler_t* scheduler, action_t action, void* arg) {
   if (setjmp(*spawner) == 0) asm(
     "movq  %[stack_beg], %%rsp \n"
 
-
     "movq  %[scheduler], %%rdi \n"
     "movq  %[action]   , %%rsi \n"
     "movq  %[spawner]  , %%rdx \n"
     "movq  %[process]  , %%rcx \n"
     "movq  %[arg]      , %%r8  \n"
-    "movq  %[vstack]   , %%r9 \n"
     "jmpq *%[action_wrapper]   \n"
     :
     : [stack_beg] "r" (process->stack_beg)
@@ -116,7 +118,7 @@ process_t* scheduler_spawn(scheduler_t* scheduler, action_t action, void* arg) {
     , [arg]       "r" (arg)
 
     , [action_wrapper] "r" (action_wrapper)
-    : "rdi", "rsi", "rdx", "rcx", "r8", "r9", "memory"
+    : "rdi", "rsi", "rdx", "rcx", "r8", "memory"
   );
 
   return process;

@@ -79,5 +79,5 @@ main = do
     printStep; putStrLn "Building executable"
     runtimeSourceFiles <- getRuntimeSourceFiles
     let files_to_compile = [entryFile] ++ runtimeSourceFiles ++ asmFiles
-    ExitSuccess <- runProcess do proc "clang" ("-o" : output : files_to_compile)
+    ExitSuccess <- runProcess do proc "clang" ("-O3" : "-o" : output : files_to_compile)
     pure ()
