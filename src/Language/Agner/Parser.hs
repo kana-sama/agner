@@ -81,10 +81,16 @@ variable = lexeme do
   pure (MkVar (x:xs))
 
 atom :: Parser Atom
-atom = lexeme do
-  x <- lowerChar
-  xs <- many (char '_' <|> alphaNumChar)
-  pure (MkAtom (x:xs))
+atom = simple_atom <|> quouted_atom
+  where
+    simple_atom = lexeme do
+      x <- lowerChar
+      xs <- many (char '_' <|> alphaNumChar)
+      pure (MkAtom (x:xs))
+
+    quouted_atom = lexeme do
+      xs <- char '\'' *> manyTill L.charLiteral (char '\'')
+      pure (MkAtom xs)
 
 exprToPat :: Expr -> Pat
 exprToPat = \case

@@ -5,14 +5,14 @@ import Language.Agner.Syntax
 
 import Data.List qualified as List
 import Data.Map.Strict qualified as Map
-import Data.Generics.Uniplate.Data (rewriteBi, rewriteBiM, transformBi)
+import Data.Generics.Uniplate.Data (rewriteBi, rewriteBiM, transformBi, transformBiM)
 
 process :: Module -> Module
 process module_ = module_
   & resolve
   & validateGuards
   & unrecord
-  & defaultTryCatchClass
+  & expandCatch . defaultTryCatchClass
   & andAlso . orElse
   & operators . send
   & comps
@@ -356,19 +356,28 @@ defaultTryCatchClass = transformBi \case
     b & #class_ .~ CatchClassAtom "throw"
   b -> b
 
+expandCatch :: Module -> Module
+expandCatch = flip evalState 0 . transformBiM \case
+  Catch expr -> do
+    v <- fresh
+    pure do
+      Try [expr]
+        [ MkCatchBranch (CatchClassAtom "error") do
+            MkCaseBranch (PatVar v) [] [Tuple [Atom "EXIT", Tuple [Var v, Nil]]]
+        , MkCatchBranch (CatchClassAtom "exit") do
+            MkCaseBranch (PatVar v) [] [Tuple [Atom "EXIT", Var v]]
+        , MkCatchBranch (CatchClassAtom "throw") do
+            MkCaseBranch (PatVar v) [] [Var v]
+        ]
+  e -> pure e
+  where
+    fresh = MkVar <$> state \uuid -> ("_catchVar" ++ show uuid, uuid + 1)
+
+
 -- TODO:
 -- GUARD_EXPR
 -- ~>
 -- try GUARD_EXPR case error:_ -> false end
-
--- TODO:
--- catch E
--- ~>
--- try E
--- catch
---   error:Err -> {'EXIT', {Err, []}};
---   throw:Err -> Err
--- end
 
 -- TODO:
 -- try
