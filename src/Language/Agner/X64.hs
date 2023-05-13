@@ -380,7 +380,7 @@ expr result = \case
 
   Begin es -> exprs result es
 
-  Try es branches -> mdo
+  Try es branches [] -> mdo
     tell [ leaq (MemRegL handler rip) rdi ]
     tell [ movq rsp rsi ]
     tell [ callq (runtime "runtime:catch") ]
@@ -426,6 +426,7 @@ expr result = \case
   e@Send{}           -> shouldBeDesugared e
   e@Map{}            -> shouldBeDesugared e
   e@If{}             -> shouldBeDesugared e
+  e@Try{}            -> shouldBeDesugared e
   e@UnOp{}           -> shouldBeDesugared e
   e@Catch{}          -> shouldBeDesugared e
   e@Maybe{}          -> shouldBeDesugared e

@@ -304,3 +304,8 @@ _Noreturn
 value_t _erlang__error__1(bif_context_t ctx, value_t value) {
   process_raise(scheduler->current, shared_error(), value);
 }
+
+_Noreturn
+value_t _agner__raise__2(bif_context_t ctx, value_t class, value_t value) {
+  process_raise(scheduler->current, class, value);
+}

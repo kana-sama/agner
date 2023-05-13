@@ -12,7 +12,7 @@ process module_ = module_
   & resolve
   & tryGuard . validateGuards
   & unrecord
-  & expandCatch . defaultTryCatchClass
+  & expandCatch . defaultTryCatchClass . tryAfter
   & andAlso . orElse
   & operators . send
   & comps
@@ -185,9 +185,7 @@ maybe_ = flip evalState 0 . rewriteBiM \case
           [ MkCaseBranch p [] [es]
           , MkCaseBranch (PatVar wc) [] [err_ (Var wc)] ]
 
-    fresh = do
-      uuid <- id <<+= 1
-      pure (MkVar ("_MaybeVar" ++ show uuid))
+    fresh = MkVar <$> state \uuid -> ("$MaybeVar" ++ show uuid, uuid + 1)
 
 
 if_ :: Module -> Module
@@ -285,10 +283,7 @@ unrecord module_ = module_
 
       _ -> Nothing
   where
-    fresh :: State Int Var
-    fresh = do
-      uuid <- id <<+= 1
-      pure (MkVar ("_RecordVar" ++ show uuid))
+    fresh = MkVar <$> state \uuid -> ("$RecordVar" ++ show uuid, uuid + 1)
 
     records = Map.fromList [(name, fields) | RecordDecl name fields <- module_.decls]
 
@@ -374,41 +369,64 @@ expandCatch = flip evalState 0 . transformBiM \case
             MkCaseBranch (PatVar v) [] [Tuple [Atom "EXIT", Var v]]
         , MkCatchBranch (CatchClassAtom "throw") do
             MkCaseBranch (PatVar v) [] [Var v]
-        ]
+        ] []
   e -> pure e
   where
-    fresh = MkVar <$> state \uuid -> ("_catchVar" ++ show uuid, uuid + 1)
+    fresh = MkVar <$> state \uuid -> ("$CatchVar" ++ show uuid, uuid + 1)
 
 
 tryGuard :: Module -> Module
 tryGuard = transformBi \case
   MkGuardExpr e -> MkGuardExpr do
-    Try [e] [ MkCatchBranch (CatchClassAtom "error") (MkCaseBranch PatWildcard [] [Atom "false"]) ]
+    Try [e] [ MkCatchBranch (CatchClassAtom "error") (MkCaseBranch PatWildcard [] [Atom "false"]) ] []
 
 
--- TODO:
--- try
---   A
--- catch
---   Casese
--- after
---   B
--- end
+-- | desugar after in try
+--
+-- > try A
+-- > catch Cases
+-- > after B
+-- > end
+--
 -- ~>
--- try
---   try
---     A
---   catch
---     Casese
---   end
--- catch
---   error:E ->
---     B,
---     error(E);
---   exit:E ->
---     B,
---     exit(E);
---   throw:E ->
---     B,
---     throw(E)
--- end
+--
+-- > begin
+-- >   ?X =
+-- >     try
+-- >       {ok, try A catch Cases end}
+-- >     catch
+-- >       ?C:?E ->
+-- >         {err, ?C, ?E}
+-- >     end,
+-- >   B,
+-- >   case ?X of
+-- >     {ok, ?R} ->
+-- >       ?R;
+-- >     {err, ?C, ?E} ->
+-- >       agner:raise(?C, ?E)
+-- >   end
+-- > end
+tryAfter :: Module -> Module
+tryAfter = flip evalState 0 . transformBiM \case
+  Try exprs branches after@(_:_) -> do
+    _X <- fresh; _C <- fresh; _E <- fresh; _R <- fresh
+    pure do
+      Begin
+        [ Match (PatVar _X) do
+            Try [Tuple [Atom "ok", Try exprs branches []]]
+              [MkCatchBranch (CatchClassVar _C) (MkCaseBranch (PatVar _E) [] [Tuple [Atom "err", Var _C, Var _E]])]
+              []
+        , Begin after
+        , Case (Var _X)
+            [ MkCaseBranch (PatTuple [PatAtom "ok", PatVar _R]) []
+                [Var _R]
+            , MkCaseBranch (PatTuple [PatAtom "err", PatVar _C, PatVar _E]) []
+                [Apply "agner:raise/2" [Var _C, Var _E]]
+            ]
+        ]
+  expr -> pure expr
+  where
+    fresh = MkVar <$> state \uuid -> ("$TryAfter" ++ show uuid, uuid + 1)
+
+
+

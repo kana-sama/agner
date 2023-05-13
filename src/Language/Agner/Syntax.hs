@@ -126,7 +126,7 @@ data Expr
   | Maybe [MaybeExpr] [CaseBranch]
 
   | Catch Expr
-  | Try Exprs [CatchBranch]
+  | Try{exprs :: Exprs, branches :: [CatchBranch], after :: Exprs}
   deriving stock (Show, Data)
 
 type Exprs = [Expr]

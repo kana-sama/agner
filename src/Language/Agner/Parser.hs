@@ -319,10 +319,23 @@ try_ :: Parser Expr
 try_ = do
   keyword "try"
   es <- exprs
-  keyword "catch"
-  branches <- catch_branch `sepBy1` symbol ";"
+
+  hasCatch <- isJust <$> optional (keyword "catch")
+  branches <-
+    if hasCatch
+      then catch_branch `sepBy1` symbol ";"
+      else pure []
+
+  hasAfter <- isJust <$> optional (keyword "after")
+  after <-
+    if hasAfter
+      then exprs
+      else do
+        guard (not (null branches))
+        pure []
+
   keyword "end"
-  pure (Try es branches)
+  pure (Try es branches after)
 
 term :: Parser Expr
 term = choice
