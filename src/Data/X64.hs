@@ -7,10 +7,12 @@ import Data.Char qualified as Char
 
 type Label = String
 
-data Op = LEAQ | MOVQ | MOVABSQ | MOVZBQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | ORQ | XORQ | JMP | JZ | JE | JNE | JNZ | SYSCALL | CMPQ | CALLQ
+data Op = LEAQ | MOVQ | MOVABSQ | MOVZBQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | ORQ | XORQ | JMP | JZ | JE | JNE | JNZ | SYSCALL | CMPQ | CMPB | CALLQ | UD2
   deriving stock (Show, Eq)
 
-data Reg = RAX | RBX | RCX | RDX | RSI | RDI | RSP | RBP | RIP | R8 | R9 | R10 | R11 | R12 | R13
+data Reg
+  = RAX | RBX | RCX | RDX | RSI | RDI | RSP | RBP | RIP | R8 | R9 | R10 | R11 | R12 | R13
+  | AL
   deriving stock (Show, Eq, Ord, Enum, Bounded)
 
 data Operand
@@ -38,7 +40,7 @@ instance FromReg Reg where fromReg = id
 instance FromReg Operand where fromReg = Reg
 
 
-[rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9, r10, r11, r12, r13] = [fromReg r | r <- [RAX ..]]
+[rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, r8, r9, r10, r11, r12, r13, al] = [fromReg r | r <- [RAX ..]]
 
 leaq a b = Op LEAQ [a, b]
 movq a b = Op MOVQ [a, b]
@@ -50,6 +52,7 @@ orq a b = Op ORQ [a, b]
 xorq a b = Op XORQ [a, b]
 andq a b = Op ANDQ [a, b]
 cmpq a b = Op CMPQ [a, b]
+cmpb a b = Op CMPB [a, b]
 
 pushq a = Op PUSHQ [a]
 popq a = Op POPQ [a]
@@ -63,6 +66,7 @@ callq' l = Op CALLQ [l]
 
 retq = Op RETQ []
 syscall = Op SYSCALL []
+ud2 = Op UD2 []
 
 _newline = Meta ""
 _set lbl value = Meta (".set " ++ lbl ++ ", " ++ value)

@@ -46,3 +46,4 @@ agner -o example example.erl
 - [x] прагма export
 - [x] раздельная компиляция
 - [x] catch
+- [x] try-catch

@@ -12,7 +12,7 @@
 
 typedef int64_t PID_t;
 
-typedef void(*handler_action_t)(value_t);
+typedef void(*handler_action_t)(value_t, value_t);
 
 typedef struct process_t {
   PID_t      pid;
@@ -36,4 +36,6 @@ void       process_send(PID_t, value_t);
 
 void process_add_handler(process_t*, handler_action_t, void* stack_head);
 void process_remove_handler(process_t*);
-void process_throw(process_t*, value_t);
+
+_Noreturn
+void process_raise(process_t*, value_t class, value_t value);

@@ -1,12 +1,26 @@
 -module(main).
 -export([main/0]).
 
+test1() ->
+  success = try
+    % throw(second),
+    success
+  catch
+    error:first -> catched_first;
+    second -> catched_second
+  end,
+  agner:println("test1 - ok").
+
+  test2() ->
+    catched_second = try
+      throw(second),
+      success
+    catch
+      error:first -> catched_first;
+      second -> catched_second
+    end,
+    agner:println("test2 - ok").
+
 main() ->
-  agner:println(catch begin
-    agner:println(before_throw),
-    throw(exception),
-    agner:println(after_throw)
-  end),
-  agner:println("HERE"),
-  throw(42),
-  agner:println(finally).
+  test1(),
+  test2().

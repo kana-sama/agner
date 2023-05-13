@@ -30,7 +30,8 @@ data Ctx = MkCtx
   , variables :: Map Var Operand
   , atoms :: Set Atom
   , anon_funs :: [AnonFun]
-  } deriving stock (Generic)
+  }
+  deriving stock (Generic)
 
 type M = StateT Ctx (Writer Prog)
 
@@ -151,7 +152,7 @@ pat value p on_match_fail = case p of
         (ByValue op, t) -> tell [ movq op t ]
         (ByRef   op, t) -> tell [ leaq op t ]
       tell [ callq  (runtime fun) ]
-      tell [ cmpq   0 rax ]
+      tell [ cmpb   (Imm 0) al ]
       tell [ jne    done ]
       on_match_fail
       tell [ _label done]
@@ -379,21 +380,42 @@ expr result = \case
 
   Begin es -> exprs result es
 
-  Catch e -> do
-    done <- label; on_exception <- label
-
-    tell [ leaq  (MemRegL on_exception rip) rdi]
-    tell [ movq  rsp rsi ]
+  Try es branches -> mdo
+    tell [ leaq (MemRegL handler rip) rdi ]
+    tell [ movq rsp rsi ]
     tell [ callq (runtime "runtime:catch") ]
-    result <~ e
-    tell [ callq (runtime "runtime:uncatch")]
 
+    exprs result es
+
+    tell [ callq (runtime "runtime:uncatch") ]
     tell [ jmp done ]
 
-    tell [ _label on_exception ]
-    tell [ movq rdi result ]
+    tell [ _label handler ]; handler <- label
+    -- rdi - exception class
+    -- rsi - exception value
 
-    tell [ _label done ]
+    withAlloc \exception_class -> withAlloc \exception_value -> do
+      tell [ movq rdi exception_class ]
+      tell [ movq rsi exception_value ]
+
+      for_ branches \branch -> mdo
+        case branch.class_ of
+          CatchClassDefault ->
+            shouldBeDesugared branch
+          CatchClassAtom a -> do
+            pat exception_class (PatAtom a) do tell [ jmp next_branch ]
+          CatchClassVar v ->
+            pat exception_class (PatVar v) do tell [ jmp next_branch ]
+
+        caseBranch exception_value result (pure ()) done branch.branch
+
+        tell [ _label next_branch ]; next_branch <- label; pure ()
+
+      tell [ movq  exception_class rdi ]
+      tell [ movq  exception_value rsi ]
+      tell [ callq (runtime "runtime:raise") ]
+
+    tell [ _label done ]; done <- label; pure ()
 
   e@MapUpdate{}      -> shouldBeDesugared e
   e@ListComp{}       -> shouldBeDesugared e
@@ -405,6 +427,7 @@ expr result = \case
   e@Map{}            -> shouldBeDesugared e
   e@If{}             -> shouldBeDesugared e
   e@UnOp{}           -> shouldBeDesugared e
+  e@Catch{}          -> shouldBeDesugared e
   e@Maybe{}          -> shouldBeDesugared e
   e@Record{}         -> shouldBeDesugared e
   e@RecordGet{}      -> shouldBeDesugared e
@@ -613,6 +636,9 @@ entryPoint = do
   share_atom "false"
   share_atom "ok"
   share_atom "infinity"
+  share_atom "throw"
+  share_atom "error"
+  share_atom "exit"
 
   tell [ movq   (Static (mkFunctionLabel "main:main/0")) rdi ]
   tell [ callq  (runtime "runtime:start") ]
@@ -679,7 +705,7 @@ compileEntryPoint target ctx = do
   prettyProg prog
   where
     fromEntryPointCtx MkEntryPointCtx{atoms} =
-      emptyCtx{atoms} :: Ctx
+      emptyCtx & #atoms .~ atoms
 
 -- utils
 

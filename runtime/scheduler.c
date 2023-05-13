@@ -20,6 +20,7 @@ scheduler_t* scheduler_new() {
   scheduler->current    = NULL;
   scheduler->exit       = malloc(sizeof(jmp_buf));
   scheduler->fuel       = 0;
+
   return scheduler;
 }
 
@@ -59,11 +60,22 @@ void action_wrapper_wrapper(process_t*, void*, value_t*, action_t); asm(
     "pushq %r12 \n"
     "pushq %r13 \n"
 
+    "pushq %r14 \n"
+    "pushq %r15 \n"
+    "pushq %rbp \n"
+    "pushq %rbp \n"
+
     "movq %rdx, %r12 \n"
 
     // process in rdi
     // arg     in rsi
     "call *%rcx \n"
+
+    "popq %rbp \n"
+
+    "popq %rbp \n"
+    "popq %r15 \n"
+    "popq %r14 \n"
 
     "popq %r13 \n"
     "popq %r12 \n"

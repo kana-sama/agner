@@ -12,8 +12,9 @@ process module_ = module_
   & resolve
   & validateGuards
   & unrecord
-  & (andAlso . orElse)
-  & (operators . send)
+  & defaultTryCatchClass
+  & andAlso . orElse
+  & operators . send
   & comps
   & maps
   & maybe_
@@ -349,6 +350,12 @@ validateFunNames = transformBi \case
   funid@MkUnresolvedFunId{} -> error ("Unresolved funid " ++ prettyFunId funid)
   funid -> funid
 
+defaultTryCatchClass :: Module -> Module
+defaultTryCatchClass = transformBi \case
+  b@MkCatchBranch{class_ = CatchClassDefault} ->
+    b & #class_ .~ CatchClassAtom "throw"
+  b -> b
+
 -- TODO:
 -- GUARD_EXPR
 -- ~>
@@ -361,4 +368,31 @@ validateFunNames = transformBi \case
 -- catch
 --   error:Err -> {'EXIT', {Err, []}};
 --   throw:Err -> Err
+-- end
+
+-- TODO:
+-- try
+--   A
+-- catch
+--   Casese
+-- after
+--   B
+-- end
+-- ~>
+-- try
+--   try
+--     A
+--   catch
+--     Casese
+--   end
+-- catch
+--   error:E ->
+--     B,
+--     error(E);
+--   exit:E ->
+--     B,
+--     exit(E);
+--   throw:E ->
+--     B,
+--     throw(E)
 -- end

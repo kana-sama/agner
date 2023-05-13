@@ -75,7 +75,7 @@ list_t* proper_list_values(value_t value) {
     list_append(values, (void*)ref->cons.head);
     value = ref->cons.tail;
   }
-  
+
   return values;
 }
 
@@ -144,7 +144,7 @@ void print_value_(value_t value, bool trancated, int available_depth) {
       printf("<%lld>", value >> TAG_SIZE); break;
     case BOX_TAG: {
       boxed_value_t* ref = (boxed_value_t*)(value ^ BOX_TAG);
-      
+
       switch (ref->super.header) {
         case TUPLE_HEADER: {
           printf("{");
@@ -223,7 +223,7 @@ boxed_value_t* cast_to_boxed_value(value_t value) {
 
 void dump_value(value_t value) {
   printf("%lld", value);
-  
+
   boxed_value_t* ref = cast_to_boxed_value(value);
   if (ref) {
     printf("[");

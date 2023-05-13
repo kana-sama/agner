@@ -103,17 +103,27 @@ void process_remove_handler(process_t* process) {
   list_shift(process->handlers);
 }
 
-void process_throw_wrapper(value_t exception, handler_action_t handler_action, value_t* vstack_head, void* stack_head); asm(
-  ASM_FUN(process_throw_wrapper)
-    "movq %rdx, %r12  \n"
-    "movq %rcx, %rsp  \n"
-    // rdi is exception
-    "jmpq *%rsi       \n"
+_Noreturn
+void process_raise_wrapper(
+  value_t exception_class,
+  value_t exception_value,
+  handler_action_t handler_action,
+  value_t* vstack_head,
+  void* stack_head
+); asm(
+  ASM_FUN(process_raise_wrapper)
+    "movq %rcx, %r12  \n"
+    "movq %r8,  %rsp  \n"
+
+    // rdi is exception class
+    // rsi is exception value
+    "jmpq *%rdx       \n"
 );
 
-void process_throw(process_t* process, value_t value) {
+_Noreturn
+void process_raise(process_t* process, value_t class, value_t value) {
   if (list_null(process->handlers)) {
-    printf("** exception error: ");
+    printf("** exception %s: ", (char*)class);
     print_value(value);
     printf("\n");
     exit(-1);
@@ -123,5 +133,9 @@ void process_throw(process_t* process, value_t value) {
   handler_t handler = *handler_;
   free(handler_);
 
-  return process_throw_wrapper(value, handler.handler_action, handler.vstack_head, handler.stack_head);
+  process_raise_wrapper(
+    class, value,
+    handler.handler_action,
+    handler.vstack_head, handler.stack_head
+  );
 }

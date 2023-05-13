@@ -26,7 +26,6 @@ default-extensions:
 ghc-options:
   - -Wincomplete-patterns
   - -Wno-partial-type-signatures
-  - -Wno-ambiguous-fields
   - -Wunused-imports
   - -Wdodgy-exports
   - -Wdodgy-imports
@@ -36,6 +35,7 @@ dependencies:
   - lens
   - mtl
   - containers
+  - shower
 
 extra-source-files:
   - runtime/tags.h
