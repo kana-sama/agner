@@ -181,7 +181,7 @@ void _runtime__uncatch() {
   process_remove_handler(scheduler->current);
 }
 
+_Noreturn
 void _runtime__raise(value_t class, value_t value) {
-  puts("RAISE");
   process_raise(scheduler->current, class, value);
 }

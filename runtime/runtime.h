@@ -28,4 +28,4 @@ value_t  _closure__get_fun(value_t);
 
 void _runtime__catch(handler_action_t, void* stack_head);
 void _runtime__uncatch();
-void _runtime__raise(value_t class, value_t value);
+_Noreturn void _runtime__raise(value_t class, value_t value);

@@ -10,7 +10,7 @@ import Data.Generics.Uniplate.Data (rewriteBi, rewriteBiM, transformBi, transfor
 process :: Module -> Module
 process module_ = module_
   & resolve
-  & validateGuards
+  & tryGuard . validateGuards
   & unrecord
   & expandCatch . defaultTryCatchClass
   & andAlso . orElse
@@ -189,11 +189,13 @@ maybe_ = flip evalState 0 . rewriteBiM \case
       uuid <- id <<+= 1
       pure (MkVar ("_MaybeVar" ++ show uuid))
 
+
 if_ :: Module -> Module
 if_ = rewriteBi \case
   If branches -> Just do
     Case (Atom "none") [ MkCaseBranch PatWildcard b.guards b.body | b <- branches ]
   _ -> Nothing
+
 
 -- https://www.erlang.org/doc/reference_manual/expressions.html#guard-expressions
 -- TODO: Expressions that construct atoms, integer, floats, lists, tuples, records, binaries, and maps
@@ -319,6 +321,7 @@ unrecord module_ = module_
           , MkCaseBranch (PatVar rec_var) []
               [Apply "erlang:error/1" [Tuple [Atom "badrecord", Var rec_var]]] ]
 
+
 resolveTailCalls :: Module -> Module
 resolveTailCalls = module_
   where
@@ -345,16 +348,19 @@ resolveTailCalls = module_
     branch f (MkCaseBranch p gs es) =
       MkCaseBranch p gs (exprs f es)
 
+
 validateFunNames :: Module -> Module
 validateFunNames = transformBi \case
   funid@MkUnresolvedFunId{} -> error ("Unresolved funid " ++ prettyFunId funid)
   funid -> funid
+
 
 defaultTryCatchClass :: Module -> Module
 defaultTryCatchClass = transformBi \case
   b@MkCatchBranch{class_ = CatchClassDefault} ->
     b & #class_ .~ CatchClassAtom "throw"
   b -> b
+
 
 expandCatch :: Module -> Module
 expandCatch = flip evalState 0 . transformBiM \case
@@ -374,10 +380,11 @@ expandCatch = flip evalState 0 . transformBiM \case
     fresh = MkVar <$> state \uuid -> ("_catchVar" ++ show uuid, uuid + 1)
 
 
--- TODO:
--- GUARD_EXPR
--- ~>
--- try GUARD_EXPR case error:_ -> false end
+tryGuard :: Module -> Module
+tryGuard = transformBi \case
+  MkGuardExpr e -> MkGuardExpr do
+    Try [e] [ MkCatchBranch (CatchClassAtom "error") (MkCaseBranch PatWildcard [] [Atom "false"]) ]
+
 
 -- TODO:
 -- try

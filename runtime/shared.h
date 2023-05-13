@@ -14,3 +14,5 @@ MAKE_SHARE(infinity)
 MAKE_SHARE(throw)
 MAKE_SHARE(error)
 MAKE_SHARE(exit)
+
+MAKE_SHARE(badrecord)
