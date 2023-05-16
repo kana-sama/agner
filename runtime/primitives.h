@@ -11,11 +11,14 @@ value_t _agner__put_str__1(bif_context_t, value_t);
 
 // value_t _timer__sleep(bif_context_t, value_t);
 
-value_t _erlang__error__1(bif_context_t, value_t);
 value_t _erlang__spawn__1(bif_context_t, value_t);
 value_t _erlang__self__0(bif_context_t);
 value_t _erlang__send__2(bif_context_t, value_t, value_t);
 value_t _erlang__garbage_collect__0(bif_context_t);
+
+_Noreturn value_t _erlang__throw__1(bif_context_t, value_t);
+_Noreturn value_t _erlang__error__1(bif_context_t, value_t);
+_Noreturn value_t _agner__raise__2(bif_context_t, value_t class, value_t value);
 
 // value_t _erlang__is_atom(bif_context_t, value_t);
 value_t _erlang__is_integer__1(bif_context_t, value_t);

@@ -25,3 +25,7 @@ void    _receive__success();
 
 value_t* _closure__get_env(value_t);
 value_t  _closure__get_fun(value_t);
+
+void _runtime__catch(handler_action_t, void* stack_head);
+void _runtime__uncatch();
+_Noreturn void _runtime__raise(value_t class, value_t value);

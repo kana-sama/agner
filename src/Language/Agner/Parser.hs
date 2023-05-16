@@ -4,7 +4,7 @@ import Language.Agner.Prelude hiding (try)
 
 import Data.Char qualified as Char
 
-import Text.Megaparsec (Parsec, lookAhead, label, satisfy, between, choice, runParser, eof, oneOf, notFollowedBy, many, empty, (<|>), try, sepBy, sepBy1, optional, manyTill)
+import Text.Megaparsec (Parsec, option, lookAhead, label, satisfy, between, choice, runParser, eof, oneOf, notFollowedBy, many, empty, (<|>), try, sepBy, sepBy1, optional, manyTill)
 import Text.Megaparsec.Char (char, string, digitChar, space1, upperChar, lowerChar, alphaNumChar)
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Megaparsec.Error (errorBundlePretty)
@@ -25,6 +25,9 @@ lexeme = L.lexeme sc
 
 symbol :: String -> Parser String
 symbol = L.symbol sc
+
+keyword :: String -> Parser String
+keyword n = try do lexeme (string n <* notFollowedBy (alphaNumChar <|> char '_'))
 
 digit :: Parser Int
 digit = (\c -> Char.ord c - Char.ord '0') <$> digitChar
@@ -78,10 +81,16 @@ variable = lexeme do
   pure (MkVar (x:xs))
 
 atom :: Parser Atom
-atom = lexeme do
-  x <- lowerChar
-  xs <- many (char '_' <|> alphaNumChar)
-  pure (MkAtom (x:xs))
+atom = simple_atom <|> quouted_atom
+  where
+    simple_atom = lexeme do
+      x <- lowerChar
+      xs <- many (char '_' <|> alphaNumChar)
+      pure (MkAtom (x:xs))
+
+    quouted_atom = lexeme do
+      xs <- char '\'' *> manyTill L.charLiteral (char '\'')
+      pure (MkAtom xs)
 
 exprToPat :: Expr -> Pat
 exprToPat = \case
@@ -134,7 +143,7 @@ qualifiedName = do
 
 fun :: Parser Expr
 fun = do
-  symbol "fun"
+  keyword "fun"
   mkFunId <- qualifiedName
   symbol "/"
   arity <- integer
@@ -142,9 +151,9 @@ fun = do
 
 funL :: Parser Expr
 funL = do
-  symbol "fun"
+  keyword "fun"
   clauses <- clause `sepBy1` symbol ";"
-  symbol "end"
+  keyword "end"
   pure FunL{clauses}
 
 tuple :: Parser [Expr]
@@ -192,12 +201,12 @@ guard_seq = (guardExpr `sepBy1` symbol ",") `sepBy1` symbol ";"
 
 whenGuards :: Parser GuardSeq
 whenGuards = do
-  optional (symbol "when" *> guard_seq) >>= \case
+  optional (keyword "when" *> guard_seq) >>= \case
     Nothing -> pure []
     Just gs -> pure gs
 
-caseBranch :: Parser CaseBranch
-caseBranch = do
+case_branch :: Parser CaseBranch
+case_branch = do
   pat <- pat
   guards <- whenGuards
   symbol "->"
@@ -206,15 +215,15 @@ caseBranch = do
 
 case_ :: Parser (Expr, [CaseBranch])
 case_ = do
-  symbol "case"
+  keyword "case"
   e <- expr
-  symbol "of"
-  bs <- caseBranch `sepBy1` symbol ";"
-  symbol "end"
+  keyword "of"
+  bs <- case_branch `sepBy1` symbol ";"
+  keyword "end"
   pure (e, bs)
 
 if_ :: Parser [IfBranch]
-if_ = symbol "if" *> (if_branch `sepBy1` symbol ";") <* symbol "end" where
+if_ = symbol "if" *> (if_branch `sepBy1` symbol ";") <* keyword "end" where
   if_branch = do
     g <- guard_seq
     symbol "->"
@@ -223,13 +232,13 @@ if_ = symbol "if" *> (if_branch `sepBy1` symbol ";") <* symbol "end" where
 
 receive :: Parser [CaseBranch]
 receive = do
-  symbol "receive"
-  bs <- caseBranch `sepBy1` symbol ";"
-  symbol "end"
+  keyword "receive"
+  bs <- case_branch `sepBy1` symbol ";"
+  keyword "end"
   pure bs
 
 begin :: Parser Expr
-begin = Begin <$> between (symbol "begin") (symbol "end") exprs
+begin = Begin <$> between (keyword "begin") (keyword "end") exprs
 
 record_kv :: Parser (RecordField, Expr)
 record_kv = do
@@ -278,12 +287,12 @@ map_comp = symbol "#" *> braces do
 
 maybe_ :: Parser Expr
 maybe_ = do
-  symbol "maybe"
+  keyword "maybe"
   es <- maybeExpr `sepBy1` symbol ","
   else_branches <- fromMaybe [] <$> optional do
-    symbol "else"
-    caseBranch `sepBy1` symbol ";"
-  symbol "end"
+    keyword "else"
+    case_branch `sepBy1` symbol ";"
+  keyword "end"
   pure (Maybe es else_branches)
   where
     maybeExpr = choice
@@ -291,15 +300,54 @@ maybe_ = do
       , MaybeExpr <$> expr
       ]
 
+catch_ :: Parser Expr
+catch_ = do
+  keyword "catch"
+  Catch <$> expr
+
+catch_branch :: Parser CatchBranch
+catch_branch = do
+  class_ <- option CatchClassDefault do
+    choice
+      [ try do CatchClassAtom <$> atom <* symbol ":"
+      , try do CatchClassVar <$> variable <* symbol ":"
+      ]
+  branch <- case_branch
+  pure MkCatchBranch{class_, branch}
+
+try_ :: Parser Expr
+try_ = do
+  keyword "try"
+  es <- exprs
+
+  hasCatch <- isJust <$> optional (keyword "catch")
+  branches <-
+    if hasCatch
+      then catch_branch `sepBy1` symbol ";"
+      else pure []
+
+  hasAfter <- isJust <$> optional (keyword "after")
+  after <-
+    if hasAfter
+      then exprs
+      else do
+        guard (not (null branches))
+        pure []
+
+  keyword "end"
+  pure (Try es branches after)
+
 term :: Parser Expr
 term = choice
-  [ try do fun
+  [ try fun
   , funL
+  , try_
   , Receive <$> receive
   , uncurry Case <$> case_
   , If <$> if_
   , try do uncurry Apply <$> apply
   , try do uncurry DynApply <$> dynApply
+  , catch_
   , begin
   , maybe_
   , parens expr
@@ -367,7 +415,12 @@ expr :: Parser Expr
 expr = makeExprParser term ([[mapUpdate, recordGet, recordUpdate]] ++ operatorTable unary binary) where
   unary  name notNext f = Prefix (f <$ op name notNext)
   binary name notNext f = InfixL (f <$ op name notNext)
-  op n notNext = (lexeme . try) (string n <* notFollowedBy (choice (map string notNext)))
+  op n notNext = (lexeme . try) (ops n <* notFollowedBy (choice (map string notNext)))
+
+  ops :: String -> Parser String
+  ops n
+    | Char.isAlpha (head n) = keyword n
+    | otherwise = string n
 
   mapUpdate = (Postfix . try) do
     update <- map_
@@ -405,7 +458,7 @@ funDecl = do
 pragma :: String -> Parser a -> Parser a
 pragma name body = try do
   symbol "-"
-  symbol name
+  keyword name
   value <- parens body
   symbol "."
   pure value

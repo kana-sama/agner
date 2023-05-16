@@ -46,7 +46,19 @@ data CaseBranch = MkCaseBranch
   , guards :: GuardSeq
   , body   :: Exprs
   }
-  deriving stock (Show, Data)
+  deriving stock (Show, Data, Generic)
+
+data CatchClass
+  = CatchClassDefault
+  | CatchClassAtom Atom
+  | CatchClassVar Var
+  deriving stock (Show, Data, Generic)
+
+data CatchBranch = MkCatchBranch
+  { class_ :: CatchClass
+  , branch :: CaseBranch
+  }
+  deriving stock (Show, Data, Generic)
 
 data IfBranch = MkIfBranch
   { guards :: GuardSeq
@@ -112,6 +124,9 @@ data Expr
 
   | Begin Exprs
   | Maybe [MaybeExpr] [CaseBranch]
+
+  | Catch Expr
+  | Try{exprs :: Exprs, branches :: [CatchBranch], after :: Exprs}
   deriving stock (Show, Data)
 
 type Exprs = [Expr]

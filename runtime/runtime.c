@@ -171,3 +171,17 @@ value_t* _closure__get_env(value_t value) {
 value_t _closure__get_fun(value_t value) {
   return cast_to_boxed_value(value)->closure.body;
 }
+
+
+void _runtime__catch(handler_action_t handler_action, void* stack_head) {
+  process_add_handler(scheduler->current, handler_action, stack_head);
+}
+
+void _runtime__uncatch() {
+  process_remove_handler(scheduler->current);
+}
+
+_Noreturn
+void _runtime__raise(value_t class, value_t value) {
+  process_raise(scheduler->current, class, value);
+}

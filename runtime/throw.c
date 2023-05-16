@@ -1,8 +1,11 @@
+# include "throw.h"
+
 # include <stdio.h>
 # include <stdlib.h>
 
 # include "value.h"
-# include "throw.h"
+# include "shared.h"
+# include "runtime.h"
 
 _Noreturn
 void _throw__unbound(char* var_atom) {
@@ -14,10 +17,8 @@ void _throw__unbound(char* var_atom) {
 
 _Noreturn
 void _throw__badrecord(value_t value) {
-  printf("** exception error: {badrecord,");
-  print_value(value);
-  printf("}\n");
-  exit(-1);
+  value_t values[] = {shared_badrecord(), value};
+  _runtime__raise(shared_error(), _alloc__tuple(2, values));
 }
 
 static char* format_args(int64_t n) {

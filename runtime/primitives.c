@@ -56,13 +56,6 @@ value_t _agner__put_str__1(bif_context_t ctx, value_t value) {
   return shared_ok();
 }
 
-value_t _erlang__error__1(bif_context_t ctx, value_t value) {
-  printf("** exception error: ");
-  print_value(value);
-  printf("\n");
-  exit(-1);
-}
-
 // value_t _timer__sleep(bif_context_t ctx, value_t duration) {
 //   switch (duration & TAG_MASK) {
 //     case INTEGER_TAG: {
@@ -299,4 +292,20 @@ value_t _agner__boxed_to_map__1(bif_context_t ctx, value_t value) {
     puts("expected boxed value");
     exit(-1);
   }
+}
+
+
+_Noreturn
+value_t _erlang__throw__1(bif_context_t ctx, value_t value) {
+  process_raise(scheduler->current, shared_throw(), value);
+}
+
+_Noreturn
+value_t _erlang__error__1(bif_context_t ctx, value_t value) {
+  process_raise(scheduler->current, shared_error(), value);
+}
+
+_Noreturn
+value_t _agner__raise__2(bif_context_t ctx, value_t class, value_t value) {
+  process_raise(scheduler->current, class, value);
 }

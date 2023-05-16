@@ -9,6 +9,7 @@
 # include "containers/list.h"
 # include "mailbox.h"
 # include "scopes.h"
+# include "macros.h"
 
 # define MB (1024 * 1024)
 
@@ -37,6 +38,7 @@ process_t* process_new() {
   process->mailbox     = mailbox_new();
   process->scopes      = scopes_new();
   process->context     = malloc(sizeof(jmp_buf));
+  process->handlers    = list_new();
   process->is_alive    = true;
 
   reg(process);
@@ -53,6 +55,7 @@ void process_free(process_t* process) {
   free(process->stack);
   free(process->vstack);
   free(process->context);
+  list_free(process->handlers);
   free(process);
 }
 
@@ -80,4 +83,59 @@ void process_send(PID_t pid, value_t message) {
   if (process == NULL || !process->is_alive) return;
   value_t message_copy = copy_to_heap(message, &process->heap, process_gc_ctx(process));
   mailbox_push(process->mailbox, message_copy);
+}
+
+typedef struct handler_t {
+  handler_action_t handler_action;
+  value_t*         vstack_head;
+  void*            stack_head;
+} handler_t;
+
+void process_add_handler(process_t* process, handler_action_t handler_action, void* stack_head) {
+  handler_t* handler = malloc(sizeof(handler_t));
+  handler->handler_action = handler_action;
+  handler->vstack_head = process->vstack_head;
+  handler->stack_head  = stack_head;
+  list_prepend(process->handlers, handler);
+}
+
+void process_remove_handler(process_t* process) {
+  list_shift(process->handlers);
+}
+
+_Noreturn
+void process_raise_wrapper(
+  value_t exception_class,
+  value_t exception_value,
+  handler_action_t handler_action,
+  value_t* vstack_head,
+  void* stack_head
+); asm(
+  ASM_FUN(process_raise_wrapper)
+    "movq %rcx, %r12  \n"
+    "movq %r8,  %rsp  \n"
+
+    // rdi is exception class
+    // rsi is exception value
+    "jmpq *%rdx       \n"
+);
+
+_Noreturn
+void process_raise(process_t* process, value_t class, value_t value) {
+  if (list_null(process->handlers)) {
+    printf("** exception %s: ", (char*)class);
+    print_value(value);
+    printf("\n");
+    exit(-1);
+  }
+
+  handler_t* handler_ = list_shift(process->handlers);
+  handler_t handler = *handler_;
+  free(handler_);
+
+  process_raise_wrapper(
+    class, value,
+    handler.handler_action,
+    handler.vstack_head, handler.stack_head
+  );
 }

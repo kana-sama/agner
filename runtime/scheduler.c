@@ -11,6 +11,7 @@
 # include "containers/list.h"
 # include "options.h"
 # include "process.h"
+# include "macros.h"
 
 scheduler_t* scheduler_new() {
   scheduler_t* scheduler = malloc(sizeof(struct scheduler_t));
@@ -19,6 +20,7 @@ scheduler_t* scheduler_new() {
   scheduler->current    = NULL;
   scheduler->exit       = malloc(sizeof(jmp_buf));
   scheduler->fuel       = 0;
+
   return scheduler;
 }
 
@@ -52,26 +54,28 @@ void scheduler_switch(scheduler_t* scheduler) {
 // This inline assembler should clobber all caller-saved registers and some callee-saved registers
 // (currently r12 and r13), but simply mentioning them in 'clobbered' argument of asm() does not
 // work as there are not enough registers to pass arguments to asm, hence top-level inline assembler.
-void action_wrapper_wrapper(process_t*, void*, value_t*, action_t);
-
-asm(
-  ".align 16 \n"
-#ifdef __APPLE__
-  ".globl _action_wrapper_wrapper \n"
-    "_action_wrapper_wrapper: \n"
-#else
-  ".globl action_wrapper_wrapper \n"
-    "action_wrapper_wrapper: \n"
-#endif
+void action_wrapper_wrapper(process_t*, void*, value_t*, action_t); asm(
+  ASM_FUN(action_wrapper_wrapper)
     "pushq %rbx \n"
     "pushq %r12 \n"
     "pushq %r13 \n"
+
+    "pushq %r14 \n"
+    "pushq %r15 \n"
+    "pushq %rbp \n"
+    "pushq %rbp \n"
 
     "movq %rdx, %r12 \n"
 
     // process in rdi
     // arg     in rsi
     "call *%rcx \n"
+
+    "popq %rbp \n"
+
+    "popq %rbp \n"
+    "popq %r15 \n"
+    "popq %r14 \n"
 
     "popq %r13 \n"
     "popq %r12 \n"
