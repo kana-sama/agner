@@ -152,7 +152,6 @@ value_t _receive__pick() {
     if (value) {
       return *value;
     } else {
-      mailbox_unpick(scheduler->current->mailbox);
       scheduler_next(scheduler);
     }
   }
