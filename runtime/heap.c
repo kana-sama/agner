@@ -43,7 +43,7 @@ static boxed_value_t* move_ref(heap_t* new_heap, boxed_value_t* ref) {
 
   boxed_value_t* new_ref = (boxed_value_t*)dst;
   new_ref->super.gc_offset = 0;
-  
+
   return new_ref;
 }
 
@@ -54,7 +54,7 @@ heap_t* heap_gc(
 ) {
   struct timespec gc_start, gc_end;
   clock_gettime(CLOCK_MONOTONIC_RAW, &gc_start);
-  
+
   int64_t offset = 0;
   list_t* queue = list_new();
 
@@ -119,7 +119,7 @@ void* heap_allocate(heap_t** heap, int64_t size, gc_ctx_t ctx) {
   value_t* target = (*heap)->mem_head;
   (*heap)->mem_head += size;
   memset(target, 0, size * sizeof(value_t));
-  
+
   return target;
 }
 

@@ -108,10 +108,10 @@ maps = rewriteBi \case
 operators :: Module -> Module
 operators = rewriteBi \case
   UnOp op a -> Just do
-    Apply (fromString ("agner:" ++ unOpName op ++ "/1")) [a]
+    Apply (fromString ("agner:operator_" ++ unOpName op ++ "/1")) [a]
 
   BinOp op a b -> Just do
-    Apply (fromString ("agner:" ++ binOpName op ++ "/2")) [a, b]
+    Apply (fromString ("agner:operator_" ++ binOpName op ++ "/2")) [a, b]
 
   _ -> Nothing
 
@@ -333,7 +333,7 @@ resolveTailCalls = module_
     expr f = \case
       Apply funid es | f == funid -> TailApply funid es
       Case e bs -> Case e (map (branch f) bs)
-      Receive bs -> Receive (map (branch f) bs)
+      Receive bs after -> Receive (map (branch f) bs) ((fmap . fmap) (exprs f) after)
       Begin es -> Begin (exprs f es)
       e -> e
 

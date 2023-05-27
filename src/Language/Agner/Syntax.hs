@@ -82,6 +82,13 @@ data MaybeExpr
   | MaybeBind Pat Expr
   deriving stock (Show, Data)
 
+data ReceiveTimeout after = MkReceiveTimeout
+  { timeout :: Expr
+  , after :: after
+  }
+  deriving stock (Show, Data)
+  deriving stock (Functor, Foldable, Traversable)
+
 data Expr
   = Integer Integer
   | Atom Atom
@@ -115,7 +122,7 @@ data Expr
 
   | If [IfBranch]
   | Case Expr [CaseBranch]
-  | Receive [CaseBranch]
+  | Receive [CaseBranch] (Maybe (ReceiveTimeout Exprs))
 
   | AndAlso Expr Expr
   | OrElse Expr Expr

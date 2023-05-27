@@ -77,14 +77,14 @@ alloc = do
   let (index, new) = head (filter (\(_, o) -> o `Set.notMember` allocated) operands)
   #allocated %= Set.insert new
   #required_slots %= max index
-  tell [ movq UNBOUND_TAG new ]
+  tell [ movq UNBOUND_VALUE new ]
   pure new
   where
     operands = [(i, MemReg (WORD_SIZE * (-i)) vstack) | i <- [1..]]
 
 free :: Operand -> M ()
 free op = do
-  tell [ movq UNBOUND_TAG op ]
+  tell [ movq UNBOUND_VALUE op ]
   #allocated %= Set.delete op
 
 withAlloc :: (Operand -> M ()) -> M ()
@@ -352,19 +352,41 @@ expr result = \case
       tell [ callq' rax ]
       tell [ movq   rax result ]
 
-  Receive cases -> do
-    loop <- label; done <- label
+  Receive cases timeout -> do
+    loop <- label; done <- label; after <- label
+
+    case timeout of
+      Nothing -> pure ()
+      Just timeout -> do
+        after_done <- label
+
+        withAlloc \timeout' -> do
+          timeout' <~ timeout.timeout
+          tell [ movq  timeout' rdi ]
+          tell [ callq (runtime "receive:set_timeout") ]
+
+        tell [ jmp    after_done ]
+        tell [ _label after ]
+        exprs result timeout.after
+        tell [ jmp    done ]
+        tell [ _label after_done ]
 
     withAlloc \msg -> do
       tell [ _label loop ]
 
       tell [ callq  (runtime "receive:pick") ]
+
+      when (isJust timeout) do
+        tell [ cmpq   TIMED_OUT_VALUE rax ]
+        tell [ je     after ]
+
       tell [ movq   rax msg ]
       for_ cases \branch -> do
         let afterMatch = tell [ callq (runtime "receive:success") ]
         caseBranch msg result afterMatch done branch
       tell [ jmp    loop ]
-      tell [ _label done ]
+
+    tell [ _label done ]
 
   Case e cases -> do
     done <- label
@@ -503,7 +525,7 @@ clause funid clause result fail = do
   tell [ _comment "unbound pats vars" ]
   for_ (allVars clause.pats) \var -> do
     var <- variable var
-    tell [ movq UNBOUND_TAG var ]
+    tell [ movq UNBOUND_VALUE var ]
 
   tell [ _comment "match clause patterns" ]
   ifor_ clause.pats \arg p -> do
@@ -605,7 +627,7 @@ decl FunDecl{funid, clauses} = function funid clauses do
   Map.unions <$> for (Set.toList (allVars clauses)) \var -> do
     slot <- alloc
     tell [ _comment ("variable " ++ var.getString) ]
-    tell [ movq UNBOUND_TAG slot ]
+    tell [ movq UNBOUND_VALUE slot ]
     pure (Map.singleton var slot)
 
 decl ExportDecl{names} = do

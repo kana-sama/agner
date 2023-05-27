@@ -5,10 +5,8 @@
 # include "shared.h"
 
 void _assert__bound(value_t value, char* var) {
-  if (value == UNBOUND_TAG) {
+  if (value == UNBOUND_VALUE)
     _throw__unbound(var);
-    exit(-1);
-  }
 }
 
 void _assert__bool(value_t value) {

@@ -10,7 +10,7 @@ bool _match__atom(value_t value, value_t atom) {
 }
 
 bool _match__variable(value_t value, value_t* mem) {
-  if (*mem == UNBOUND_TAG) {
+  if (*mem == UNBOUND_VALUE) {
     *mem = value;
     return true;
   } else {

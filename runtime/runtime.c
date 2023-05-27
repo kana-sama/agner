@@ -146,12 +146,35 @@ value_t _alloc__closure(value_t body, int64_t env_size, value_t* env) {
   return (value_t)(closure) | BOX_TAG;
 }
 
+void _receive__set_timeout(value_t value) {
+  if (value == shared_infinity())
+    return;
+
+  if (is_integer(value))
+    return mailbox_set_timeout(scheduler->current->mailbox, decode_integer(value));
+
+  process_raise(scheduler->current, shared_error(), shared_timeout_value());
+}
+
+static ms_time_t now() {
+  struct timespec time;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &time);
+  return time.tv_sec * 1000 + time.tv_nsec / 1000000;
+}
+
+
 value_t _receive__pick() {
   while (true) {
     value_t* value = mailbox_pick(scheduler->current->mailbox);
     if (value) {
       return *value;
     } else {
+      if (mailbox_is_timed_out(scheduler->current->mailbox)) {
+        mailbox_unpick(scheduler->current->mailbox);
+        mailbox_remove_timeout(scheduler->current->mailbox);
+        return TIMED_OUT_VALUE;
+      }
+
       scheduler_next(scheduler);
     }
   }
@@ -160,6 +183,7 @@ value_t _receive__pick() {
 void _receive__success() {
   mailbox_drop_picked(scheduler->current->mailbox);
   mailbox_unpick(scheduler->current->mailbox);
+  mailbox_remove_timeout(scheduler->current->mailbox);
 }
 
 
