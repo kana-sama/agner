@@ -127,8 +127,8 @@ static void print_closure(boxed_closure_t* closure) {
 
 void print_value_(value_t value, bool trancated, int available_depth) {
   switch (value & TAG_MASK) {
-    case UNBOUND_TAG:
-      printf("[UNBOUND]"); break;
+    case SPECIAL_TAG:
+      printf("[SPECIAL %lld]", value >> TAG_SIZE); break;
     case INTEGER_TAG:
       printf("%lld", value >> TAG_SIZE); break;
     case ATOM_TAG:

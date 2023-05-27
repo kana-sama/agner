@@ -1,5 +1,7 @@
 # include "mailbox.h"
 
+# include "time.h"
+
 # include "containers/list.h"
 # include "value.h"
 
@@ -39,4 +41,23 @@ void mailbox_drop_picked(mailbox_t* mailbox) {
 void mailbox_unpick(mailbox_t* mailbox) {
   while (!list_null(mailbox->picked))
     list_prepend(mailbox->messages, list_shift(mailbox->picked));
+}
+
+static ms_time_t now() {
+  struct timespec time;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &time);
+  return time.tv_sec * 1000 + time.tv_nsec / 1000000;
+}
+
+void mailbox_set_timeout(mailbox_t* mailbox, ms_time_t delta) {
+  mailbox->timeout_at = now() + delta;
+}
+
+void mailbox_remove_timeout(mailbox_t* mailbox) {
+  mailbox->timeout_at = 0;
+}
+
+bool mailbox_is_timed_out(mailbox_t* mailbox) {
+  if (mailbox->timeout_at == 0) return false;
+  return mailbox->timeout_at < now();
 }

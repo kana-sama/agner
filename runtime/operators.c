@@ -13,13 +13,13 @@
 
 // // booleans
 
-value_t _agner__not__1(bif_context_t ctx, value_t value) {
+value_t _agner__operator_not__1(bif_context_t ctx, value_t value) {
   if (value == shared_true()) return shared_false();
   if (value == shared_false()) return shared_true();
   _throw__badarg_unop(value, "not");
 }
 
-value_t _agner__and__2(bif_context_t ctx, value_t l, value_t r) {
+value_t _agner__operator_and__2(bif_context_t ctx, value_t l, value_t r) {
   if (l == shared_true()  && r == shared_true())  return shared_true();
   if (l == shared_false() && r == shared_true())  return shared_false();
   if (l == shared_true()  && r == shared_false()) return shared_false();
@@ -57,12 +57,12 @@ value_t _agner__and__2(bif_context_t ctx, value_t l, value_t r) {
 //   _throw__badarith_unary(x, "-");
 // }
 
-value_t _agner__plus__2(bif_context_t ctx, value_t l, value_t r) {
+value_t _agner__operator_plus__2(bif_context_t ctx, value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) + decode_integer(r));
   _throw__badarith(l, r, "+");
 }
 
-value_t _agner__minus__2(bif_context_t ctx, value_t l, value_t r) {
+value_t _agner__operator_minus__2(bif_context_t ctx, value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) - decode_integer(r));
   _throw__badarith(l, r, "-");
 }
@@ -77,7 +77,7 @@ value_t _agner__minus__2(bif_context_t ctx, value_t l, value_t r) {
 //   _throw__badarith(l, r, "div");
 // }
 
-value_t _agner__rem__2(bif_context_t ctx, value_t l, value_t r) {
+value_t _agner__operator_rem__2(bif_context_t ctx, value_t l, value_t r) {
   if (is_integer(l) && is_integer(r)) return encode_integer(decode_integer(l) % decode_integer(r));
   _throw__badarith(l, r, "rem");
 }
@@ -120,7 +120,7 @@ value_t _agner__rem__2(bif_context_t ctx, value_t l, value_t r) {
 
 // lists
 
-value_t _agner__plus_plus__2(bif_context_t ctx, value_t l_, value_t r_) {
+value_t _agner__operator_plus_plus__2(bif_context_t ctx, value_t l_, value_t r_) {
   enter_scope();
 
   value_t* l = add_to_scope(l_);
@@ -144,7 +144,7 @@ value_t _agner__plus_plus__2(bif_context_t ctx, value_t l_, value_t r_) {
 static inline value_t from_bool(bool b) { return b ? shared_true() : shared_false(); }
 
 // ==
-value_t _agner__eq_eq__2(bif_context_t ctx, value_t l, value_t r) {
+value_t _agner__operator_eq_eq__2(bif_context_t ctx, value_t l, value_t r) {
   return from_bool(
     value_lte(l, r) && value_lte(r, l)
   );
@@ -158,28 +158,28 @@ value_t _agner__eq_eq__2(bif_context_t ctx, value_t l, value_t r) {
 // }
 
 // =<
-value_t _agner__eq_less__2(bif_context_t ctx, value_t l, value_t r) {
+value_t _agner__operator_eq_less__2(bif_context_t ctx, value_t l, value_t r) {
   return from_bool(
     value_lte(l, r)
   );
 }
 
 // <
-value_t _agner__less__2(bif_context_t ctx, value_t l, value_t r) {
+value_t _agner__operator_less__2(bif_context_t ctx, value_t l, value_t r) {
   return from_bool(
     value_lte(l, r) && !value_lte(r, l)
   );
 }
 
 // >=
-value_t _agner__greater_eq__2(bif_context_t ctx, value_t l, value_t r) {
+value_t _agner__operator_greater_eq__2(bif_context_t ctx, value_t l, value_t r) {
   return from_bool(
     value_lte(r, l)
   );
 }
 
 // >
-value_t _agner__greater__2(bif_context_t ctx, value_t l, value_t r) {
+value_t _agner__operator_greater__2(bif_context_t ctx, value_t l, value_t r) {
   return from_bool(
     value_lte(r, l) && !value_lte(l, r)
   );

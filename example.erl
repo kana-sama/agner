@@ -1,37 +1,16 @@
 -module(main).
 -export([main/0]).
 
-test1() ->
-  catched = catch
-    try throw(err), success
-    catch err -> catched
-    after self() ! after_done
-    end,
-  receive after_done -> ok end.
+-import(agner, [println/1]).
 
-
-test2() ->
-  success = catch
-    try success
-    after self() ! after_done
-    end,
-    receive after_done -> ok end.
-
-test3() ->
-  in_after = catch
-    try throw(in_try)
-    after throw(in_after)
-    end.
-
-test4() ->
-  in_after = catch
-    try throw(in_try)
-    catch in_try -> catched
-    after throw(in_after)
-    end.
+take_messages(0) -> [];
+take_messages(N) -> receive A -> [A | take_messages(N - 1)] end.
 
 main() ->
-  test1(),
-  test2(),
-  test3(),
-  test4().
+  println(start),
+  Main = self(),
+  spawn(fun() -> timer:sleep(100), Main ! 1 end),
+  spawn(fun() -> timer:sleep( 50), Main ! 2 end),
+  spawn(fun() -> timer:sleep(150), Main ! 3 end),
+  spawn(fun() -> timer:sleep( 20), Main ! 4 end),
+  [4, 2, 1, 3] = take_messages(4).

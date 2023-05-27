@@ -15,4 +15,5 @@ MAKE_SHARE(throw)
 MAKE_SHARE(error)
 MAKE_SHARE(exit)
 
+MAKE_SHARE(timeout_value)
 MAKE_SHARE(badrecord)

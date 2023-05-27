@@ -26,7 +26,17 @@ lexeme = L.lexeme sc
 symbol :: String -> Parser String
 symbol = L.symbol sc
 
+keywords :: [String]
+keywords =
+  [ "fun", "end", "when", "case", "of", "receive", "after",
+    "begin", "maybe", "else", "catch", "try", "bnot", "not",
+    "div", "rem", "band", "and", "bor", "bxor", "bsl", "bsr",
+    "or", "xor", "andalso", "orelse",
+    "primitive", "record", "import", "export", "module"
+  ]
+
 keyword :: String -> Parser String
+keyword n | n `notElem` keywords = error (n ++ " is not keyword")
 keyword n = try do lexeme (string n <* notFollowedBy (alphaNumChar <|> char '_'))
 
 digit :: Parser Int
@@ -83,10 +93,13 @@ variable = lexeme do
 atom :: Parser Atom
 atom = simple_atom <|> quouted_atom
   where
-    simple_atom = lexeme do
+    simple_atom = (try . lexeme) do
       x <- lowerChar
       xs <- many (char '_' <|> alphaNumChar)
-      pure (MkAtom (x:xs))
+      let atom = x:xs
+      when (atom `elem` keywords) do
+        fail (atom ++ " is reserved")
+      pure (MkAtom atom)
 
     quouted_atom = lexeme do
       xs <- char '\'' *> manyTill L.charLiteral (char '\'')
@@ -230,12 +243,20 @@ if_ = symbol "if" *> (if_branch `sepBy1` symbol ";") <* keyword "end" where
     b <- exprs
     pure (MkIfBranch g b)
 
-receive :: Parser [CaseBranch]
+receive :: Parser Expr
 receive = do
   keyword "receive"
-  bs <- case_branch `sepBy1` symbol ";"
+  bs <- case_branch `sepBy` symbol ";"
+  after <- optional do
+    keyword "after"
+    timeout <- expr
+    symbol "->"
+    after <- exprs
+    pure MkReceiveTimeout{timeout, after}
   keyword "end"
-  pure bs
+  case (bs, after) of
+    ([], Nothing) -> fail "empty receive without timeout is not allowed"
+    (bs, after) -> pure (Receive bs after)
 
 begin :: Parser Expr
 begin = Begin <$> between (keyword "begin") (keyword "end") exprs
@@ -342,7 +363,7 @@ term = choice
   [ try fun
   , funL
   , try_
-  , Receive <$> receive
+  , receive
   , uncurry Case <$> case_
   , If <$> if_
   , try do uncurry Apply <$> apply

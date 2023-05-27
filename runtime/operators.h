@@ -4,19 +4,19 @@
 # include "primitives.h"
 
 // // booleans
-value_t _agner__not__1(bif_context_t, value_t);
-value_t _agner__and__2(bif_context_t, value_t, value_t);
+value_t _agner__operator_not__1(bif_context_t, value_t);
+value_t _agner__operator_and__2(bif_context_t, value_t, value_t);
 // value_t _binop__or(bif_context_t, value_t, value_t);
 // value_t _binop__xor(bif_context_t, value_t, value_t);
 
 // // numbers
 // value_t _unop__plus(bif_context_t, value_t);
 // value_t _unop__minus(bif_context_t, value_t);
-value_t _agner__plus__2(bif_context_t, value_t, value_t);
-value_t _agner__minus__2(bif_context_t, value_t, value_t);
+value_t _agner__operator_plus__2(bif_context_t, value_t, value_t);
+value_t _agner__operator_minus__2(bif_context_t, value_t, value_t);
 // value_t _binop__times(bif_context_t, value_t, value_t);
 // value_t _binop__div(bif_context_t, value_t, value_t);
-value_t _agner__rem__2(bif_context_t, value_t, value_t);
+value_t _agner__operator_rem__2(bif_context_t, value_t, value_t);
 
 // // bitwise
 // value_t _unop__bnot(bif_context_t, value_t);
