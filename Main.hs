@@ -1,4 +1,5 @@
 import Paths_agner (getDataDir)
+import Shower (shower)
 
 import Data.IORef (atomicModifyIORef', newIORef)
 
@@ -63,6 +64,7 @@ main = do
       module_ <- readFile sourceFile
       module_ <- evaluate (Parser.parse sourceFile Parser.module_ module_)
       module_ <- evaluate (Process.process module_)
+      let processedModule = module_
 
       (ctx, module_) <- pure (X64.compileModule target module_)
       module_ <- evaluate module_
@@ -71,6 +73,7 @@ main = do
       writeFile file_asm module_
 
       when (sourceFile `notElem` stdLibSourceFiles) do
+        writeFile ("agner-output" </> takeBaseName sourceFile <.> ".X") (shower processedModule)
         writeFile ("agner-output" </> takeBaseName sourceFile <.> ".S") module_
 
       pure (ctx, [file_asm])

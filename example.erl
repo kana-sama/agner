@@ -21,9 +21,16 @@ even(N) -> odd(N - 1).
 odd(0) -> false;
 odd(N) -> even(N - 1).
 
+even_(0) -> true;
+even_(N) -> (fun(X) -> odd_(X) end)(N - 1).
+
+odd_(0) -> false;
+odd_(N) -> (fun even/1)(N - 1).
+
 main() ->
   f1(1),
   f3(1),
   f5(10, 100, 1000),
   println({even(10), odd(11)}),
+  println({even_(10), odd_(11)}),
   ok.

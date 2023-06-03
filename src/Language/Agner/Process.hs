@@ -322,6 +322,9 @@ resolveTailCalls = module_
   where
     module_ m =
       m{decls = map decl m.decls}
+        & transformBi \case
+            FunL clauses -> FunL [clause c | c <- clauses]
+            other -> other
 
     decl = \case
       FunDecl{funid, clauses} -> FunDecl{funid, clauses = [clause  c | c <- clauses]}
@@ -332,6 +335,7 @@ resolveTailCalls = module_
 
     expr = \case
       Apply funid es -> TailApply funid es
+      DynApply e es -> TailDynApply e es
       Case e bs -> Case e (map branch bs)
       Receive bs after -> Receive (map branch bs) ((fmap . fmap) exprs after)
       Begin es -> Begin (exprs es)

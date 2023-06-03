@@ -119,6 +119,7 @@ data Expr
   | Apply FunId [Expr]
   | TailApply FunId [Expr]
   | DynApply Expr [Expr]
+  | TailDynApply Expr [Expr]
 
   | If [IfBranch]
   | Case Expr [CaseBranch]

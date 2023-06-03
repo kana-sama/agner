@@ -227,6 +227,7 @@ caseBranch value result afterMatch done branch = do
         tell [ movq rax var ]
         free saved
 
+-- should not use regs at all
 moves :: [Operand] -> [Operand] -> M ()
 moves from to | length from == length to = do
   tell [ _comment ("Parallel moves from " <> print from <> " to " <> print to) ]
@@ -327,44 +328,53 @@ expr result = \case
 
   TailApply f es -> do
     values <- for es \e -> do value <- alloc; value <~ e; pure value
-    new_arguments <- sequence [argument i | i <- [0..f.arity - 1]]
+    new_arguments <- sequence [argument i | i <- [0..length es - 1]]
     moves values new_arguments
     for_ values free
 
     tell [ _comment "tail_apply: fix stack" ]
     required_slots <- use #required_slots
     current_arity <- use #current_arity
-    let new_arity = f.arity
+    let new_arity = length es
     tell [ subq (Imm (WORD_SIZE * (required_slots + (current_arity - new_arity)))) vstack ]
 
     tell [ addq WORD_SIZE rsp ]
     tell [ jmp (mkFunctionLabel f) ]
 
   DynApply f es ->
-    withAlloc \f' -> do
-      call_lbl <- label
-      f' <~ f
+    withAlloc \f' -> withAlloc \closureEnv' -> do
+      dynApplyPrepare f' closureEnv' f (length es)
 
-      tell [ movq   f' rdi ]
-      tell [ movq   (fromIntegral (length es)) rsi ]
-      tell [ callq  (runtime "assert:fun") ]
-      tell [ cmpq   (ImmL "FUN_KIND_CLOSURE") rax ]
-      tell [ jne    call_lbl ]
-
-      tell [ movq   f' rdi ]
-      tell [ callq  (runtime "closure:get_env") ]
-      tell [ movq   rax closureEnv ]
-
-      tell [ movq   f' rdi ]
-      tell [ callq  (runtime "closure:get_fun") ]
-      tell [ movq   rax f' ]
-
-      tell [ _label call_lbl ]
       ifor_ es \i e -> MemReg (i * WORD_SIZE) vstack <~ e
-      tell [ movq   f' rax ]
       tell [ addq   (Imm (length es * WORD_SIZE)) vstack ]
-      tell [ callq' rax ]
+      tell [ movq   closureEnv' closureEnv ]
+
+      tell [ movq   f' rax ]
+      tell [ callq' (Indirect rax) ]
       tell [ movq   rax result ]
+
+  TailDynApply f es ->
+    withAlloc \f' -> withAlloc \closureEnv' -> do
+      dynApplyPrepare f' closureEnv' f (length es)
+
+      values <- for es \e -> do value <- alloc; value <~ e; pure value
+      new_arguments <- sequence [argument i | i <- [0..length es - 1]]
+
+      tell [ movq closureEnv' closureEnv ]
+      tell [ movq f' rax ]
+
+      moves values new_arguments
+      for_ values free
+
+      tell [ addq WORD_SIZE rsp ]
+
+      tell [ _comment "tail_apply: fix stack" ]
+      required_slots <- use #required_slots
+      current_arity <- use #current_arity
+      let new_arity = length es
+      tell [ subq (Imm (WORD_SIZE * (required_slots + (current_arity - new_arity)))) vstack ]
+
+      tell [ jmpq (Indirect rax) ]
 
   Receive cases timeout -> do
     loop <- label; done <- label; after <- label
@@ -479,6 +489,27 @@ exprs result es = for_ es (expr result)
 
 
 data ApplyArg = ApplyExpr Expr | ApplyOp Operand
+
+dynApplyPrepare :: WithTarget => Operand -> Operand -> Expr -> Int -> M ()
+dynApplyPrepare f' closureEnv f arity = do
+  call_lbl <- label
+  expr f' f
+
+  tell [ movq   f' rdi ]
+  tell [ movq   (fromIntegral arity) rsi ]
+  tell [ callq  (runtime "assert:fun") ]
+  tell [ cmpq   (ImmL "FUN_KIND_CLOSURE") rax ]
+  tell [ jne    call_lbl ]
+
+  tell [ movq   f' rdi ]
+  tell [ callq  (runtime "closure:get_env") ]
+  tell [ movq   rax closureEnv ]
+
+  tell [ movq   f' rdi ]
+  tell [ callq  (runtime "closure:get_fun") ]
+  tell [ movq   rax f' ]
+
+  tell [ _label call_lbl ]
 
 apply :: WithTarget => Operand -> FunId -> [ApplyArg] -> M ()
 apply result f args = do

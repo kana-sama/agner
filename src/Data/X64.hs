@@ -7,7 +7,7 @@ import Data.Char qualified as Char
 
 type Label = String
 
-data Op = LEAQ | MOVQ | MOVABSQ | MOVZBQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | ORQ | XORQ | JMP | JZ | JE | JNE | JNZ | SYSCALL | CMPQ | CMPB | CALLQ | UD2
+data Op = LEAQ | MOVQ | MOVABSQ | MOVZBQ | SUBQ | ADDQ | PUSHQ | POPQ | RETQ | ANDQ | ORQ | XORQ | JMP | JMPQ | JZ | JE | JNE | JNZ | SYSCALL | CMPQ | CMPB | CALLQ | UD2
   deriving stock (Show, Eq)
 
 data Reg
@@ -23,6 +23,7 @@ data Operand
   | Imm Int -- $8
   | ImmL String
   | Lbl Label
+  | Indirect Reg
   deriving stock (Eq, Ord, Show)
 
 instance Num Operand where
@@ -58,6 +59,7 @@ pushq a = Op PUSHQ [a]
 popq a = Op POPQ [a]
 
 jmp l = Op JMP [Lbl l]
+jmpq l = Op JMPQ [l]
 jz l = Op JZ [Lbl l]
 je l = Op JE [Lbl l]
 jne l = Op JNE [Lbl l]
@@ -90,11 +92,10 @@ prettyOperand = \case
   Imm i -> "$" ++ show i
   ImmL l -> "$" ++ l
   Lbl l -> l
+  Indirect reg -> "*%" ++ lower (show reg)
 
 prettyInstr :: Instr -> String
 prettyInstr = \case
-  Op CALLQ [Reg r] ->
-    "    " ++ lower (show CALLQ) ++ " \t" ++ ("*" ++ prettyOperand (Reg r))
   Op op ops ->
     "    " ++ lower (show op) ++ " \t" ++ List.intercalate ", " [prettyOperand o | o <- ops]
   Meta m -> m
