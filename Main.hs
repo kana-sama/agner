@@ -4,7 +4,7 @@ import Data.IORef (atomicModifyIORef', newIORef)
 
 import System.Process.Typed (runProcess, proc)
 import System.Exit (ExitCode(..))
-import System.FilePath ((</>), (<.>), takeFileName)
+import System.FilePath ((</>), (<.>), takeFileName, takeBaseName)
 import System.FilePath.Glob (globDir1)
 import System.Environment (getArgs)
 import System.Info (os)
@@ -12,6 +12,7 @@ import System.IO.Temp (withSystemTempDirectory)
 
 import Control.Exception (evaluate)
 import Control.Lens (ifor)
+import Control.Monad (when)
 
 import Language.Agner.X64 qualified as X64
 import Language.Agner.Parser qualified as Parser
@@ -68,6 +69,9 @@ main = do
 
       let file_asm = temp </> show index <.> "S"
       writeFile file_asm module_
+
+      when (sourceFile `notElem` stdLibSourceFiles) do
+        writeFile ("agner-output" </> takeBaseName sourceFile <.> ".S") module_
 
       pure (ctx, [file_asm])
 

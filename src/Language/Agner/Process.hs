@@ -324,24 +324,24 @@ resolveTailCalls = module_
       m{decls = map decl m.decls}
 
     decl = \case
-      FunDecl{funid, clauses} -> FunDecl{funid, clauses = [clause funid c | c <- clauses]}
+      FunDecl{funid, clauses} -> FunDecl{funid, clauses = [clause  c | c <- clauses]}
       d -> d
 
-    clause f MkClause{pats, guards, body} =
-      MkClause{pats, guards, body = exprs f body}
+    clause MkClause{pats, guards, body} =
+      MkClause{pats, guards, body = exprs body}
 
-    expr f = \case
-      Apply funid es | f == funid -> TailApply funid es
-      Case e bs -> Case e (map (branch f) bs)
-      Receive bs after -> Receive (map (branch f) bs) ((fmap . fmap) (exprs f) after)
-      Begin es -> Begin (exprs f es)
+    expr = \case
+      Apply funid es -> TailApply funid es
+      Case e bs -> Case e (map branch bs)
+      Receive bs after -> Receive (map branch bs) ((fmap . fmap) exprs after)
+      Begin es -> Begin (exprs es)
       e -> e
 
-    exprs f es =
-      init es ++ [expr f (last es)]
+    exprs es =
+      init es ++ [expr (last es)]
 
-    branch f (MkCaseBranch p gs es) =
-      MkCaseBranch p gs (exprs f es)
+    branch (MkCaseBranch p gs es) =
+      MkCaseBranch p gs (exprs es)
 
 
 validateFunNames :: Module -> Module

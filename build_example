@@ -4,4 +4,4 @@ hpack &&
 cabal build &&
 clear &&
 cabal run agner -- -o example example.erl &&
-./example
+ARTS_YLOG=log_example.csv ./example

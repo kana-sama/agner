@@ -3,14 +3,27 @@
 
 -import(agner, [println/1]).
 
-take_messages(0) -> [];
-take_messages(N) -> receive A -> [A | take_messages(N - 1)] end.
+% same arity
+f1(A) -> f2(A).
+f2(A) -> println(A).
+
+% from less to more
+f3(A) -> f4(A, A + 1, A + 2).
+f4(A, B, C) -> println({A, B, C}).
+
+% from more to less
+f5(A, B, C) -> f6(A + B + C).
+f6(A) -> println(A).
+
+even(0) -> true;
+even(N) -> odd(N - 1).
+
+odd(0) -> false;
+odd(N) -> even(N - 1).
 
 main() ->
-  println(start),
-  Main = self(),
-  spawn(fun() -> timer:sleep(100), Main ! 1 end),
-  spawn(fun() -> timer:sleep( 50), Main ! 2 end),
-  spawn(fun() -> timer:sleep(150), Main ! 3 end),
-  spawn(fun() -> timer:sleep( 20), Main ! 4 end),
-  [4, 2, 1, 3] = take_messages(4).
+  f1(1),
+  f3(1),
+  f5(10, 100, 1000),
+  println({even(10), odd(11)}),
+  ok.

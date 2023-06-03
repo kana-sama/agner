@@ -20,3 +20,5 @@ examples/*
 !examples/run_*
 
 .DS_Store
+
+agner-output

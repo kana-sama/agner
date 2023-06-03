@@ -16,6 +16,7 @@ import Data.Map.Strict qualified as Map
 
 import Language.Agner.Prelude
 import Language.Agner.Syntax
+import Data.List (intercalate)
 
 data Target = Linux | MacOS
 type WithTarget = ?target :: Target
@@ -26,6 +27,7 @@ data Ctx = MkCtx
   { uuid :: Int
   , allocated :: Set Operand
   , required_slots :: Int
+  , current_arity :: Int
   , stackframe :: ~Int
   , variables :: Map Var Operand
   , atoms :: Set Atom
@@ -46,6 +48,7 @@ emptyCtx = MkCtx
   { uuid = 0
   , allocated = Set.empty
   , required_slots = 0
+  , current_arity = 0
   , stackframe = defaultStackFrame
   , variables = Map.empty
   , atoms = Set.empty
@@ -77,14 +80,14 @@ alloc = do
   let (index, new) = head (filter (\(_, o) -> o `Set.notMember` allocated) operands)
   #allocated %= Set.insert new
   #required_slots %= max index
-  tell [ movq UNBOUND_VALUE new ]
+  -- tell [ movq UNBOUND_VALUE new ]
   pure new
   where
     operands = [(i, MemReg (WORD_SIZE * (-i)) vstack) | i <- [1..]]
 
 free :: Operand -> M ()
 free op = do
-  tell [ movq UNBOUND_VALUE op ]
+  -- tell [ movq UNBOUND_VALUE op ]
   #allocated %= Set.delete op
 
 withAlloc :: (Operand -> M ()) -> M ()
@@ -224,6 +227,14 @@ caseBranch value result afterMatch done branch = do
         tell [ movq rax var ]
         free saved
 
+moves :: [Operand] -> [Operand] -> M ()
+moves from to | length from == length to = do
+  tell [ _comment ("Parallel moves from " <> print from <> " to " <> print to) ]
+  for_ from         \from -> tell [ pushq from ]
+  for_ (reverse to) \to   -> tell [ popq  to   ]
+  where
+    print ops = "[" ++ intercalate "," (map prettyOperand ops) ++ "]"
+moves _ _ = error "length of from should be equal to length of to"
 
 expr :: WithTarget => Operand -> Expr -> M ()
 expr result = \case
@@ -275,9 +286,9 @@ expr result = \case
     var_op   <- variable var
     var_atom <- atom (MkAtom var.getString)
     tell [ movq var_op rdi ]
+    tell [ movq rdi result ]
     tell [ movq var_atom rsi ]
     tell [ callq (runtime "assert:bound") ]
-    tell [ movq rdi result ]
 
   Fun{funid} -> do
     tell [ movq (Static (mkFunctionLabel funid)) rax ]
@@ -315,16 +326,19 @@ expr result = \case
     apply result f [ApplyExpr e | e <- es]
 
   TailApply f es -> do
-    values <- for es \e -> do
-      value <- alloc
-      value <~ e
-      pure value
-    ifor_ values \i value -> do
-      arg <- argument i
-      tell [ movq value rax ]
-      tell [ movq rax arg ]
+    values <- for es \e -> do value <- alloc; value <~ e; pure value
+    new_arguments <- sequence [argument i | i <- [0..f.arity - 1]]
+    moves values new_arguments
     for_ values free
-    tell [ jmp (mkFunctionBodyLabel f) ]
+
+    tell [ _comment "tail_apply: fix stack" ]
+    required_slots <- use #required_slots
+    current_arity <- use #current_arity
+    let new_arity = f.arity
+    tell [ subq (Imm (WORD_SIZE * (required_slots + (current_arity - new_arity)))) vstack ]
+
+    tell [ addq WORD_SIZE rsp ]
+    tell [ jmp (mkFunctionLabel f) ]
 
   DynApply f es ->
     withAlloc \f' -> do
@@ -499,6 +513,7 @@ funWrapper funid body = mdo
   #allocated .= Set.empty
   #required_slots .= 0
   #stackframe .= stackframe
+  #current_arity .= funid.arity
 
   tell [ _label (mkFunctionLabel funid) ]
   body
@@ -543,10 +558,11 @@ function :: WithTarget => FunId -> [Clause] -> (M (Map Var Operand)) -> M ()
 function funid clauses init_scope = funWrapper funid mdo
   tell [ _comment "prologue" ]
   tell [ subq WORD_SIZE rsp ]
+
+  tell [ _label (mkFunctionBodyLabel funid) ]
   tell [ addq  (Imm (requiredSlots * WORD_SIZE)) vstack ]
   tell [ callq (runtime "runtime:save_vstack") ]
 
-  tell [ _label (mkFunctionBodyLabel funid) ]
   tell [ leaq  (MemRegL (mkFunctionMetaOptLabel funid "name_a") rip) rdi ]
   tell [ callq (runtime "runtime:yield") ]
 
